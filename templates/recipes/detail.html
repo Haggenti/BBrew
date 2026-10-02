@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}{{ recipe.name }} · BBrew{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-4">
+  <div><a href="{% url 'recipes:list' %}" class="text-secondary text-decoration-none">← Mes recettes</a><h1 class="h2 mt-2">{{ recipe.name }}</h1></div>
+</div>
+<div class="row g-3 mb-4">
+  <div class="col-sm-4"><div class="card card-body"><small class="text-secondary">OG estimée</small><strong class="fs-4">{{ estimated_og|default:"—" }}</strong></div></div>
+  <div class="col-sm-4"><div class="card card-body"><small class="text-secondary">IBU estimés</small><strong class="fs-4">{{ estimated_ibu|default:"—" }}</strong></div></div>
+  <div class="col-sm-4"><div class="card card-body"><small class="text-secondary">Volume / rendement</small><strong class="fs-4">{{ recipe.batch_size_l }} L / {{ recipe.efficiency }}%</strong></div></div>
+</div>
+<div class="row g-4">
+  <div class="col-lg-7"><div class="card card-body"><h2 class="h5">Ingrédients</h2>
+    {% if recipe.ingredients.all %}<ul class="list-group list-group-flush">{% for ingredient in recipe.ingredients.all %}
+      <li class="list-group-item px-0 d-flex justify-content-between"><span>{{ ingredient.name }} <small class="text-secondary">({{ ingredient.get_kind_display }})</small></span><span>{{ ingredient.amount_g }} g</span></li>
+    {% endfor %}</ul>{% else %}<p class="text-secondary mb-0">Ajoutez les premiers ingrédients.</p>{% endif %}
+  </div></div>
+  <div class="col-lg-5"><form method="post" action="{% url 'recipes:ingredient_create' recipe.pk %}" class="card card-body">
+    {% csrf_token %}<h2 class="h5">Ajouter un ingrédient</h2>
+    {% for field in ingredient_form %}<div class="mb-2"><label class="form-label small" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}</div>{% endfor %}
+    <button class="btn btn-primary mt-2" type="submit">Ajouter</button>
+  </form></div>
+</div>
+{% endblock %}
