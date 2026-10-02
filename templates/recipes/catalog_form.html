@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Modifier {{ item.name }} · BBrew{% endblock %}
+{% block content %}
+<div class="row justify-content-center"><div class="col-lg-7">
+  <a href="{% url 'recipes:catalog' %}" class="text-secondary text-decoration-none">← Retour au catalogue</a>
+  <h1 class="h2 mt-2 mb-1">Modifier une fiche</h1>
+  <p class="text-secondary mb-4">{{ item.name }} · {{ item.get_kind_display }}</p>
+  <form method="post" class="card card-body shadow-sm">
+    {% csrf_token %}
+    {% for field in form %}<div class="mb-3"><label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div>{% endfor %}
+    <div class="d-flex gap-2"><a class="btn btn-outline-secondary" href="{% url 'recipes:catalog' %}">Annuler</a><button class="btn btn-primary" type="submit">Enregistrer</button></div>
+  </form>
+</div></div>
+{% endblock %}

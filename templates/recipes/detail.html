@@ -5,20 +5,76 @@
   <div><a href="{% url 'recipes:list' %}" class="text-secondary text-decoration-none">← Mes recettes</a><h1 class="h2 mt-2">{{ recipe.name }}</h1></div>
 </div>
 <div class="row g-3 mb-4">
-  <div class="col-sm-4"><div class="card card-body"><small class="text-secondary">OG estimée</small><strong class="fs-4">{{ estimated_og|default:"—" }}</strong></div></div>
-  <div class="col-sm-4"><div class="card card-body"><small class="text-secondary">IBU estimés</small><strong class="fs-4">{{ estimated_ibu|default:"—" }}</strong></div></div>
-  <div class="col-sm-4"><div class="card card-body"><small class="text-secondary">Volume / rendement</small><strong class="fs-4">{{ recipe.batch_size_l }} L / {{ recipe.efficiency }}%</strong></div></div>
+  <div class="col-sm-6 col-lg-3"><div class="card card-body"><small class="text-secondary">OG estimée</small><strong class="fs-4">{{ estimated_og|default:"—" }}</strong></div></div>
+  <div class="col-sm-6 col-lg-3"><div class="card card-body"><small class="text-secondary">ABV estimé</small><strong class="fs-4">{% if estimated_abv is not None %}{{ estimated_abv }} %{% else %}—{% endif %}</strong></div></div>
+  <div class="col-sm-6 col-lg-3"><div class="card card-body"><small class="text-secondary">Couleur</small><strong class="fs-4">{% if estimated_ebc is not None %}{{ estimated_ebc }} EBC{% else %}—{% endif %}</strong></div></div>
+  <div class="col-sm-6 col-lg-3"><div class="card card-body"><small class="text-secondary">IBU estimés</small><strong class="fs-4">{{ estimated_ibu|default:"—" }}</strong></div></div>
 </div>
 <div class="row g-4">
-  <div class="col-lg-7"><div class="card card-body"><h2 class="h5">Ingrédients</h2>
-    {% if recipe.ingredients.all %}<ul class="list-group list-group-flush">{% for ingredient in recipe.ingredients.all %}
-      <li class="list-group-item px-0 d-flex justify-content-between"><span>{{ ingredient.name }} <small class="text-secondary">({{ ingredient.get_kind_display }})</small></span><span>{{ ingredient.amount_g }} g</span></li>
-    {% endfor %}</ul>{% else %}<p class="text-secondary mb-0">Ajoutez les premiers ingrédients.</p>{% endif %}
-  </div></div>
-  <div class="col-lg-5"><form method="post" action="{% url 'recipes:ingredient_create' recipe.pk %}" class="card card-body">
-    {% csrf_token %}<h2 class="h5">Ajouter un ingrédient</h2>
-    {% for field in ingredient_form %}<div class="mb-2"><label class="form-label small" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}</div>{% endfor %}
-    <button class="btn btn-primary mt-2" type="submit">Ajouter</button>
-  </form></div>
+  <div class="col-lg-4">
+    <section class="card h-100 border-warning-subtle">
+      <div class="card-header bg-warning-subtle d-flex justify-content-between align-items-center"><h2 class="h5 mb-0">Malts</h2><div class="d-flex align-items-center gap-2"><span class="badge text-bg-warning">{{ malt_rows|length }}</span><button class="btn btn-sm btn-warning" type="button" data-bs-toggle="collapse" data-bs-target="#add-malt">Ajouter</button></div></div>
+      <div class="card-body">
+        {% if malt_rows %}<div class="table-responsive mb-3"><table class="table table-sm align-middle mb-0"><thead><tr><th>Quantité</th><th>Nom</th><th>Fabricant</th><th>Forme</th><th>Ajout</th><th>Couleur</th><th>Proportion</th><th>Coût</th><th></th></tr></thead><tbody>{% for row in malt_rows %}<tr><td>{{ row.ingredient.amount_g }} g</td><td>{{ row.ingredient.name }}</td><td>{{ row.ingredient.manufacturer|default:"—" }}</td><td>{{ row.ingredient.form|default:"Grains" }}</td><td>{{ row.ingredient.addition|default:"Empâtage" }}</td><td>{{ row.ingredient.color_ebc }} EBC</td><td>{{ row.proportion }} %</td><td>{% if row.ingredient.cost_total %}{{ row.ingredient.cost_total }} €{% else %}—{% endif %}</td><td class="text-nowrap"><a class="btn btn-sm btn-outline-secondary" href="{% url 'recipes:ingredient_edit' row.ingredient.pk %}">Modifier</a><form class="d-inline" method="post" action="{% url 'recipes:ingredient_delete' row.ingredient.pk %}" onsubmit="return confirm('Supprimer cet ingrédient ?');">{% csrf_token %}<button class="btn btn-sm btn-outline-danger" type="submit">Supprimer</button></form></td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="small text-secondary">Aucun malt ajouté.</p>{% endif %}
+        <form id="add-malt" class="collapse" method="post" action="{% url 'recipes:ingredient_create' recipe.pk %}">
+          {% csrf_token %}<input type="hidden" name="kind" value="malt"><h3 class="h6">Ajouter un malt</h3>
+          {% for field in malt_form %}<div class="mb-2"><label class="form-label small" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div>{% endfor %}
+          <button class="btn btn-outline-warning w-100 mt-2" type="submit">Ajouter le malt</button>
+        </form>
+      </div>
+    </section>
+  </div>
+  <div class="col-lg-4">
+    <section class="card h-100 border-success-subtle">
+      <div class="card-header bg-success-subtle d-flex justify-content-between align-items-center"><h2 class="h5 mb-0">Houblons</h2><div class="d-flex align-items-center gap-2"><span class="badge text-bg-success">{{ hop_rows|length }}</span><button class="btn btn-sm btn-success" type="button" data-bs-toggle="collapse" data-bs-target="#add-hop">Ajouter</button></div></div>
+      <div class="card-body">
+        {% if hop_rows %}<div class="table-responsive mb-3"><table class="table table-sm align-middle mb-0"><thead><tr><th>Quantité</th><th>Nom</th><th>Forme</th><th>Alpha</th><th>Ajout</th><th>Temps</th><th>IBU</th><th>Coût</th><th></th></tr></thead><tbody>{% for row in hop_rows %}<tr><td>{{ row.ingredient.amount_g }} g</td><td>{{ row.ingredient.name }}</td><td>{{ row.ingredient.form|default:"Pellets" }}</td><td>{{ row.ingredient.alpha_acid }} %</td><td>{{ row.ingredient.addition|default:"Ébullition" }}</td><td>{{ row.ingredient.boil_minutes }} min</td><td>{{ row.ibu }}</td><td>{% if row.ingredient.cost_total %}{{ row.ingredient.cost_total }} €{% else %}—{% endif %}</td><td class="text-nowrap"><a class="btn btn-sm btn-outline-secondary" href="{% url 'recipes:ingredient_edit' row.ingredient.pk %}">Modifier</a><form class="d-inline" method="post" action="{% url 'recipes:ingredient_delete' row.ingredient.pk %}" onsubmit="return confirm('Supprimer cet ingrédient ?');">{% csrf_token %}<button class="btn btn-sm btn-outline-danger" type="submit">Supprimer</button></form></td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="small text-secondary">Aucun houblon ajouté.</p>{% endif %}
+        <form id="add-hop" class="collapse" method="post" action="{% url 'recipes:ingredient_create' recipe.pk %}">
+          {% csrf_token %}<input type="hidden" name="kind" value="hop"><h3 class="h6">Ajouter un houblon</h3>
+          {% for field in hop_form %}<div class="mb-2"><label class="form-label small" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div>{% endfor %}
+          <button class="btn btn-outline-success w-100 mt-2" type="submit">Ajouter le houblon</button>
+        </form>
+      </div>
+    </section>
+  </div>
+  <div class="col-lg-4">
+    <section class="card h-100 border-info-subtle">
+      <div class="card-header bg-info-subtle d-flex justify-content-between align-items-center"><h2 class="h5 mb-0">Levures</h2><div class="d-flex align-items-center gap-2"><span class="badge text-bg-info">{{ yeast_ingredients|length }}</span><button class="btn btn-sm btn-info" type="button" data-bs-toggle="collapse" data-bs-target="#add-yeast">Ajouter</button></div></div>
+      <div class="card-body">
+        {% if yeast_ingredients %}<div class="table-responsive mb-3"><table class="table table-sm align-middle mb-0"><thead><tr><th>Quantité</th><th>Nom</th><th>Laboratoire</th><th>Forme</th><th>Coût</th><th></th></tr></thead><tbody>{% for ingredient in yeast_ingredients %}<tr><td>{{ ingredient.amount_g }} g</td><td>{{ ingredient.name }}</td><td>{{ ingredient.manufacturer|default:"—" }}</td><td>{{ ingredient.form|default:"Sèche" }}</td><td>{% if ingredient.cost_total %}{{ ingredient.cost_total }} €{% else %}—{% endif %}</td><td class="text-nowrap"><a class="btn btn-sm btn-outline-secondary" href="{% url 'recipes:ingredient_edit' ingredient.pk %}">Modifier</a><form class="d-inline" method="post" action="{% url 'recipes:ingredient_delete' ingredient.pk %}" onsubmit="return confirm('Supprimer cet ingrédient ?');">{% csrf_token %}<button class="btn btn-sm btn-outline-danger" type="submit">Supprimer</button></form></td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="small text-secondary">Aucune levure ajoutée.</p>{% endif %}
+        <form id="add-yeast" class="collapse" method="post" action="{% url 'recipes:ingredient_create' recipe.pk %}">
+          {% csrf_token %}<input type="hidden" name="kind" value="yeast"><h3 class="h6">Ajouter une levure</h3>
+          {% for field in yeast_form %}<div class="mb-2"><label class="form-label small" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div>{% endfor %}
+          <button class="btn btn-outline-info w-100 mt-2" type="submit">Ajouter la levure</button>
+        </form>
+      </div>
+    </section>
+  </div>
 </div>
+<div class="card card-body mt-4">
+  <h2 class="h5">Objectifs et estimations</h2>
+  <div style="height: 260px"><canvas id="recipe-chart" aria-label="Graphique des objectifs et estimations"></canvas></div>
+</div>
+{{ chart_data|json_script:"recipe-chart-data" }}
+<script>
+  const chartData = JSON.parse(document.getElementById("recipe-chart-data").textContent);
+  new Chart(document.getElementById("recipe-chart"), {
+    type: "bar",
+    data: {
+      labels: chartData.labels,
+      datasets: [{
+        label: "Valeur",
+        data: chartData.values,
+        backgroundColor: ["#6c757d", "#0d6efd", "#6c757d", "#198754"],
+        borderRadius: 5
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true } }
+    }
+  });
+</script>
 {% endblock %}

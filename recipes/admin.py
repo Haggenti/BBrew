@@ -1,6 +1,13 @@
 from django.contrib import admin
 
-from .models import Ingredient, Recipe
+from .models import Ingredient, IngredientCatalog, Recipe
+
+
+@admin.register(IngredientCatalog)
+class IngredientCatalogAdmin(admin.ModelAdmin):
+    list_display = ("name", "kind", "manufacturer", "form")
+    list_filter = ("kind",)
+    search_fields = ("name", "manufacturer")
 
 
 @admin.register(Recipe)

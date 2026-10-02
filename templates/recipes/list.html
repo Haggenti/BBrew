@@ -11,6 +11,13 @@
     <h2 class="h5"><a class="text-decoration-none" href="{% url 'recipes:detail' recipe.pk %}">{{ recipe.name }}</a></h2>
     <div class="small text-secondary">{{ recipe.batch_size_l }} L · {{ recipe.target_ibu }} IBU</div>
     <div class="mt-3 d-flex gap-2"><span class="badge text-bg-light">DI {{ recipe.target_og }}</span><span class="badge text-bg-light">ABV ~{{ recipe.estimated_abv }}%</span></div>
+    <div class="mt-3 d-flex gap-2">
+      <a class="btn btn-outline-primary btn-sm" href="{% url 'recipes:detail' recipe.pk %}">Ouvrir</a>
+      <form method="post" action="{% url 'recipes:delete' recipe.pk %}" onsubmit="return confirm('Supprimer cette recette et ses ingrédients ?');">
+        {% csrf_token %}
+        <button class="btn btn-outline-danger btn-sm" type="submit">Supprimer</button>
+      </form>
+    </div>
   </div></article></div>
 {% endfor %}</div>
 {% else %}<div class="text-center bg-white border rounded p-5"><h2 class="h4">Aucune recette pour le moment</h2><p class="text-secondary">Commencez par définir les objectifs de votre brassin.</p><a class="btn btn-primary" href="{% url 'recipes:create' %}">Créer ma première recette</a></div>{% endif %}

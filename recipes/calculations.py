@@ -33,3 +33,30 @@ def tinseth_ibu(hops, volume_l: float, original_gravity: float) -> float:
             * (float(hop.amount_g) * 1000 / volume_l)
         )
     return round(total, 1)
+
+
+def estimated_color_ebc(malts, volume_l: float) -> float:
+    """Estime la couleur avec la formule de Morey, convertie en EBC."""
+    gallons = volume_l * 0.264172
+    if gallons <= 0:
+        return 0
+    mcu = sum(
+        (float(malt.amount_g) / 1000 * 2.20462)
+        * (float(malt.color_ebc) / 1.97)
+        / gallons
+        for malt in malts
+    )
+    srm = 1.4922 * (mcu**0.6859) if mcu > 0 else 0
+    return round(srm * 1.97, 1)
+
+
+def estimated_abv(original_gravity: float, yeasts) -> float | None:
+    """Estime l'ABV avec l'atténuation moyenne pondérée des levures."""
+    total_amount = sum(float(yeast.amount_g) for yeast in yeasts)
+    if total_amount <= 0:
+        return None
+    attenuation = sum(
+        float(yeast.attenuation) * float(yeast.amount_g) for yeast in yeasts
+    ) / total_amount
+    final_gravity = 1 + (original_gravity - 1) * (1 - attenuation / 100)
+    return round((original_gravity - final_gravity) * 131.25, 2)
