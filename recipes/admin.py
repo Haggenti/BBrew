@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Ingredient, IngredientCatalog, Recipe
+from .models import Ingredient, IngredientCatalog, MashStep, Recipe
 
 
 @admin.register(IngredientCatalog)
@@ -8,6 +8,12 @@ class IngredientCatalogAdmin(admin.ModelAdmin):
     list_display = ("name", "kind", "manufacturer", "form")
     list_filter = ("kind",)
     search_fields = ("name", "manufacturer")
+
+
+@admin.register(MashStep)
+class MashStepAdmin(admin.ModelAdmin):
+    list_display = ("recipe", "position", "name", "temperature_c", "duration_min")
+    list_filter = ("temperature_c",)
 
 
 @admin.register(Recipe)

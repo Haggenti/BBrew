@@ -4,6 +4,7 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
   <div><h1 class="h2 mb-1">Mes recettes</h1><p class="text-secondary mb-0">Concevez votre prochain brassin.</p></div>
   <a class="btn btn-primary" href="{% url 'recipes:create' %}">Créer une recette</a>
+  <a class="btn btn-outline-secondary" href="{% url 'recipes:import' %}">Importer BeerXML</a>
 </div>
 {% if recipes %}
 <div class="row g-3">{% for recipe in recipes %}
@@ -15,7 +16,7 @@
       <a class="btn btn-outline-primary btn-sm" href="{% url 'recipes:detail' recipe.pk %}">Ouvrir</a>
       <form method="post" action="{% url 'recipes:delete' recipe.pk %}" onsubmit="return confirm('Supprimer cette recette et ses ingrédients ?');">
         {% csrf_token %}
-        <button class="btn btn-outline-danger btn-sm" type="submit">Supprimer</button>
+        <button class="btn btn-outline-danger btn-sm" type="submit" aria-label="Supprimer {{ recipe.name }}" title="Supprimer"><i class="bi bi-dash-lg" aria-hidden="true"></i></button>
       </form>
     </div>
   </div></article></div>

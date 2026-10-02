@@ -7,6 +7,8 @@ class Recipe(models.Model):
     efficiency = models.DecimalField("rendement (%)", max_digits=5, decimal_places=2, default=75)
     target_og = models.DecimalField("densité initiale cible", max_digits=5, decimal_places=3, default=1.050)
     target_ibu = models.DecimalField("IBU cible", max_digits=6, decimal_places=1, default=25)
+    boil_time_min = models.PositiveIntegerField("durée d'ébullition (min)", default=60)
+    notes = models.TextField("notes", blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -20,6 +22,28 @@ class Recipe(models.Model):
         return round((float(self.target_og) - 1) * 131.25, 1)
 
 
+class RecipeVersion(models.Model):
+    recipe = models.ForeignKey(Recipe, on_delete=models.CASCADE, related_name="versions")
+    created_at = models.DateTimeField(auto_now_add=True)
+    reason = models.CharField("modification", max_length=120, default="Modification")
+    snapshot = models.JSONField()
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+
+class EquipmentSettings(models.Model):
+    diameter_cm = models.DecimalField("diamètre de la cuve (cm)", max_digits=6, decimal_places=1, default=40)
+    height_cm = models.DecimalField("hauteur de la cuve (cm)", max_digits=6, decimal_places=1, default=45)
+    evaporation_l_min = models.DecimalField("évaporation (L/min)", max_digits=5, decimal_places=2, default=0.25)
+    grain_absorption_l_kg = models.DecimalField("absorption des grains (L/kg)", max_digits=5, decimal_places=2, default=0.8)
+    dead_space_l = models.DecimalField("volume mort (L)", max_digits=5, decimal_places=2, default=0)
+    mash_efficiency = models.DecimalField("rendement d'empâtage (%)", max_digits=5, decimal_places=1, default=75)
+
+    def __str__(self):
+        return "Paramètres de brassage"
+
+
 class IngredientCatalog(models.Model):
     class Kind(models.TextChoices):
         MALT = "malt", "Malt"
@@ -31,7 +55,7 @@ class IngredientCatalog(models.Model):
     manufacturer = models.CharField("fabricant / laboratoire", max_length=120, blank=True)
     form = models.CharField("forme", max_length=60, blank=True)
     color_ebc = models.DecimalField("couleur (EBC)", max_digits=7, decimal_places=1, default=0)
-    ppg = models.DecimalField("potentiel (PPG)", max_digits=5, decimal_places=1, default=37)
+    potential_yield = models.DecimalField("rendement potentiel (%)", max_digits=5, decimal_places=1, default=80)
     alpha_acid = models.DecimalField("acides alpha (%)", max_digits=5, decimal_places=2, default=5)
     attenuation = models.DecimalField("atténuation (%)", max_digits=5, decimal_places=2, default=78)
 
@@ -66,7 +90,7 @@ class Ingredient(models.Model):
     addition = models.CharField("ajout", max_length=100, blank=True)
     color_ebc = models.DecimalField("couleur (EBC)", max_digits=7, decimal_places=1, default=0)
     cost_total = models.DecimalField("coût total", max_digits=8, decimal_places=2, default=0)
-    ppg = models.DecimalField("potentiel (PPG)", max_digits=5, decimal_places=1, default=37)
+    potential_yield = models.DecimalField("rendement potentiel (%)", max_digits=5, decimal_places=1, default=80)
     alpha_acid = models.DecimalField("acides alpha (%)", max_digits=5, decimal_places=2, default=5)
     boil_minutes = models.PositiveIntegerField("ébullition (min)", default=60)
     attenuation = models.DecimalField("atténuation (%)", max_digits=5, decimal_places=2, default=78)
@@ -76,3 +100,37 @@ class Ingredient(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.get_kind_display()})"
+
+
+class MashStep(models.Model):
+    recipe = models.ForeignKey(Recipe, on_delete=models.CASCADE, related_name="mash_steps")
+    position = models.PositiveIntegerField("ordre", default=1)
+    name = models.CharField("nom du palier", max_length=120)
+    temperature_c = models.DecimalField("température (°C)", max_digits=5, decimal_places=1)
+    duration_min = models.PositiveIntegerField("durée (min)")
+
+    class Meta:
+        ordering = ["position", "id"]
+
+    def __str__(self):
+        return f"{self.name} — {self.temperature_c} °C / {self.duration_min} min"
+
+
+class FermentationStep(models.Model):
+    class Phase(models.TextChoices):
+        PRIMARY = "Fermentation primaire", "Fermentation primaire"
+        SECONDARY = "Fermentation secondaire", "Fermentation secondaire"
+        DRY_HOP = "Dry hop", "Dry hop"
+        COLD_CRASH = "Cold crash", "Cold crash"
+        CONDITIONING = "Conditionnement", "Conditionnement"
+        OTHER = "Autre", "Autre"
+
+    recipe = models.ForeignKey(Recipe, on_delete=models.CASCADE, related_name="fermentation_steps")
+    position = models.PositiveIntegerField("ordre", default=1)
+    phase = models.CharField("phase", max_length=60, choices=Phase.choices)
+    temperature_c = models.DecimalField("température (°C)", max_digits=5, decimal_places=1)
+    duration_days = models.PositiveIntegerField("durée (jours)")
+    action = models.CharField("action / commentaire", max_length=200, blank=True)
+
+    class Meta:
+        ordering = ["position", "id"]

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Paramètres · BBrew{% endblock %}
+{% block content %}
+<div class="mb-4">
+  <h1 class="h2 mb-1"><i class="bi bi-gear me-2" aria-hidden="true"></i>Paramètres</h1>
+  <p class="text-secondary mb-0">Définissez votre équipement de brassage pour fiabiliser les calculs de volumes.</p>
+</div>
+<section class="card border-primary-subtle">
+  <div class="card-header bg-primary-subtle">
+    <h2 class="h5 mb-0">Équipement de brassage</h2>
+  </div>
+  <div class="card-body">
+    <form method="post" class="row g-3">
+      {% csrf_token %}
+      {% for field in form %}
+      <div class="col-md-6">
+        <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {{ field }}
+        {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+      </div>
+      {% endfor %}
+      <div class="col-12">
+        <button class="btn btn-primary" type="submit"><i class="bi bi-check-lg me-1" aria-hidden="true"></i>Enregistrer</button>
+      </div>
+    </form>
+  </div>
+</section>
+{% endblock %}

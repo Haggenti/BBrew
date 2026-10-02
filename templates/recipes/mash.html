@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Brassage BIAB · {{ recipe.name }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-4">
+  <div><a href="{% url 'recipes:detail' recipe.pk %}" class="text-secondary text-decoration-none">← {{ recipe.name }}</a><h1 class="h2 mt-2 mb-1">Brassage BIAB</h1><p class="text-secondary mb-0">Une seule cuve, sans rinçage : ajoutez les paliers de température de votre empâtage.</p></div>
+  <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#add-mash-step" aria-label="Ajouter un palier" title="Ajouter un palier">+</button>
+</div>
+<form id="add-mash-step" class="collapse card card-body shadow-sm mb-4" method="post" action="{% url 'recipes:mash_create' recipe.pk %}">
+  {% csrf_token %}<h2 class="h5">Nouveau palier</h2>
+  <div class="row g-3">{% for field in form %}<div class="col-md-4"><label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div>{% endfor %}</div>
+  <button class="btn btn-primary align-self-start mt-3" type="submit" aria-label="Ajouter le palier" title="Ajouter"><i class="bi bi-plus-lg" aria-hidden="true"></i></button>
+</form>
+<div class="card card-body">
+  <h2 class="h5">Paliers d'empâtage</h2>
+  <div class="table-responsive"><table class="table align-middle"><thead><tr><th>#</th><th>Palier</th><th>Température</th><th>Durée</th><th></th></tr></thead><tbody>
+    {% for step in mash_steps %}<tr><td>{{ step.position }}</td><td>{{ step.name }}</td><td>{{ step.temperature_c }} °C</td><td>{{ step.duration_min }} min</td><td class="text-nowrap"><a class="btn btn-sm btn-outline-secondary" href="{% url 'recipes:mash_edit' step.pk %}" aria-label="Modifier {{ step.name }}" title="Modifier"><i class="bi bi-pencil" aria-hidden="true"></i></a> <form class="d-inline" method="post" action="{% url 'recipes:mash_delete' step.pk %}" onsubmit="return confirm('Supprimer ce palier ?');">{% csrf_token %}<button class="btn btn-sm btn-outline-danger" type="submit" aria-label="Supprimer {{ step.name }}" title="Supprimer"><i class="bi bi-dash-lg" aria-hidden="true"></i></button></form></td></tr>{% empty %}<tr><td colspan="5" class="text-secondary">Aucun palier défini.</td></tr>{% endfor %}
+  </tbody></table></div>
+</div>
+{% endblock %}

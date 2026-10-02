@@ -1,28 +1,96 @@
 from django.contrib import messages
+from django.db import transaction
+from django.db.models import Max
+from django.http import HttpResponse
 from django.views.decorators.http import require_POST
 from django.shortcuts import get_object_or_404, redirect, render
+from xml.etree import ElementTree
 
-from .calculations import estimated_abv, estimated_color_ebc, estimated_og, tinseth_ibu
-from .forms import CatalogForm, HopForm, MaltForm, RecipeForm, YeastForm
-from .models import Ingredient, IngredientCatalog, Recipe
+from .calculations import estimated_abv, estimated_color_ebc, estimated_final_gravity, estimated_og, plato_from_gravity, tinseth_ibu
+from .beerxml import export_recipe, import_recipe
+from decimal import Decimal
+
+from .forms import BeerXMLUploadForm, BoilSettingsForm, CatalogHopForm, CatalogMaltForm, CatalogYeastForm, CatalogForm, EquipmentSettingsForm, FermentationStepForm, HopForm, MaltForm, MashStepForm, RecipeForm, RecipeNameForm, RecipeNotesForm, ScaleForm, YeastForm
+from .models import EquipmentSettings, FermentationStep, Ingredient, IngredientCatalog, MashStep, Recipe, RecipeVersion
 
 
 def recipe_list(request):
     return render(request, "recipes/list.html", {"recipes": Recipe.objects.all()})
 
 
+def equipment_settings(request):
+    settings = EquipmentSettings.objects.first()
+    form = EquipmentSettingsForm(request.POST or None, instance=settings)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "Les paramètres de brassage ont été enregistrés.")
+        return redirect("recipes:equipment_settings")
+    return render(request, "recipes/equipment_settings.html", {"form": form})
+
+
+def recipe_history(request, pk):
+    recipe = get_object_or_404(Recipe, pk=pk)
+    return render(
+        request,
+        "recipes/history.html",
+        {"recipe": recipe, "versions": recipe.versions.all()},
+    )
+
+
+@require_POST
+def recipe_restore(request, pk, version_pk):
+    recipe = get_object_or_404(Recipe, pk=pk)
+    version = get_object_or_404(RecipeVersion, pk=version_pk, recipe=recipe)
+    data = version.snapshot
+    recipe_data = data["recipe"]
+    for field in ("name", "batch_size_l", "efficiency", "target_og", "target_ibu", "boil_time_min", "notes"):
+        setattr(recipe, field, recipe_data[field])
+    recipe.save()
+    recipe.ingredients.all().delete()
+    recipe.mash_steps.all().delete()
+    recipe.fermentation_steps.all().delete()
+    for item in data["ingredients"]:
+        item = {**item, "catalog_id": item.pop("catalog")}
+        Ingredient.objects.create(recipe=recipe, **item)
+    for step in data["mash_steps"]:
+        MashStep.objects.create(recipe=recipe, **step)
+    for step in data.get("fermentation_steps", []):
+        FermentationStep.objects.create(recipe=recipe, **step)
+    messages.success(request, "La version de la recette a été restaurée.")
+    return redirect("recipes:detail", pk=recipe.pk)
+
+
 def catalog_list(request):
     return render(
         request,
         "recipes/catalog.html",
-        {"catalog_form": CatalogForm(), "catalog_items": IngredientCatalog.objects.all()},
+        {
+            "malt_form": CatalogMaltForm(),
+            "hop_form": CatalogHopForm(),
+            "yeast_form": CatalogYeastForm(),
+            "malts": IngredientCatalog.objects.filter(kind=IngredientCatalog.Kind.MALT),
+            "hops": IngredientCatalog.objects.filter(kind=IngredientCatalog.Kind.HOP),
+            "yeasts": IngredientCatalog.objects.filter(kind=IngredientCatalog.Kind.YEAST),
+        },
     )
 
 
 def catalog_create(request):
-    form = CatalogForm(request.POST or None)
+    form_classes = {
+        IngredientCatalog.Kind.MALT: CatalogMaltForm,
+        IngredientCatalog.Kind.HOP: CatalogHopForm,
+        IngredientCatalog.Kind.YEAST: CatalogYeastForm,
+    }
+    kind = request.POST.get("kind")
+    form_class = form_classes.get(kind)
+    if form_class is None:
+        messages.error(request, "Le type d'ingrédient est invalide.")
+        return redirect("recipes:catalog")
+    form = form_class(request.POST)
     if request.method == "POST" and form.is_valid():
         item = form.save()
+        item.kind = kind
+        item.save(update_fields=["kind"])
         messages.success(request, f"{item.name} a été ajouté au catalogue.")
     return redirect("recipes:catalog")
 
@@ -46,8 +114,10 @@ def catalog_delete(request, pk):
     return redirect("recipes:catalog")
 
 
-def recipe_detail(request, pk):
+def recipe_detail(request, pk, edit_forms=None):
     recipe = get_object_or_404(Recipe, pk=pk)
+    equipment = EquipmentSettings.objects.first() or EquipmentSettings()
+    edit_forms = edit_forms or {}
     malts = recipe.ingredients.filter(kind="malt")
     hops = recipe.ingredients.filter(kind="hop")
     yeasts = recipe.ingredients.filter(kind="yeast")
@@ -55,11 +125,22 @@ def recipe_detail(request, pk):
     ibu = tinseth_ibu(hops, float(recipe.batch_size_l), og or float(recipe.target_og)) if hops else None
     ebc = estimated_color_ebc(malts, float(recipe.batch_size_l)) if malts else None
     abv = estimated_abv(og or float(recipe.target_og), yeasts)
+    final_gravity = estimated_final_gravity(og or float(recipe.target_og), yeasts)
     malt_total = sum(float(malt.amount_g) for malt in malts)
+
+    def inline_form(form, form_id):
+        for field in form.fields.values():
+            field.widget.attrs["form"] = form_id
+        return form
+
     malt_rows = [
         {
             "ingredient": malt,
             "proportion": round(float(malt.amount_g) / malt_total * 100, 1) if malt_total else 0,
+            "edit_form": inline_form(
+                edit_forms.get(malt.pk, MaltForm(instance=malt)),
+                f"edit-malt-{malt.pk}",
+            ),
         }
         for malt in malts
     ]
@@ -67,36 +148,146 @@ def recipe_detail(request, pk):
         {
             "ingredient": hop,
             "ibu": tinseth_ibu([hop], float(recipe.batch_size_l), og or float(recipe.target_og)),
+            "edit_form": inline_form(
+                edit_forms.get(hop.pk, HopForm(instance=hop)),
+                f"edit-hop-{hop.pk}",
+            ),
         }
         for hop in hops
     ]
-    chart_data = {
-        "labels": ["OG cible", "OG estimée", "IBU cible", "IBU estimés"],
-        "values": [
-            float(recipe.target_og),
-            og or 0,
-            float(recipe.target_ibu),
-            ibu or 0,
-        ],
-    }
     return render(
         request,
         "recipes/detail.html",
         {
             "recipe": recipe,
+            "name_form": RecipeNameForm(instance=recipe),
+            "notes_form": RecipeNotesForm(instance=recipe),
+            "scale_form": ScaleForm(initial={"batch_size_l": recipe.batch_size_l}),
             "malt_form": MaltForm(),
             "hop_form": HopForm(),
             "yeast_form": YeastForm(),
             "malt_rows": malt_rows,
+            "malt_total_g": malt_total,
+            "water_equipment": {
+                "evaporation_l_min": float(equipment.evaporation_l_min),
+                "grain_absorption_l_kg": float(equipment.grain_absorption_l_kg),
+                "dead_space_l": float(equipment.dead_space_l),
+            },
             "hop_rows": hop_rows,
-            "yeast_ingredients": yeasts,
+            "yeast_rows": [
+                {
+                    "ingredient": yeast,
+                    "edit_form": inline_form(
+                        edit_forms.get(yeast.pk, YeastForm(instance=yeast)),
+                        f"edit-yeast-{yeast.pk}",
+                    ),
+                }
+                for yeast in yeasts
+            ],
+            "mash_steps": recipe.mash_steps.all(),
+            "mash_rows": [
+                {"step": step, "edit_form": MashStepForm(instance=step)}
+                for step in recipe.mash_steps.all()
+            ],
+            "mash_form": MashStepForm(),
+            "fermentation_steps": recipe.fermentation_steps.all(),
+            "fermentation_rows": [
+                {"step": step, "edit_form": FermentationStepForm(instance=step)}
+                for step in recipe.fermentation_steps.all()
+            ],
+            "fermentation_form": FermentationStepForm(),
+            "catalog_data": [
+                {
+                    "id": item.pk,
+                    "name": item.name,
+                    "manufacturer": item.manufacturer,
+                    "form": item.form,
+                    "color_ebc": str(item.color_ebc),
+                    "potential_yield": str(item.potential_yield),
+                    "alpha_acid": str(item.alpha_acid),
+                    "attenuation": str(item.attenuation),
+                }
+                for item in IngredientCatalog.objects.all()
+            ],
             "estimated_og": og,
+            "estimated_plato": plato_from_gravity(og) if og else None,
             "estimated_ibu": ibu,
             "estimated_ebc": ebc,
             "estimated_abv": abv,
-            "chart_data": chart_data,
+            "estimated_final_gravity": final_gravity,
         },
     )
+
+
+def mash_list(request, pk):
+    recipe = get_object_or_404(Recipe, pk=pk)
+    return render(
+        request,
+        "recipes/mash.html",
+        {"recipe": recipe, "mash_steps": recipe.mash_steps.all(), "form": MashStepForm()},
+    )
+
+
+def mash_create(request, pk):
+    recipe = get_object_or_404(Recipe, pk=pk)
+    form = MashStepForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        step = form.save(commit=False)
+        step.recipe = recipe
+        step.position = (recipe.mash_steps.aggregate(max_position=Max("position"))["max_position"] or 0) + 1
+        step.save()
+        messages.success(request, f"Le palier « {step.name} » a été ajouté.")
+    return redirect("recipes:mash", pk=recipe.pk)
+
+
+def mash_edit(request, pk):
+    step = get_object_or_404(MashStep, pk=pk)
+    form = MashStepForm(request.POST or None, instance=step)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, f"Le palier « {step.name} » a été modifié.")
+        return redirect("recipes:mash", pk=step.recipe_id)
+    return render(request, "recipes/mash_form.html", {"form": form, "step": step})
+
+
+@require_POST
+def mash_delete(request, pk):
+    step = get_object_or_404(MashStep, pk=pk)
+    recipe_id = step.recipe_id
+    step_name = step.name
+    step.delete()
+    messages.success(request, f"Le palier « {step_name} » a été supprimé.")
+    return redirect("recipes:mash", pk=recipe_id)
+
+
+def fermentation_create(request, pk):
+    recipe = get_object_or_404(Recipe, pk=pk)
+    form = FermentationStepForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        step = form.save(commit=False)
+        step.recipe = recipe
+        step.position = (recipe.fermentation_steps.aggregate(max_position=Max("position"))["max_position"] or 0) + 1
+        step.save()
+        messages.success(request, "Le palier de fermentation a été ajouté.")
+    return redirect("recipes:detail", pk=recipe.pk)
+
+
+def fermentation_edit(request, pk):
+    step = get_object_or_404(FermentationStep, pk=pk)
+    form = FermentationStepForm(request.POST or None, instance=step)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "Le palier de fermentation a été modifié.")
+    return redirect("recipes:detail", pk=step.recipe_id)
+
+
+@require_POST
+def fermentation_delete(request, pk):
+    step = get_object_or_404(FermentationStep, pk=pk)
+    recipe_id = step.recipe_id
+    step.delete()
+    messages.success(request, "Le palier de fermentation a été supprimé.")
+    return redirect("recipes:detail", pk=recipe_id)
 
 
 def recipe_create(request):
@@ -106,6 +297,82 @@ def recipe_create(request):
         messages.success(request, f"La recette « {recipe.name} » a été créée.")
         return redirect("recipes:list")
     return render(request, "recipes/form.html", {"form": form})
+
+
+def recipe_export(request, pk):
+    recipe = get_object_or_404(Recipe, pk=pk)
+    response = HttpResponse(export_recipe(recipe), content_type="application/xml")
+    response["Content-Disposition"] = f'attachment; filename="{recipe.name}.xml"'
+    return response
+
+
+def boil_settings_update(request, pk):
+    recipe = get_object_or_404(Recipe, pk=pk)
+    form = BoilSettingsForm(request.POST or None, instance=recipe)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "La durée globale d'ébullition a été mise à jour.")
+    return redirect("recipes:detail", pk=recipe.pk)
+
+
+def recipe_name_update(request, pk):
+    recipe = get_object_or_404(Recipe, pk=pk)
+    form = RecipeNameForm(request.POST or None, instance=recipe)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "Le nom de la recette a été mis à jour.")
+    return redirect("recipes:detail", pk=recipe.pk)
+
+
+def recipe_scale(request, pk):
+    recipe = get_object_or_404(Recipe, pk=pk)
+    form = ScaleForm(request.POST or None, initial={"batch_size_l": recipe.batch_size_l})
+    if request.method == "POST" and form.is_valid():
+        new_volume = form.cleaned_data["batch_size_l"]
+        old_volume = Decimal(recipe.batch_size_l)
+        ratio = new_volume / old_volume
+        with transaction.atomic():
+            for ingredient in recipe.ingredients.all():
+                precision = Decimal("1") if ingredient.kind in (Ingredient.Kind.MALT, Ingredient.Kind.YEAST) else Decimal("0.1")
+                ingredient.amount_g = (Decimal(ingredient.amount_g) * ratio).quantize(precision)
+                ingredient.cost_total = (Decimal(ingredient.cost_total) * ratio).quantize(Decimal("0.01"))
+                ingredient.save(update_fields=["amount_g", "cost_total"])
+            recipe.batch_size_l = new_volume
+            recipe.save(update_fields=["batch_size_l"])
+        messages.success(request, f"La recette a été redimensionnée pour {new_volume} L.")
+    return redirect("recipes:detail", pk=recipe.pk)
+
+
+def recipe_notes_update(request, pk):
+    recipe = get_object_or_404(Recipe, pk=pk)
+    form = RecipeNotesForm(request.POST or None, instance=recipe)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "Les notes de la recette ont été enregistrées.")
+    return redirect("recipes:detail", pk=recipe.pk)
+
+
+def recipe_import(request):
+    form = BeerXMLUploadForm(request.POST or None, request.FILES or None)
+    if request.method == "POST" and form.is_valid():
+        try:
+            data = import_recipe(form.cleaned_data["file"].read())
+            with transaction.atomic():
+                recipe = Recipe.objects.create(
+                    name=data["name"],
+                    batch_size_l=data["batch_size_l"],
+                    efficiency=data["efficiency"],
+                    target_og=data["target_og"],
+                    target_ibu=data["target_ibu"],
+                )
+                for ingredient in data["ingredients"]:
+                    Ingredient.objects.create(recipe=recipe, **ingredient)
+        except (ValueError, TypeError, ElementTree.ParseError) as error:
+            form.add_error("file", f"Import BeerXML impossible : {error}")
+        else:
+            messages.success(request, f"La recette « {recipe.name} » a été importée.")
+            return redirect("recipes:detail", pk=recipe.pk)
+    return render(request, "recipes/import.html", {"form": form})
 
 
 @require_POST
@@ -135,13 +402,17 @@ def ingredient_create(request, pk):
         ingredient.recipe = recipe
         ingredient.kind = kind
         if ingredient.catalog:
-            ingredient.name = ingredient.name or ingredient.catalog.name
-            ingredient.manufacturer = ingredient.manufacturer or ingredient.catalog.manufacturer
-            ingredient.form = ingredient.form or ingredient.catalog.form
-            ingredient.color_ebc = ingredient.color_ebc or ingredient.catalog.color_ebc
-            ingredient.ppg = ingredient.ppg or ingredient.catalog.ppg
-            ingredient.alpha_acid = ingredient.alpha_acid or ingredient.catalog.alpha_acid
-            ingredient.attenuation = ingredient.attenuation or ingredient.catalog.attenuation
+            catalog = ingredient.catalog
+            ingredient.name = ingredient.name or catalog.name
+            ingredient.manufacturer = catalog.manufacturer
+            ingredient.form = catalog.form
+            if kind == Ingredient.Kind.MALT:
+                ingredient.color_ebc = catalog.color_ebc
+                ingredient.potential_yield = catalog.potential_yield
+            elif kind == Ingredient.Kind.HOP:
+                ingredient.alpha_acid = catalog.alpha_acid
+            elif kind == Ingredient.Kind.YEAST:
+                ingredient.attenuation = catalog.attenuation
         ingredient.save()
         messages.success(request, f"{ingredient.name} a été ajouté à la recette.")
     return redirect("recipes:detail", pk=recipe.pk)
@@ -160,11 +431,7 @@ def ingredient_edit(request, pk):
         form.save()
         messages.success(request, f"{ingredient.name} a été modifié.")
         return redirect("recipes:detail", pk=ingredient.recipe_id)
-    return render(
-        request,
-        "recipes/ingredient_form.html",
-        {"form": form, "ingredient": ingredient},
-    )
+    return recipe_detail(request, ingredient.recipe_id, {ingredient.pk: form})
 
 
 @require_POST
