@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Catégorie BJCP · BBrew{% endblock %}
+{% block content %}
+<div class="mb-4"><a href="{% url 'recipes:categories' %}" class="text-secondary text-decoration-none">← Catégories BJCP</a><h1 class="h2 mt-2">{% if category %}Modifier la catégorie{% else %}Ajouter une catégorie{% endif %}</h1></div>
+<form method="post" class="card card-body">
+  {% csrf_token %}
+  <div class="row g-3">
+    <div class="col-md-3"><label class="form-label" for="{{ form.code.id_for_label }}">{{ form.code.label }}</label>{{ form.code }}{% for error in form.code.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div>
+    <div class="col-md-9"><label class="form-label" for="{{ form.name.id_for_label }}">{{ form.name.label }}</label>{{ form.name }}{% for error in form.name.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div>
+    <div class="col-12"><label class="form-label" for="{{ form.description.id_for_label }}">{{ form.description.label }}</label>{{ form.description }}</div>
+  </div>
+  <h2 class="h5 mt-4">Fourchettes de style</h2>
+  <div class="row g-3">
+    {% for field in form %}{% if field.name != "code" and field.name != "name" and field.name != "description" %}<div class="col-sm-6 col-lg-3"><label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div>{% endif %}{% endfor %}
+  </div>
+  <div><button class="btn btn-primary" type="submit">Enregistrer</button></div>
+</form>
+{% endblock %}

@@ -1,0 +1,8 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^python - <<'PY'\nimport json\nfrom pathlib import Path\ns=json\\.loads\\(Path\\('/tmp/bjcp_styleguide-2021\\.json'\\)\\.read_text\\(\\)\\)\\['beerjson'\\]\\['styles'\\]\nfor x in s:\n for k in \\['original_gravity','final_gravity'\\]:\n  if x\\.get\\(k\\) and x\\[k\\]\\['maximum'\\]\\['value'\\] > 2:\n   print\\(x\\['style_id'\\], x\\['name'\\], k, x\\[k\\]\\)\nPY$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}

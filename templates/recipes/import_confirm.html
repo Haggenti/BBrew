@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Confirmer l’import BeerXML · BBrew{% endblock %}
+{% block content %}
+<div class="row justify-content-center"><div class="col-lg-7">
+  <a href="{% url 'recipes:import' %}" class="text-secondary text-decoration-none">← Nouvel import</a>
+  <h1 class="h2 mt-2 mb-1">Ingrédients absents du stock</h1>
+  <p class="text-secondary mb-4">La recette « {{ recipe_name }} » contient des ingrédients qui ne sont pas encore dans votre stock.</p>
+  <form method="post" class="card card-body shadow-sm">
+    {% csrf_token %}
+    <input type="hidden" name="confirm_catalog" value="1">
+    <p>Souhaitez-vous les ajouter automatiquement au catalogue ?</p>
+    <div class="list-group mb-4">
+      {% for ingredient in missing_catalog %}
+      <label class="list-group-item d-flex align-items-center gap-2">
+        <input class="form-check-input mt-0" type="checkbox" name="add_to_catalog" value="{{ ingredient.index }}" checked>
+        <span>{{ ingredient.name }}</span>
+        <span class="badge text-bg-light ms-auto">{{ ingredient.kind }}</span>
+      </label>
+      {% endfor %}
+    </div>
+    <div class="d-flex gap-2"><a class="btn btn-outline-secondary" href="{% url 'recipes:list' %}">Annuler</a><button class="btn btn-primary" type="submit">Importer la recette</button></div>
+  </form>
+</div></div>
+{% endblock %}

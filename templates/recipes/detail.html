@@ -5,21 +5,34 @@
 <div class="d-flex justify-content-between align-items-start mb-4">
   <div><a href="{% url 'recipes:list' %}" class="text-secondary text-decoration-none">← Mes recettes</a><h1 class="h2 mt-2 d-flex align-items-center gap-2">{{ recipe.name }} <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#edit-recipe-name" aria-label="Modifier le nom" title="Modifier le nom"><i class="bi bi-pencil" aria-hidden="true"></i></button></h1>
     <form id="edit-recipe-name" class="collapse mt-2" method="post" action="{% url 'recipes:name_update' recipe.pk %}">{% csrf_token %}<div class="input-group input-group-sm" style="max-width: 420px">{{ name_form.name }}<button class="btn btn-primary" type="submit">Enregistrer</button></div></form>
+    <form method="post" action="{% url 'recipes:category_update' recipe.pk %}" class="d-flex align-items-center gap-2 mt-2">
+      {% csrf_token %}<label class="small text-secondary" for="{{ category_form.category.id_for_label }}">Style BJCP</label>{{ category_form.category }}<button class="btn btn-sm btn-outline-secondary" type="submit">Enregistrer</button>
+    </form>
   </div>
   <div class="d-flex gap-2"><a class="btn btn-outline-secondary" href="{% url 'recipes:history' recipe.pk %}"><i class="bi bi-clock-history me-1" aria-hidden="true"></i>Historique</a><a class="btn btn-outline-secondary" href="{% url 'recipes:export' recipe.pk %}">Exporter BeerXML</a></div>
 </div>
-<div class="row g-3 mb-4">
-  <div class="col-sm-6 col-lg-3"><div class="card card-body"><small class="text-secondary">OG estimée</small><strong class="fs-4">{% if estimated_og %}{{ estimated_og }} <small>/ {{ estimated_plato }} °P</small>{% else %}—{% endif %}</strong></div></div>
-  <div class="col-sm-6 col-lg-3"><div class="card card-body"><small class="text-secondary">DF estimée / ABV</small><strong class="fs-4">{% if estimated_final_gravity is not None %}{{ estimated_final_gravity }}{% else %}—{% endif %} <small>{% if estimated_abv is not None %}/ {{ estimated_abv }} %{% endif %}</small></strong></div></div>
-  <div class="col-sm-6 col-lg-3"><div class="card card-body"><small class="text-secondary">Couleur</small><div class="d-flex align-items-center gap-2"><span id="ebc-color-swatch" class="rounded border" style="width: 2.25rem; height: 2.25rem; background-color: #e9ecef" aria-label="Couleur estimée de la bière" title="Couleur estimée de la bière"></span><strong class="fs-4">{% if estimated_ebc is not None %}{{ estimated_ebc }} EBC{% else %}—{% endif %}</strong></div></div></div>
-  <div class="col-sm-6 col-lg-3"><div class="card card-body"><small class="text-secondary">IBU estimés</small><strong class="fs-4">{{ estimated_ibu|default:"—" }}</strong></div></div>
+<div class="row g-3 mb-4 align-items-stretch">
+  {% if recipe.category and style_indicators %}<div class="col-lg-5"><section class="card card-body h-100 border-info-subtle"><div class="d-flex justify-content-between align-items-center mb-3"><h2 class="h5 mb-0">Profil de la bière</h2><span class="badge text-bg-info">{{ recipe.category.code }} — {{ recipe.category.name }}</span></div>{% for indicator in style_indicators %}<div class="mb-3"><div class="d-flex justify-content-between small"><span class="fw-semibold">{{ indicator.label }}</span><span class="{% if indicator.ok %}text-success{% else %}text-warning{% endif %}">{{ indicator.value|floatformat:3 }}{{ indicator.unit }} · {{ indicator.status }}</span></div><div class="progress mt-1" role="progressbar" aria-label="{{ indicator.label }}" aria-valuemin="{{ indicator.minimum|unlocalize }}" aria-valuemax="{{ indicator.maximum|unlocalize }}" aria-valuenow="{{ indicator.value|unlocalize }}"><div class="progress-bar {% if indicator.ok %}bg-info{% else %}bg-warning{% endif %}" style="width: {{ indicator.position|unlocalize }}%"></div></div><div class="d-flex justify-content-between text-secondary" style="font-size: .75rem"><span>{{ indicator.minimum }}{{ indicator.unit }}</span><span>{{ indicator.maximum }}{{ indicator.unit }}</span></div></div>{% endfor %}</section></div>{% endif %}
+  <div class="{% if recipe.category and style_indicators %}col-lg-7{% else %}col-12{% endif %}"><section class="card card-body h-100"><h2 class="h5 mb-3">Caractéristiques</h2><div class="row g-0">
+    <div class="col-sm-6 border-bottom border-end-sm p-3"><small class="text-secondary d-block">OG estimée</small><strong class="fs-4">{% if estimated_og %}{{ estimated_og }} <small>/ {{ estimated_plato }} °P</small>{% else %}—{% endif %}</strong></div>
+    <div class="col-sm-6 border-bottom p-3"><small class="text-secondary d-block">DF estimée</small><strong class="fs-4">{% if estimated_final_gravity is not None %}{{ estimated_final_gravity }}{% else %}—{% endif %}</strong><small class="text-secondary d-block mt-1">Empâtage moyen : {{ mash_temperature|floatformat:1 }} °C{% if not has_mash_steps %} (valeur par défaut){% endif %}</small></div>
+    <div class="col-sm-6 border-bottom border-end-sm p-3"><small class="text-secondary d-block">ABV estimé</small><strong class="fs-4">{% if estimated_abv is not None %}{{ estimated_abv }} %{% else %}—{% endif %}</strong></div>
+    <div class="col-sm-6 border-bottom p-3"><small class="text-secondary d-block">Couleur</small><div class="d-flex align-items-center gap-2"><span id="ebc-color-swatch" class="rounded border" style="width: 2.25rem; height: 2.25rem; background-color: #e9ecef" aria-label="Couleur estimée de la bière" title="Couleur estimée de la bière"></span><strong class="fs-4">{% if estimated_ebc is not None %}{{ estimated_ebc }} EBC{% else %}—{% endif %}</strong></div></div>
+    <div class="col-sm-6 border-end-sm p-3"><small class="text-secondary d-block">IBU estimés</small><strong class="fs-4">{{ estimated_ibu|default:"—" }}</strong></div>
+    <div class="col-sm-6 p-3"><small class="text-secondary d-block">Ratio IBU / DF</small><strong class="fs-4">{% if ibu_df_ratio is not None %}{{ ibu_df_ratio }}{% else %}—{% endif %}</strong>{% if ibu_df_comment %}<small class="text-secondary d-block mt-1">{{ ibu_df_comment|capfirst }}</small>{% endif %}</div>
+    <div class="col-sm-6 border-top p-3"><div class="d-flex justify-content-between align-items-start"><div><small class="text-secondary d-block">Efficacité</small><strong class="fs-4">{{ recipe.efficiency|floatformat:1 }} %</strong><small class="text-secondary d-block mt-1">Utilisée pour l’estimation de l’OG</small></div><button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#edit-efficiency" aria-label="Modifier l’efficacité" title="Modifier l’efficacité"><i class="bi bi-pencil" aria-hidden="true"></i></button></div><form id="edit-efficiency" class="collapse mt-2" method="post" action="{% url 'recipes:efficiency_update' recipe.pk %}">{% csrf_token %}<div class="input-group input-group-sm">{{ efficiency_form.efficiency }}<span class="input-group-text">%</span><button class="btn btn-primary" type="submit" aria-label="Enregistrer l’efficacité"><i class="bi bi-check-lg" aria-hidden="true"></i></button></div></form></div>
+  </div></section></div>
 </div>
 <div class="row g-3 mb-4">
   <div class="col-lg-6">
-    <div class="card card-body h-100 border-primary-subtle">
-      <form method="post" action="{% url 'recipes:scale' recipe.pk %}" class="row g-2 align-items-end">
-        {% csrf_token %}<div class="col-md-auto"><label class="form-label small mb-1" for="{{ scale_form.batch_size_l.id_for_label }}">Volume prévu</label>{{ scale_form.batch_size_l }}</div><div class="col-md-auto"><button class="btn btn-primary" type="submit">Scale</button></div><div class="col-12"><small class="text-secondary">Les quantités de malts, houblons et levures seront ajustées proportionnellement.</small></div>
-      </form>
+    <div class="card h-100 border-primary-subtle">
+      <div class="card-header bg-primary-subtle"><h2 class="h6 mb-0"><i class="bi bi-arrows-angle-expand me-2" aria-hidden="true"></i>Redimensionner la recette</h2></div>
+      <div class="card-body d-flex flex-column justify-content-center">
+        <form method="post" action="{% url 'recipes:scale' recipe.pk %}">
+          {% csrf_token %}<div class="row g-2 align-items-end"><div class="col-sm"><label class="form-label small mb-1" for="{{ scale_form.batch_size_l.id_for_label }}">Volume prévu (L)</label>{{ scale_form.batch_size_l }}</div><div class="col-sm-auto"><button class="btn btn-primary w-100" type="submit"><i class="bi bi-check-lg me-1" aria-hidden="true"></i>Appliquer</button></div></div>
+          <small class="text-secondary d-block mt-3">Les quantités de malts, houblons et levures seront ajustées proportionnellement.</small>
+        </form>
+      </div>
     </div>
   </div>
   <div class="col-lg-6">
@@ -29,7 +42,9 @@
         <div class="col-sm-5"><label class="form-label small mb-1" for="water-volume">Volume final (L)</label><input id="water-volume" class="form-control form-control-sm" type="number" min="1" step="0.1" value="{{ recipe.batch_size_l|unlocalize }}"></div>
         <div class="col-sm-7"><span class="small text-secondary d-block">Sans eau de rinçage</span><strong id="water-result" class="fs-4">— L</strong></div>
       </div>
+      <div class="row g-2 mt-2 small"><div class="col-sm-6"><span class="text-secondary d-block">Volume pré-ébullition</span><strong id="water-preboil">— L</strong></div><div class="col-sm-6"><span class="text-secondary d-block">Volume après ébullition</span><strong id="water-postboil">— L</strong></div></div>
       <small id="water-detail" class="text-secondary d-block mt-2"></small>
+      <div id="water-capacity-warning" class="alert alert-warning small mt-2 mb-0 d-none"></div>
     </div>
   </div>
 </div>
@@ -221,7 +236,12 @@
   const waterVolume = document.getElementById("water-volume");
   const waterResult = document.getElementById("water-result");
   const waterDetail = document.getElementById("water-detail");
+  const waterPreboil = document.getElementById("water-preboil");
+  const waterPostboil = document.getElementById("water-postboil");
+  const waterCapacityWarning = document.getElementById("water-capacity-warning");
   const waterEquipment = {
+    diameter: {{ water_equipment.diameter_cm|unlocalize }},
+    height: {{ water_equipment.height_cm|unlocalize }},
     evaporation: {{ water_equipment.evaporation_l_min|unlocalize }},
     absorption: {{ water_equipment.grain_absorption_l_kg|unlocalize }},
     deadSpace: {{ water_equipment.dead_space_l|unlocalize }}
@@ -234,13 +254,26 @@
     if (!finalVolume || finalVolume <= 0) {
       waterResult.textContent = "— L";
       waterDetail.textContent = "";
+      waterPreboil.textContent = "— L";
+      waterPostboil.textContent = "— L";
+      waterCapacityWarning.classList.add("d-none");
       return;
     }
     const evaporationLoss = waterEquipment.evaporation * boilMinutes;
     const grainAbsorption = waterEquipment.absorption * grainWeightKg;
-    const totalWater = finalVolume + evaporationLoss + grainAbsorption + waterEquipment.deadSpace;
+    const preBoilVolume = finalVolume + evaporationLoss + waterEquipment.deadSpace;
+    const totalWater = preBoilVolume + grainAbsorption;
+    const kettleCapacity = Math.PI * (waterEquipment.diameter / 2) ** 2 * waterEquipment.height / 1000;
     waterResult.textContent = `${totalWater.toFixed(1)} L`;
+    waterPreboil.textContent = `${preBoilVolume.toFixed(1)} L`;
+    waterPostboil.textContent = `${finalVolume.toFixed(1)} L utiles`;
     waterDetail.textContent = `${finalVolume.toFixed(1)} L final + ${evaporationLoss.toFixed(1)} L évaporation + ${grainAbsorption.toFixed(1)} L absorption + ${waterEquipment.deadSpace.toFixed(1)} L volume mort`;
+    if (totalWater > kettleCapacity) {
+      waterCapacityWarning.textContent = `Attention : ${totalWater.toFixed(1)} L nécessaires dépassent la capacité théorique de la cuve (${kettleCapacity.toFixed(1)} L).`;
+      waterCapacityWarning.classList.remove("d-none");
+    } else {
+      waterCapacityWarning.classList.add("d-none");
+    }
   }
 
   waterVolume.addEventListener("input", updateWater);

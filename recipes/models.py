@@ -3,6 +3,14 @@ from django.db import models
 
 class Recipe(models.Model):
     name = models.CharField("nom", max_length=120)
+    category = models.ForeignKey(
+        "BeerCategory",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="recipes",
+        verbose_name="catégorie BJCP",
+    )
     batch_size_l = models.DecimalField("volume final (L)", max_digits=6, decimal_places=2, default=20)
     efficiency = models.DecimalField("rendement (%)", max_digits=5, decimal_places=2, default=75)
     target_og = models.DecimalField("densité initiale cible", max_digits=5, decimal_places=3, default=1.050)
@@ -44,6 +52,30 @@ class EquipmentSettings(models.Model):
         return "Paramètres de brassage"
 
 
+class BeerCategory(models.Model):
+    code = models.CharField("code BJCP", max_length=10, unique=True)
+    name = models.CharField("nom", max_length=120)
+    description = models.TextField("description", blank=True)
+    og_min = models.DecimalField("OG minimale", max_digits=5, decimal_places=3, null=True, blank=True)
+    og_max = models.DecimalField("OG maximale", max_digits=5, decimal_places=3, null=True, blank=True)
+    fg_min = models.DecimalField("FG minimale", max_digits=5, decimal_places=3, null=True, blank=True)
+    fg_max = models.DecimalField("FG maximale", max_digits=5, decimal_places=3, null=True, blank=True)
+    ibu_min = models.DecimalField("IBU minimum", max_digits=6, decimal_places=1, null=True, blank=True)
+    ibu_max = models.DecimalField("IBU maximum", max_digits=6, decimal_places=1, null=True, blank=True)
+    ebc_min = models.DecimalField("EBC minimum", max_digits=7, decimal_places=1, null=True, blank=True)
+    ebc_max = models.DecimalField("EBC maximum", max_digits=7, decimal_places=1, null=True, blank=True)
+    abv_min = models.DecimalField("ABV minimum (%)", max_digits=5, decimal_places=2, null=True, blank=True)
+    abv_max = models.DecimalField("ABV maximum (%)", max_digits=5, decimal_places=2, null=True, blank=True)
+
+    class Meta:
+        ordering = ["code"]
+        verbose_name = "catégorie de bière"
+        verbose_name_plural = "catégories de bière"
+
+    def __str__(self):
+        return f"{self.code} — {self.name}"
+
+
 class IngredientCatalog(models.Model):
     class Kind(models.TextChoices):
         MALT = "malt", "Malt"
@@ -52,6 +84,7 @@ class IngredientCatalog(models.Model):
 
     name = models.CharField("nom", max_length=120)
     kind = models.CharField("type", max_length=10, choices=Kind.choices)
+    quantity_available = models.PositiveIntegerField("quantité disponible", default=0)
     manufacturer = models.CharField("fabricant / laboratoire", max_length=120, blank=True)
     form = models.CharField("forme", max_length=60, blank=True)
     color_ebc = models.DecimalField("couleur (EBC)", max_digits=7, decimal_places=1, default=0)

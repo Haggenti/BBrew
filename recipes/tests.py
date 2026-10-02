@@ -6,13 +6,19 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from .calculations import (
     abv_from_gravity,
     estimated_abv,
+    estimated_attenuation,
     estimated_color_ebc,
     estimated_final_gravity,
     gravity_points,
+    average_mash_temperature,
+    ibu_final_gravity_comment,
+    ibu_final_gravity_ratio,
+    mash_fermentability_limit,
     plato_from_gravity,
+    tinseth_ibu,
 )
 from .forms import ADDITION_CHOICES, HopForm, MaltForm, YeastForm
-from .models import EquipmentSettings, FermentationStep, Ingredient, IngredientCatalog, MashStep, Recipe, RecipeVersion
+from .models import BeerCategory, EquipmentSettings, FermentationStep, Ingredient, IngredientCatalog, MashStep, Recipe, RecipeVersion
 
 
 class CalculationTests(TestCase):
@@ -21,6 +27,20 @@ class CalculationTests(TestCase):
 
     def test_gravity_points_are_positive(self):
         self.assertAlmostEqual(gravity_points(5, 80, 20, 75), 57.85, places=1)
+
+    def test_tinseth_ibu_uses_reference_formula_and_ignores_dry_hop(self):
+        recipe = Recipe.objects.create(name="IBU test")
+        hop = Ingredient.objects.create(
+            recipe=recipe,
+            name="Cascade",
+            kind=Ingredient.Kind.HOP,
+            amount_g=28.4,
+            alpha_acid=8,
+            boil_minutes=60,
+        )
+        self.assertAlmostEqual(tinseth_ibu([hop], 20, 1.050), 26.2, places=1)
+        hop.addition = "Dry hop"
+        self.assertEqual(tinseth_ibu([hop], 20, 1.050), 0)
 
     def test_color_and_abv_use_recipe_ingredients(self):
         recipe = Recipe.objects.create(name="Amber Ale", batch_size_l=20, efficiency=75)
@@ -47,9 +67,108 @@ class CalculationTests(TestCase):
         self.assertGreater(lower_attenuation_fg, 1.010)
         self.assertLess(lower_attenuation_abv, 5.25)
         self.assertAlmostEqual(plato_from_gravity(1.050), 12.4, places=1)
+        self.assertEqual(ibu_final_gravity_ratio(50, 1.010), 49.5)
+        self.assertIsNone(ibu_final_gravity_ratio(50, None))
+        self.assertEqual(ibu_final_gravity_comment(49.5, 1.010), "équilibrée, finale sèche")
+        self.assertEqual(ibu_final_gravity_comment(60, 1.022), "amère, finale liquoreuse")
+        self.assertEqual(average_mash_temperature([]), 65.0)
+        self.assertAlmostEqual(mash_fermentability_limit(64.5), 85.5)
+        self.assertEqual(mash_fermentability_limit(75), 72.0)
+        attenuation_at_60c = estimated_attenuation([yeast], [
+            MashStep(temperature_c=60, duration_min=60),
+        ])
+        attenuation_at_70c = estimated_attenuation([yeast], [
+            MashStep(temperature_c=70, duration_min=60),
+        ])
+        self.assertGreater(attenuation_at_60c, attenuation_at_70c)
+        self.assertGreater(
+            estimated_final_gravity(1.050, [yeast], [
+                MashStep(temperature_c=70, duration_min=60),
+            ]),
+            estimated_final_gravity(1.050, [yeast], [
+                MashStep(temperature_c=60, duration_min=60),
+            ]),
+        )
 
 
 class RecipeWorkflowTests(TestCase):
+    def test_recipe_category_shows_style_indicators(self):
+        category = BeerCategory.objects.get(code="21A")
+        category.name = "IPA"
+        category.og_min = "1.000"
+        category.og_max = "1.200"
+        category.fg_min = "1.010"
+        category.fg_max = "1.018"
+        category.ibu_min = 40
+        category.ibu_max = 70
+        category.ebc_min = 10
+        category.ebc_max = 30
+        category.abv_min = 5
+        category.abv_max = 7.5
+        category.save()
+        recipe = Recipe.objects.create(name="IPA", category=category, batch_size_l=20, efficiency=75)
+        Ingredient.objects.create(
+            recipe=recipe,
+            name="Pale malt",
+            kind=Ingredient.Kind.MALT,
+            amount_g=5000,
+            potential_yield=37,
+        )
+        response = self.client.post(
+            f"/recettes/{recipe.pk}/categorie/",
+            {"category": category.pk},
+        )
+        self.assertRedirects(response, f"/recettes/{recipe.pk}/")
+        response = self.client.get(f"/recettes/{recipe.pk}/")
+        self.assertContains(response, "Profil de la bière")
+        self.assertContains(response, "IPA")
+        indicators = response.context["style_indicators"]
+        self.assertTrue(0 < indicators[0]["position"] < 100)
+        self.assertContains(response, f'width: {indicators[0]["position"]}%')
+
+    def test_recipe_creation_uses_mash_efficiency_as_default(self):
+        EquipmentSettings.objects.create(mash_efficiency=82)
+        response = self.client.get("/recettes/nouvelle/")
+        self.assertEqual(response.context["form"].initial["efficiency"], 82)
+
+    def test_recipe_efficiency_can_be_updated_from_detail(self):
+        recipe = Recipe.objects.create(name="Efficiency test", efficiency=75)
+        response = self.client.post(
+            f"/recettes/{recipe.pk}/efficacite/",
+            {"efficiency": "82.5"},
+        )
+        self.assertRedirects(response, f"/recettes/{recipe.pk}/")
+        recipe.refresh_from_db()
+        self.assertEqual(recipe.efficiency, Decimal("82.50"))
+
+    def test_bjcp_categories_are_available_and_manageable(self):
+        self.assertEqual(BeerCategory.objects.count(), 110)
+        style = BeerCategory.objects.get(code="1A")
+        self.assertEqual(style.name, "American Light Lager")
+        self.assertEqual(style.og_min, Decimal("1.028"))
+        response = self.client.post(
+            "/categories/ajouter/",
+            {
+                "code": "99",
+                "name": "Catégorie personnalisée",
+                "description": "Test",
+                "og_min": "1.040",
+                "og_max": "1.060",
+                "fg_min": "1.008",
+                "fg_max": "1.015",
+                "ibu_min": "20",
+                "ibu_max": "40",
+                "ebc_min": "8",
+                "ebc_max": "20",
+                "abv_min": "4.0",
+                "abv_max": "6.0",
+            },
+        )
+        self.assertRedirects(response, "/categories/")
+        category = BeerCategory.objects.get(code="99")
+        self.assertEqual(category.og_min, Decimal("1.040"))
+        self.assertEqual(category.ibu_max, Decimal("40.0"))
+
     def test_equipment_settings_can_be_saved(self):
         response = self.client.get("/parametres/")
         self.assertEqual(response.status_code, 200)
@@ -159,6 +278,8 @@ class RecipeWorkflowTests(TestCase):
         self.assertContains(response, "carb-result")
         self.assertContains(response, "Eau d’empâtage BIAB")
         self.assertContains(response, "water-result")
+        self.assertContains(response, "water-preboil")
+        self.assertContains(response, "water-capacity-warning")
         self.assertContains(response, "ebc-color-swatch")
         self.assertIsNotNone(response.context["estimated_og"])
         self.assertIsNotNone(response.context["estimated_ibu"])
@@ -310,9 +431,16 @@ class RecipeWorkflowTests(TestCase):
             "/recettes/importer/",
             {"file": SimpleUploadedFile("recipe.xml", export_response.content, content_type="application/xml")},
         )
+        self.assertEqual(import_response.status_code, 200)
+        self.assertContains(import_response, "Ingrédients absents du stock")
+        import_response = self.client.post(
+            "/recettes/importer/",
+            {"confirm_catalog": "1", "add_to_catalog": ["0", "1"]},
+        )
         imported = Recipe.objects.exclude(pk=recipe.pk).get()
         self.assertRedirects(import_response, f"/recettes/{imported.pk}/")
         self.assertEqual(imported.ingredients.count(), 2)
+        self.assertEqual(IngredientCatalog.objects.filter(name__in=["Pale malt", "Cascade"]).count(), 2)
 
     def test_global_boil_time_can_be_updated(self):
         recipe = Recipe.objects.create(name="Boil test", boil_time_min=60)

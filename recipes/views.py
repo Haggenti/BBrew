@@ -6,12 +6,12 @@ from django.views.decorators.http import require_POST
 from django.shortcuts import get_object_or_404, redirect, render
 from xml.etree import ElementTree
 
-from .calculations import estimated_abv, estimated_color_ebc, estimated_final_gravity, estimated_og, plato_from_gravity, tinseth_ibu
+from .calculations import average_mash_temperature, estimated_abv, estimated_color_ebc, estimated_final_gravity, estimated_og, ibu_final_gravity_comment, ibu_final_gravity_ratio, plato_from_gravity, tinseth_ibu
 from .beerxml import export_recipe, import_recipe
 from decimal import Decimal
 
-from .forms import BeerXMLUploadForm, BoilSettingsForm, CatalogHopForm, CatalogMaltForm, CatalogYeastForm, CatalogForm, EquipmentSettingsForm, FermentationStepForm, HopForm, MaltForm, MashStepForm, RecipeForm, RecipeNameForm, RecipeNotesForm, ScaleForm, YeastForm
-from .models import EquipmentSettings, FermentationStep, Ingredient, IngredientCatalog, MashStep, Recipe, RecipeVersion
+from .forms import BeerCategoryForm, BeerXMLUploadForm, BoilSettingsForm, CatalogHopForm, CatalogMaltForm, CatalogYeastForm, CatalogForm, EquipmentSettingsForm, FermentationStepForm, HopForm, MaltForm, MashStepForm, RecipeCategoryForm, RecipeEfficiencyForm, RecipeForm, RecipeNameForm, RecipeNotesForm, ScaleForm, YeastForm
+from .models import BeerCategory, EquipmentSettings, FermentationStep, Ingredient, IngredientCatalog, MashStep, Recipe, RecipeVersion
 
 
 def recipe_list(request):
@@ -26,6 +26,41 @@ def equipment_settings(request):
         messages.success(request, "Les paramètres de brassage ont été enregistrés.")
         return redirect("recipes:equipment_settings")
     return render(request, "recipes/equipment_settings.html", {"form": form})
+
+
+def category_list(request):
+    return render(
+        request,
+        "recipes/categories.html",
+        {"categories": BeerCategory.objects.all(), "form": BeerCategoryForm()},
+    )
+
+
+def category_create(request):
+    form = BeerCategoryForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "La catégorie a été ajoutée.")
+        return redirect("recipes:categories")
+    return render(request, "recipes/categories.html", {"categories": BeerCategory.objects.all(), "form": form})
+
+
+def category_edit(request, pk):
+    category = get_object_or_404(BeerCategory, pk=pk)
+    form = BeerCategoryForm(request.POST or None, instance=category)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "La catégorie a été modifiée.")
+        return redirect("recipes:categories")
+    return render(request, "recipes/category_form.html", {"form": form, "category": category})
+
+
+@require_POST
+def category_delete(request, pk):
+    category = get_object_or_404(BeerCategory, pk=pk)
+    category.delete()
+    messages.success(request, "La catégorie a été supprimée.")
+    return redirect("recipes:categories")
 
 
 def recipe_history(request, pk):
@@ -121,11 +156,46 @@ def recipe_detail(request, pk, edit_forms=None):
     malts = recipe.ingredients.filter(kind="malt")
     hops = recipe.ingredients.filter(kind="hop")
     yeasts = recipe.ingredients.filter(kind="yeast")
+    mash_steps = list(recipe.mash_steps.all())
     og = estimated_og(malts, float(recipe.batch_size_l), float(recipe.efficiency)) if malts else None
     ibu = tinseth_ibu(hops, float(recipe.batch_size_l), og or float(recipe.target_og)) if hops else None
     ebc = estimated_color_ebc(malts, float(recipe.batch_size_l)) if malts else None
-    abv = estimated_abv(og or float(recipe.target_og), yeasts)
-    final_gravity = estimated_final_gravity(og or float(recipe.target_og), yeasts)
+    abv = estimated_abv(og or float(recipe.target_og), yeasts, mash_steps)
+    final_gravity = estimated_final_gravity(og or float(recipe.target_og), yeasts, mash_steps)
+    ibu_df_ratio = ibu_final_gravity_ratio(ibu, final_gravity)
+    ibu_df_comment = ibu_final_gravity_comment(ibu_df_ratio, final_gravity)
+
+    def style_indicator(label, value, minimum, maximum, unit):
+        if value is None or minimum is None or maximum is None:
+            return None
+        value = float(value)
+        minimum = float(minimum)
+        maximum = float(maximum)
+        span = maximum - minimum
+        position = 50 if span <= 0 else max(0, min(100, (value - minimum) / span * 100))
+        status = "dans la fourchette" if minimum <= value <= maximum else ("en dessous" if value < minimum else "au-dessus")
+        return {
+            "label": label,
+            "value": value,
+            "minimum": minimum,
+            "maximum": maximum,
+            "unit": unit,
+            "position": position,
+            "status": status,
+            "ok": minimum <= value <= maximum,
+        }
+
+    style_indicators = []
+    if recipe.category:
+        for indicator in (
+            style_indicator("OG", og, recipe.category.og_min, recipe.category.og_max, ""),
+            style_indicator("FG", final_gravity, recipe.category.fg_min, recipe.category.fg_max, ""),
+            style_indicator("Couleur", ebc, recipe.category.ebc_min, recipe.category.ebc_max, " EBC"),
+            style_indicator("Amertume", ibu, recipe.category.ibu_min, recipe.category.ibu_max, " IBU"),
+            style_indicator("Alcool", abv, recipe.category.abv_min, recipe.category.abv_max, " %"),
+        ):
+            if indicator:
+                style_indicators.append(indicator)
     malt_total = sum(float(malt.amount_g) for malt in malts)
 
     def inline_form(form, form_id):
@@ -161,6 +231,8 @@ def recipe_detail(request, pk, edit_forms=None):
         {
             "recipe": recipe,
             "name_form": RecipeNameForm(instance=recipe),
+            "category_form": RecipeCategoryForm(instance=recipe),
+            "efficiency_form": RecipeEfficiencyForm(instance=recipe),
             "notes_form": RecipeNotesForm(instance=recipe),
             "scale_form": ScaleForm(initial={"batch_size_l": recipe.batch_size_l}),
             "malt_form": MaltForm(),
@@ -169,6 +241,8 @@ def recipe_detail(request, pk, edit_forms=None):
             "malt_rows": malt_rows,
             "malt_total_g": malt_total,
             "water_equipment": {
+                "diameter_cm": float(equipment.diameter_cm),
+                "height_cm": float(equipment.height_cm),
                 "evaporation_l_min": float(equipment.evaporation_l_min),
                 "grain_absorption_l_kg": float(equipment.grain_absorption_l_kg),
                 "dead_space_l": float(equipment.dead_space_l),
@@ -215,6 +289,11 @@ def recipe_detail(request, pk, edit_forms=None):
             "estimated_ebc": ebc,
             "estimated_abv": abv,
             "estimated_final_gravity": final_gravity,
+            "mash_temperature": average_mash_temperature(mash_steps),
+            "has_mash_steps": bool(mash_steps),
+            "ibu_df_ratio": ibu_df_ratio,
+            "ibu_df_comment": ibu_df_comment,
+            "style_indicators": style_indicators,
         },
     )
 
@@ -291,7 +370,9 @@ def fermentation_delete(request, pk):
 
 
 def recipe_create(request):
-    form = RecipeForm(request.POST or None)
+    equipment = EquipmentSettings.objects.first()
+    initial = {"efficiency": equipment.mash_efficiency} if equipment else {}
+    form = RecipeForm(request.POST or None, initial=initial)
     if request.method == "POST" and form.is_valid():
         recipe = form.save()
         messages.success(request, f"La recette « {recipe.name} » a été créée.")
@@ -315,12 +396,30 @@ def boil_settings_update(request, pk):
     return redirect("recipes:detail", pk=recipe.pk)
 
 
+def recipe_efficiency_update(request, pk):
+    recipe = get_object_or_404(Recipe, pk=pk)
+    form = RecipeEfficiencyForm(request.POST or None, instance=recipe)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "L’efficacité de la recette a été mise à jour.")
+    return redirect("recipes:detail", pk=recipe.pk)
+
+
 def recipe_name_update(request, pk):
     recipe = get_object_or_404(Recipe, pk=pk)
     form = RecipeNameForm(request.POST or None, instance=recipe)
     if request.method == "POST" and form.is_valid():
         form.save()
         messages.success(request, "Le nom de la recette a été mis à jour.")
+    return redirect("recipes:detail", pk=recipe.pk)
+
+
+def recipe_category_update(request, pk):
+    recipe = get_object_or_404(Recipe, pk=pk)
+    form = RecipeCategoryForm(request.POST or None, instance=recipe)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "La catégorie BJCP de la recette a été mise à jour.")
     return redirect("recipes:detail", pk=recipe.pk)
 
 
@@ -352,21 +451,74 @@ def recipe_notes_update(request, pk):
     return redirect("recipes:detail", pk=recipe.pk)
 
 
+def _catalog_for_imported_ingredient(ingredient):
+    return IngredientCatalog.objects.filter(
+        kind=ingredient["kind"],
+        name__iexact=ingredient["name"],
+    ).first()
+
+
+def _create_catalog_from_imported_ingredient(ingredient):
+    return IngredientCatalog.objects.create(
+        name=ingredient["name"],
+        kind=ingredient["kind"],
+        form=ingredient.get("form", ""),
+        color_ebc=ingredient.get("color_ebc", 0),
+        potential_yield=ingredient.get("potential_yield", 80),
+        alpha_acid=ingredient.get("alpha_acid", 5),
+        attenuation=ingredient.get("attenuation", 78),
+    )
+
+
+def _finish_recipe_import(data, catalog_indexes):
+    with transaction.atomic():
+        recipe = Recipe.objects.create(
+            name=data["name"],
+            batch_size_l=data["batch_size_l"],
+            efficiency=data["efficiency"],
+            target_og=data["target_og"],
+            target_ibu=data["target_ibu"],
+            boil_time_min=data["boil_time_min"],
+        )
+        for index, imported_ingredient in enumerate(data["ingredients"]):
+            catalog = _catalog_for_imported_ingredient(imported_ingredient)
+            if catalog is None and index in catalog_indexes:
+                catalog = _create_catalog_from_imported_ingredient(imported_ingredient)
+            Ingredient.objects.create(recipe=recipe, catalog=catalog, **imported_ingredient)
+    return recipe
+
+
 def recipe_import(request):
     form = BeerXMLUploadForm(request.POST or None, request.FILES or None)
-    if request.method == "POST" and form.is_valid():
+    if request.method == "POST" and request.POST.get("confirm_catalog") == "1":
+        data = request.session.pop("pending_beerxml_import", None)
+        if data is None:
+            form.add_error(None, "La session d’import a expiré. Veuillez sélectionner à nouveau le fichier BeerXML.")
+        else:
+            catalog_indexes = {
+                int(value)
+                for value in request.POST.getlist("add_to_catalog")
+                if value.isdigit()
+            }
+            recipe = _finish_recipe_import(data, catalog_indexes)
+            messages.success(request, f"La recette « {recipe.name} » a été importée.")
+            return redirect("recipes:detail", pk=recipe.pk)
+    elif request.method == "POST" and form.is_valid():
         try:
             data = import_recipe(form.cleaned_data["file"].read())
-            with transaction.atomic():
-                recipe = Recipe.objects.create(
-                    name=data["name"],
-                    batch_size_l=data["batch_size_l"],
-                    efficiency=data["efficiency"],
-                    target_og=data["target_og"],
-                    target_ibu=data["target_ibu"],
+            missing_catalog = [
+                {"index": index, **ingredient}
+                for index, ingredient in enumerate(data["ingredients"])
+                if _catalog_for_imported_ingredient(ingredient) is None
+            ]
+            if missing_catalog:
+                request.session["pending_beerxml_import"] = data
+                return render(
+                    request,
+                    "recipes/import_confirm.html",
+                    {"missing_catalog": missing_catalog, "recipe_name": data["name"]},
                 )
-                for ingredient in data["ingredients"]:
-                    Ingredient.objects.create(recipe=recipe, **ingredient)
+            recipe = _finish_recipe_import(data, set())
         except (ValueError, TypeError, ElementTree.ParseError) as error:
             form.add_error("file", f"Import BeerXML impossible : {error}")
         else:

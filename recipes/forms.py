@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from django import forms
 
-from .models import EquipmentSettings, FermentationStep, Ingredient, IngredientCatalog, MashStep, Recipe
+from .models import BeerCategory, EquipmentSettings, FermentationStep, Ingredient, IngredientCatalog, MashStep, Recipe
 
 MALT_FORMS = [
     ("Grains", "Grains"),
@@ -45,7 +45,7 @@ ADDITION_CHOICES = [
 class StyledModelForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        for optional_field in ("manufacturer", "form", "addition", "color_ebc", "cost_total"):
+        for optional_field in ("manufacturer", "form", "addition", "color_ebc", "cost_total", "quantity_available"):
             if optional_field in self.fields:
                 self.fields[optional_field].required = False
         for field in self.fields.values():
@@ -55,11 +55,14 @@ class StyledModelForm(forms.ModelForm):
     def clean_cost_total(self):
         return self.cleaned_data.get("cost_total") or Decimal("0")
 
+    def clean_quantity_available(self):
+        return self.cleaned_data.get("quantity_available") or 0
+
 
 class RecipeForm(StyledModelForm):
     class Meta:
         model = Recipe
-        fields = ["name", "batch_size_l", "efficiency", "target_og", "target_ibu", "boil_time_min", "notes"]
+        fields = ["name", "category", "batch_size_l", "efficiency", "target_og", "target_ibu", "boil_time_min", "notes"]
         widgets = {
             "name": forms.TextInput(attrs={"placeholder": "Ex. Pale Ale du dimanche"}),
             "batch_size_l": forms.NumberInput(attrs={"step": "0.1", "min": "1"}),
@@ -73,6 +76,7 @@ class RecipeForm(StyledModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["boil_time_min"].required = False
+        self.fields["efficiency"].label = "Efficacité (%)"
 
     def clean_boil_time_min(self):
         return self.cleaned_data.get("boil_time_min") or 60
@@ -99,6 +103,32 @@ class EquipmentSettingsForm(StyledModelForm):
         }
 
 
+class BeerCategoryForm(StyledModelForm):
+    class Meta:
+        model = BeerCategory
+        fields = [
+            "code", "name", "description",
+            "og_min", "og_max", "fg_min", "fg_max",
+            "ibu_min", "ibu_max", "ebc_min", "ebc_max",
+            "abv_min", "abv_max",
+        ]
+        widgets = {
+            "code": forms.TextInput(attrs={"placeholder": "Ex. 21"}),
+            "name": forms.TextInput(attrs={"placeholder": "IPA"}),
+            "description": forms.Textarea(attrs={"rows": 3}),
+            "og_min": forms.NumberInput(attrs={"step": "0.001", "min": "1"}),
+            "og_max": forms.NumberInput(attrs={"step": "0.001", "min": "1"}),
+            "fg_min": forms.NumberInput(attrs={"step": "0.001", "min": "0.9"}),
+            "fg_max": forms.NumberInput(attrs={"step": "0.001", "min": "0.9"}),
+            "ibu_min": forms.NumberInput(attrs={"step": "1", "min": "0"}),
+            "ibu_max": forms.NumberInput(attrs={"step": "1", "min": "0"}),
+            "ebc_min": forms.NumberInput(attrs={"step": "0.1", "min": "0"}),
+            "ebc_max": forms.NumberInput(attrs={"step": "0.1", "min": "0"}),
+            "abv_min": forms.NumberInput(attrs={"step": "0.1", "min": "0"}),
+            "abv_max": forms.NumberInput(attrs={"step": "0.1", "min": "0"}),
+        }
+
+
 class FermentationStepForm(StyledModelForm):
     class Meta:
         model = FermentationStep
@@ -118,10 +148,23 @@ class BoilSettingsForm(StyledModelForm):
         widgets = {"boil_time_min": forms.NumberInput(attrs={"min": "1", "max": "240", "step": "1"})}
 
 
+class RecipeEfficiencyForm(StyledModelForm):
+    class Meta:
+        model = Recipe
+        fields = ["efficiency"]
+        widgets = {"efficiency": forms.NumberInput(attrs={"min": "1", "max": "100", "step": "0.1"})}
+
+
 class RecipeNameForm(StyledModelForm):
     class Meta:
         model = Recipe
         fields = ["name"]
+
+
+class RecipeCategoryForm(StyledModelForm):
+    class Meta:
+        model = Recipe
+        fields = ["category"]
 
 
 class RecipeNotesForm(StyledModelForm):
@@ -238,7 +281,7 @@ class CatalogForm(StyledModelForm):
     class Meta:
         model = IngredientCatalog
         fields = [
-            "name", "kind", "manufacturer", "form", "color_ebc", "potential_yield",
+            "name", "kind", "quantity_available", "manufacturer", "form", "color_ebc", "potential_yield",
             "alpha_acid", "attenuation",
         ]
 
@@ -253,12 +296,15 @@ class CatalogForm(StyledModelForm):
             initial=current_form,
             widget=forms.Select(attrs={"class": "form-select"}),
         )
+        self.fields["quantity_available"].label = (
+            "Quantité disponible (paquets)" if kind == "yeast" else "Quantité disponible (g)"
+        )
 
 
 class CatalogMaltForm(StyledModelForm):
     class Meta:
         model = IngredientCatalog
-        fields = ["name", "manufacturer", "form", "color_ebc", "potential_yield"]
+        fields = ["name", "manufacturer", "form", "quantity_available", "color_ebc", "potential_yield"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -267,12 +313,13 @@ class CatalogMaltForm(StyledModelForm):
             required=False,
             widget=forms.Select(attrs={"class": "form-select"}),
         )
+        self.fields["quantity_available"].label = "Quantité disponible (g)"
 
 
 class CatalogHopForm(StyledModelForm):
     class Meta:
         model = IngredientCatalog
-        fields = ["name", "manufacturer", "form", "alpha_acid"]
+        fields = ["name", "manufacturer", "form", "quantity_available", "alpha_acid"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -281,12 +328,13 @@ class CatalogHopForm(StyledModelForm):
             required=False,
             widget=forms.Select(attrs={"class": "form-select"}),
         )
+        self.fields["quantity_available"].label = "Quantité disponible (g)"
 
 
 class CatalogYeastForm(StyledModelForm):
     class Meta:
         model = IngredientCatalog
-        fields = ["name", "manufacturer", "form", "attenuation"]
+        fields = ["name", "manufacturer", "form", "quantity_available", "attenuation"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -295,6 +343,7 @@ class CatalogYeastForm(StyledModelForm):
             required=False,
             widget=forms.Select(attrs={"class": "form-select"}),
         )
+        self.fields["quantity_available"].label = "Quantité disponible (paquets)"
 
 
 class BeerXMLUploadForm(forms.Form):
