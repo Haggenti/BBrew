@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<RECIPES>
+  <RECIPE>
+    <NAME>Brune d&#039;automne</NAME>
+    <TYPE>All Grain</TYPE>
+    <STYLE>
+      <NAME>Belgian Dark Strong Ale</NAME>
+      <CATEGORY>Trappist Ale</CATEGORY>
+      <CATEGORY_NUMBER>26</CATEGORY_NUMBER>
+      <STYLE_LETTER>D</STYLE_LETTER>
+      <STYLE_GUIDE>BJCP 2015</STYLE_GUIDE>
+      <TYPE>Ale</TYPE>
+      <OG_MIN>1.075</OG_MIN>
+      <OG_MAX>1.11</OG_MAX>
+      <FG_MIN>1.01</FG_MIN>
+      <FG_MAX>1.024</FG_MAX>
+      <IBU_MIN>20</IBU_MIN>
+      <IBU_MAX>35</IBU_MAX>
+      <COLOR_MIN>23</COLOR_MIN>
+      <COLOR_MAX>43</COLOR_MAX>
+      <CARB_MIN>2.5</CARB_MIN>
+      <CARB_MAX>3.2</CARB_MAX>
+      <ABV_MIN>8.0</ABV_MIN>
+      <ABV_MAX>12.0</ABV_MAX>
+      <EXAMPLES>Achel Extra Brune, Boulevard The Sixth Glass, Chimay Grande R&#233;serve, Gouden Carolus Grand Cru of the Emperor, Rochefort 8 &#38; 10, St. Bernardus Abt 12, Westvleteren 12</EXAMPLES>
+    </STYLE>
+    <VERSION>1</VERSION>
+    <BATCH_SIZE>22.0</BATCH_SIZE>
+    <BOIL_SIZE>28.9</BOIL_SIZE>
+    <BOIL_TIME>60</BOIL_TIME>
+    <EFFICIENCY>78.0</EFFICIENCY>
+    <EST_OG>1.057</EST_OG>
+    <EST_FG>1.015</EST_FG>
+    <EST_COLOR>38</EST_COLOR>
+    <IBU>22</IBU>
+    <EST_ABV>5.5</EST_ABV>
+    <NOTES>eau depart 33L pour avoir au final 22l dans le fermenteur</NOTES>
+    <FERMENTATION_STAGES>3</FERMENTATION_STAGES>
+    <PRIMARY_AGE>2</PRIMARY_AGE>
+    <PRIMARY_TEMP>16.0</PRIMARY_TEMP>
+    <SECONDARY_AGE>7</SECONDARY_AGE>
+    <SECONDARY_TEMP>20.0</SECONDARY_TEMP>
+    <TERTIARY_AGE>7</TERTIARY_AGE>
+    <TERTIARY_TEMP>2.0</TERTIARY_TEMP>
+    <CARBONATION>2.7</CARBONATION>
+    <CARBONATION_TEMP>18.0</CARBONATION_TEMP>
+    <PRIMING_SUGAR_NAME></PRIMING_SUGAR_NAME>
+    <FERMENTABLES>
+      <FERMENTABLE>
+        <DISPLAY_COLOR>2 EBC</DISPLAY_COLOR>
+        <NAME>Malt Pilsen 2RP</NAME>
+        <SUPPLIER>Malterie du Ch&#226;teau</SUPPLIER>
+        <TYPE>Grain</TYPE>
+        <AMOUNT>2.5</AMOUNT>
+        <COLOR>2</COLOR>
+        <YIELD>81.0</YIELD>
+      </FERMENTABLE>
+      <FERMENTABLE>
+        <DISPLAY_COLOR>5 EBC</DISPLAY_COLOR>
+        <NAME>Malt Vienna</NAME>
+        <SUPPLIER>Malterie du Ch&#226;teau</SUPPLIER>
+        <TYPE>Grain</TYPE>
+        <AMOUNT>1.5</AMOUNT>
+        <COLOR>5</COLOR>
+        <YIELD>80.0</YIELD>
+      </FERMENTABLE>
+      <FERMENTABLE>
+        <DISPLAY_COLOR>50 EBC</DISPLAY_COLOR>
+        <NAME>Malt Carared</NAME>
+        <SUPPLIER>Weyermann</SUPPLIER>
+        <TYPE>Grain</TYPE>
+        <AMOUNT>0.7</AMOUNT>
+        <COLOR>50</COLOR>
+        <YIELD>77.9</YIELD>
+      </FERMENTABLE>
+      <FERMENTABLE>
+        <DISPLAY_COLOR>119 EBC</DISPLAY_COLOR>
+        <NAME>Malt Cara Gold</NAME>
+        <SUPPLIER>Malterie du Ch&#226;teau</SUPPLIER>
+        <TYPE>Grain</TYPE>
+        <AMOUNT>0.15</AMOUNT>
+        <COLOR>119</COLOR>
+        <YIELD>78.0</YIELD>
+      </FERMENTABLE>
+      <FERMENTABLE>
+        <DISPLAY_COLOR>900 EBC</DISPLAY_COLOR>
+        <NAME>Malt Chocolat</NAME>
+        <SUPPLIER>Malterie du Ch&#226;teau</SUPPLIER>
+        <TYPE>Grain</TYPE>
+        <AMOUNT>0.15</AMOUNT>
+        <COLOR>900</COLOR>
+        <YIELD>75.0</YIELD>
+      </FERMENTABLE>
+      <FERMENTABLE>
+        <DISPLAY_COLOR>5 EBC</DISPLAY_COLOR>
+        <NAME>Malt Bl&#233; (Wheat)  5,5 EBC</NAME>
+        <SUPPLIER>Malterie du Ch&#226;teau</SUPPLIER>
+        <TYPE>Grain</TYPE>
+        <AMOUNT>0.15</AMOUNT>
+        <COLOR>5</COLOR>
+        <YIELD>84.0</YIELD>
+      </FERMENTABLE>
+      <FERMENTABLE>
+        <DISPLAY_COLOR>150 EBC</DISPLAY_COLOR>
+        <NAME>Sucre Candi Ambr&#233;</NAME>
+        <SUPPLIER></SUPPLIER>
+        <TYPE>Sugar</TYPE>
+        <AMOUNT>0.11</AMOUNT>
+        <COLOR>150</COLOR>
+        <YIELD>78.3</YIELD>
+      </FERMENTABLE>
+    </FERMENTABLES>
+    <HOPS>
+      <HOP>
+        <NAME>Magnum</NAME>
+        <AMOUNT>0.015</AMOUNT>
+        <ALPHA>12.0</ALPHA>
+        <USE>Boil</USE>
+        <TIME>50</TIME>
+        <FORM>Pellet</FORM>
+      </HOP>
+      <HOP>
+        <NAME>Challenger</NAME>
+        <AMOUNT>0.011</AMOUNT>
+        <ALPHA>7.5</ALPHA>
+        <USE>Boil</USE>
+        <TIME>5</TIME>
+        <FORM>Pellet</FORM>
+      </HOP>
+    </HOPS>
+    <YEASTS>
+      <YEAST>
+        <NAME>SafBrew Specialty Ale</NAME>
+        <AMOUNT>0.001</AMOUNT>
+        <AMOUNT_IS_WEIGHT>TRUE</AMOUNT_IS_WEIGHT>
+        <FORM>Dry</FORM>
+        <PRODUCT_ID>T-58</PRODUCT_ID>
+        <LABORATORY>Fermentis</LABORATORY>
+        <ATTENUATION>73.0</ATTENUATION>
+      </YEAST>
+    </YEASTS>
+    <MASH>
+      <NAME></NAME>
+      <NOTES></NOTES>
+      <PH>5.4</PH>
+      <SPARGE_TEMP>75.0</SPARGE_TEMP>
+      <MASH_STEPS>
+        <MASH_STEP>
+          <NAME>1</NAME>
+          <TYPE>Temperature</TYPE>
+          <STEP_TIME>60</STEP_TIME>
+          <STEP_TEMP>63</STEP_TEMP>
+          <WATER_GRAIN_RATIO></WATER_GRAIN_RATIO>
+        </MASH_STEP>
+        <MASH_STEP>
+          <NAME>2</NAME>
+          <TYPE>Temperature</TYPE>
+          <STEP_TIME>20</STEP_TIME>
+          <STEP_TEMP>72</STEP_TEMP>
+          <WATER_GRAIN_RATIO></WATER_GRAIN_RATIO>
+        </MASH_STEP>
+        <MASH_STEP>
+          <NAME>3</NAME>
+          <TYPE>Temperature</TYPE>
+          <STEP_TIME>2</STEP_TIME>
+          <STEP_TEMP>78</STEP_TEMP>
+          <WATER_GRAIN_RATIO></WATER_GRAIN_RATIO>
+        </MASH_STEP>
+      </MASH_STEPS>
+    </MASH>
+  </RECIPE>
+</RECIPES>

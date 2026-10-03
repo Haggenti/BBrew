@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Ajouter un brassin · BBrew{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <a href="{% url 'recipes:brews' %}" class="text-secondary text-decoration-none">← Brassins</a>
+    <h1 class="h2 mt-2 mb-4">{% if brew %}Modifier le brassin{% else %}Ajouter un brassin{% endif %}</h1>
+    <form method="post" class="card card-body">
+      {% csrf_token %}
+      {% for field in form %}
+      {% if field.name != "actual_preboil_volume_l" and field.name != "actual_batch_size_l" and field.name != "preboil_volume_mode" and field.name != "preboil_headspace_cm" and field.name != "batch_volume_mode" and field.name != "batch_headspace_cm" %}
+      <div class="mb-3">
+        <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {{ field }}
+        {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+      </div>
+      {% endif %}
+      {% endfor %}
+      <fieldset class="border rounded p-3 mb-3">
+        <legend class="float-none w-auto px-2 fs-6">Volume pré-ébullition réel</legend>
+        <div class="row g-3">
+          <div class="col-12"><label class="form-label" for="{{ form.preboil_volume_mode.id_for_label }}">{{ form.preboil_volume_mode.label }}</label>{{ form.preboil_volume_mode }}</div>
+          <div class="col-md-6" data-volume-input="preboil-liters"><label class="form-label" for="{{ form.actual_preboil_volume_l.id_for_label }}">Litrage direct (L)</label>{{ form.actual_preboil_volume_l }}{% for error in form.actual_preboil_volume_l.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div>
+          <div class="col-md-6 d-none" data-volume-input="preboil-headspace"><label class="form-label" for="{{ form.preboil_headspace_cm.id_for_label }}">{{ form.preboil_headspace_cm.label }}</label>{{ form.preboil_headspace_cm }}{% for error in form.preboil_headspace_cm.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div>
+        </div>
+        <p class="small text-secondary mt-3 mb-0">La mesure jusqu’au haut de la cuve utilise le diamètre et la hauteur enregistrés dans les Paramètres.</p>
+      </fieldset>
+      <fieldset class="border rounded p-3 mb-3">
+        <legend class="float-none w-auto px-2 fs-6">Volume final réel</legend>
+        <div class="row g-3">
+          <div class="col-12"><label class="form-label" for="{{ form.batch_volume_mode.id_for_label }}">{{ form.batch_volume_mode.label }}</label>{{ form.batch_volume_mode }}</div>
+          <div class="col-md-6" data-volume-input="batch-liters"><label class="form-label" for="{{ form.actual_batch_size_l.id_for_label }}">Litrage direct (L)</label>{{ form.actual_batch_size_l }}{% for error in form.actual_batch_size_l.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div>
+          <div class="col-md-6 d-none" data-volume-input="batch-headspace"><label class="form-label" for="{{ form.batch_headspace_cm.id_for_label }}">{{ form.batch_headspace_cm.label }}</label>{{ form.batch_headspace_cm }}{% for error in form.batch_headspace_cm.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div>
+        </div>
+        <p class="small text-secondary mt-3 mb-0">La mesure jusqu’au haut de la cuve utilise le diamètre et la hauteur enregistrés dans les Paramètres.</p>
+      </fieldset>
+      <div class="d-flex gap-2">
+        <a class="btn btn-outline-secondary" href="{% url 'recipes:brews' %}">Annuler</a>
+        <button class="btn btn-primary" type="submit"><i class="bi bi-check-lg me-1" aria-hidden="true"></i>{% if brew %}Enregistrer{% else %}Créer le brassin{% endif %}</button>
+      </div>
+    </form>
+    {{ latest_versions|json_script:"latest-recipe-versions" }}
+    <script>
+      function toggleVolumeInput(modeId, litersId, headspaceId, litersContainer, headspaceContainer) {
+        const mode = document.getElementById(modeId);
+        const liters = document.getElementById(litersId);
+        const headspace = document.getElementById(headspaceId);
+        const litersWrapper = document.querySelector(`[data-volume-input="${litersContainer}"]`);
+        const headspaceWrapper = document.querySelector(`[data-volume-input="${headspaceContainer}"]`);
+        function update() {
+          const useHeadspace = mode.value === "headspace";
+          liters.disabled = useHeadspace;
+          headspace.disabled = !useHeadspace;
+          litersWrapper.classList.toggle("d-none", useHeadspace);
+          headspaceWrapper.classList.toggle("d-none", !useHeadspace);
+        }
+        mode.addEventListener("change", update);
+        update();
+      }
+      toggleVolumeInput("id_preboil_volume_mode", "id_actual_preboil_volume_l", "id_preboil_headspace_cm", "preboil-liters", "preboil-headspace");
+      toggleVolumeInput("id_batch_volume_mode", "id_actual_batch_size_l", "id_batch_headspace_cm", "batch-liters", "batch-headspace");
+
+      const brewRecipe = document.getElementById("id_recipe");
+      const brewVersion = document.getElementById("id_recipe_version");
+      const latestRecipeVersions = JSON.parse(document.getElementById("latest-recipe-versions").textContent);
+      function filterRecipeVersions() {
+        [...brewVersion.options].forEach((option) => {
+          option.hidden = Boolean(option.dataset.recipeId && option.dataset.recipeId !== brewRecipe.value);
+        });
+        const latestVersion = latestRecipeVersions[brewRecipe.value];
+        if (latestVersion) brewVersion.value = latestVersion;
+      }
+      brewRecipe.addEventListener("change", filterRecipeVersions);
+      filterRecipeVersions();
+    </script>
+  </div>
+</div>
+{% endblock %}

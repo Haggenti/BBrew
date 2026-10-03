@@ -25,4 +25,46 @@
     </form>
   </div>
 </section>
+<section class="card border-danger-subtle mt-4">
+  <div class="card-header bg-danger-subtle">
+    <h2 class="h5 mb-0"><i class="bi bi-exclamation-triangle me-2" aria-hidden="true"></i>Remise à zéro des données</h2>
+  </div>
+  <div class="card-body">
+    <p class="text-danger-emphasis">Cette opération est irréversible. Sélectionnez précisément les données à supprimer, puis saisissez <strong>SUPPRIMER</strong> pour confirmer.</p>
+    <form method="post" action="{% url 'recipes:database_reset' %}" onsubmit="return confirm('Les catégories sélectionnées seront définitivement supprimées. Continuer ?');">
+      {% csrf_token %}
+      <div class="row g-2 mb-3">
+        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="reset_section" value="recipes" id="reset-recipes"><label class="form-check-label" for="reset-recipes"><strong>Recettes</strong><span class="d-block small text-secondary">Recettes, ingrédients, paliers et versions</span></label></div></div>
+        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="reset_section" value="brews" id="reset-brews"><label class="form-check-label" for="reset-brews"><strong>Brassins</strong><span class="d-block small text-secondary">Brassins planifiés et historiques de brassage</span></label></div></div>
+        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="reset_section" value="stock" id="reset-stock"><label class="form-check-label" for="reset-stock"><strong>Stock</strong><span class="d-block small text-secondary">Catalogue des malts, houblons et levures</span></label></div></div>
+        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="reset_section" value="styles" id="reset-styles"><label class="form-check-label" for="reset-styles"><strong>Catégories BJCP</strong><span class="d-block small text-secondary">Référentiel des styles de bière</span></label></div></div>
+        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="reset_section" value="equipment" id="reset-equipment"><label class="form-check-label" for="reset-equipment"><strong>Paramètres d’équipement</strong><span class="d-block small text-secondary">Configuration de la cuve et calculs d’eau</span></label></div></div>
+      </div>
+      <div class="row g-2 align-items-end">
+        <div class="col-sm-6 col-lg-4"><label class="form-label small" for="reset-confirmation">Confirmation</label><input class="form-control" id="reset-confirmation" name="confirmation" autocomplete="off" placeholder="SUPPRIMER"></div>
+        <div class="col-auto"><button class="btn btn-danger" type="submit"><i class="bi bi-trash me-1" aria-hidden="true"></i>Supprimer les données sélectionnées</button></div>
+      </div>
+    </form>
+  </div>
+</section>
+<section class="card border-secondary-subtle mt-4">
+  <div class="card-header bg-light">
+    <h2 class="h5 mb-0"><i class="bi bi-database me-2" aria-hidden="true"></i>Sauvegarde des données</h2>
+  </div>
+  <div class="card-body">
+    <p class="text-secondary small">La sauvegarde contient vos recettes, l’historique, le stock, les catégories BJCP et les paramètres d’équipement.</p>
+    <div class="d-flex flex-wrap gap-3 align-items-end">
+      <a class="btn btn-outline-primary" href="{% url 'recipes:backup_download' %}"><i class="bi bi-download me-1" aria-hidden="true"></i>Télécharger une sauvegarde</a>
+      <form method="post" action="{% url 'recipes:backup_restore' %}" enctype="multipart/form-data" onsubmit="return confirm('Restaurer cette sauvegarde remplacera toutes les données actuelles. Continuer ?');">
+        {% csrf_token %}
+        <label class="form-label small mb-1" for="{{ backup_form.file.id_for_label }}">Restaurer une sauvegarde</label>
+        <div class="input-group">
+          {{ backup_form.file }}
+          <button class="btn btn-outline-danger" type="submit"><i class="bi bi-upload me-1" aria-hidden="true"></i>Restaurer</button>
+        </div>
+        {% for error in backup_form.file.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+      </form>
+    </div>
+  </div>
+</section>
 {% endblock %}

@@ -1,17 +1,18 @@
 {% extends "base.html" %}
-{% block title %}Mes recettes · BBrew{% endblock %}
+{% block title %}Recettes · BBrew{% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
-  <div><h1 class="h2 mb-1">Mes recettes</h1><p class="text-secondary mb-0">Concevez votre prochain brassin.</p></div>
-  <a class="btn btn-primary" href="{% url 'recipes:create' %}">Créer une recette</a>
+  <div><h1 class="h2 mb-1">Recettes</h1></div>
+  <a class="btn btn-primary" href="{% url 'recipes:create' %}">Ajouter une recette</a>
   <a class="btn btn-outline-secondary" href="{% url 'recipes:import' %}">Importer BeerXML</a>
 </div>
 {% if recipes %}
 <div class="row g-3">{% for recipe in recipes %}
   <div class="col-md-6 col-lg-4"><article class="card h-100 shadow-sm"><div class="card-body">
-    <h2 class="h5"><a class="text-decoration-none" href="{% url 'recipes:detail' recipe.pk %}">{{ recipe.name }}</a></h2>
+    <h2 class="h5 mb-1"><a class="text-decoration-none" href="{% url 'recipes:detail' recipe.pk %}">{{ recipe.name }}</a></h2>
+    <div class="small text-secondary">Créée le {{ recipe.created_at|date:"d/m/Y" }}{% if recipe.current_version %} · <span class="badge text-bg-primary">V{{ recipe.current_version.version_number }}</span>{% endif %}</div>
     <div class="small text-secondary">{{ recipe.batch_size_l }} L · {{ recipe.target_ibu }} IBU</div>
-    <div class="mt-3 d-flex gap-2"><span class="badge text-bg-light">DI {{ recipe.target_og }}</span><span class="badge text-bg-light">ABV ~{{ recipe.estimated_abv }}%</span></div>
+    <div class="mt-3 d-flex gap-2"><span class="badge text-bg-light">DI {% if recipe.estimated_og_value is not None %}{{ recipe.estimated_og_value }}{% else %}—{% endif %}</span><span class="badge text-bg-light">ABV {% if recipe.estimated_abv_value is not None %}~{{ recipe.estimated_abv_value }}{% else %}—{% endif %}%</span></div>
     <div class="mt-3 d-flex gap-2">
       <a class="btn btn-outline-primary btn-sm" href="{% url 'recipes:detail' recipe.pk %}">Ouvrir</a>
       <form method="post" action="{% url 'recipes:delete' recipe.pk %}" onsubmit="return confirm('Supprimer cette recette et ses ingrédients ?');">

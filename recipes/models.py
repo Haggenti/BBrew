@@ -18,6 +18,14 @@ class Recipe(models.Model):
     boil_time_min = models.PositiveIntegerField("durée d'ébullition (min)", default=60)
     notes = models.TextField("notes", blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    current_version = models.ForeignKey(
+        "RecipeVersion",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="version active",
+    )
 
     class Meta:
         ordering = ["-created_at"]
@@ -29,27 +37,118 @@ class Recipe(models.Model):
     def estimated_abv(self):
         return round((float(self.target_og) - 1) * 131.25, 1)
 
+    @property
+    def current_version_number(self):
+        return self.current_version.version_number if self.current_version else None
+
+
+class Brew(models.Model):
+    class Status(models.TextChoices):
+        PLANNED = "planned", "Planifié"
+        BREWING = "brewing", "Brassage en cours"
+        FERMENTING = "fermenting", "Fermentation"
+        CONDITIONING = "conditioning", "Garde / conditionnement"
+        COMPLETED = "completed", "Terminé"
+        CANCELLED = "cancelled", "Annulé"
+
+    recipe = models.ForeignKey(
+        Recipe,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="brews",
+    )
+    recipe_version = models.ForeignKey(
+        "RecipeVersion",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="brews",
+    )
+    recipe_name = models.CharField("nom de la recette", max_length=120)
+    recipe_version_label = models.CharField("version de recette", max_length=200, blank=True)
+    stock_consumed_at = models.DateTimeField("stock consommé le", null=True, blank=True)
+    stock_consumed_items = models.JSONField("lignes de stock consommées", default=list, blank=True)
+    planned_batch_size_l = models.DecimalField("volume prévu (L)", max_digits=6, decimal_places=2, null=True, blank=True)
+    planned_og = models.DecimalField("DI prévue", max_digits=5, decimal_places=3, null=True, blank=True)
+    planned_fg = models.DecimalField("DF prévue", max_digits=5, decimal_places=3, null=True, blank=True)
+    planned_abv = models.DecimalField("ABV prévu (%)", max_digits=5, decimal_places=2, null=True, blank=True)
+    planned_efficiency = models.DecimalField("rendement prévu (%)", max_digits=5, decimal_places=1, null=True, blank=True)
+    status = models.CharField("statut", max_length=20, choices=Status.choices, default=Status.PLANNED)
+    planned_date = models.DateField("date prévue", null=True, blank=True)
+    completed_date = models.DateField("date de fin", null=True, blank=True)
+    actual_preboil_volume_l = models.DecimalField(
+        "volume pré-ébullition réel (L)", max_digits=6, decimal_places=2, null=True, blank=True
+    )
+    actual_batch_size_l = models.DecimalField(
+        "volume réel (L)", max_digits=6, decimal_places=2, null=True, blank=True
+    )
+    actual_spent_grains_weight_kg = models.DecimalField(
+        "poids des drêches avec sac (kg)", max_digits=6, decimal_places=3, null=True, blank=True
+    )
+    actual_og = models.DecimalField("DI mesurée", max_digits=5, decimal_places=3, null=True, blank=True)
+    actual_fg = models.DecimalField("DF mesurée", max_digits=5, decimal_places=3, null=True, blank=True)
+    fermentation_temperature_c = models.DecimalField(
+        "température de fermentation (°C)", max_digits=5, decimal_places=1, null=True, blank=True
+    )
+    notes = models.TextField("notes", blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-planned_date", "-created_at"]
+
+    def __str__(self):
+        return f"{self.recipe_name} · {self.get_status_display()}"
+
+    @property
+    def actual_abv(self):
+        if self.actual_og is None or self.actual_fg is None:
+            return None
+        return round((float(self.actual_og) - float(self.actual_fg)) * 131.25, 2)
+
 
 class RecipeVersion(models.Model):
     recipe = models.ForeignKey(Recipe, on_delete=models.CASCADE, related_name="versions")
+    version_number = models.PositiveIntegerField("numéro de version", default=1)
     created_at = models.DateTimeField(auto_now_add=True)
     reason = models.CharField("modification", max_length=120, default="Modification")
     snapshot = models.JSONField()
 
     class Meta:
         ordering = ["-created_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(fields=["recipe", "version_number"], name="unique_recipe_version_number"),
+        ]
+
+    def __str__(self):
+        return f"{self.recipe.name} · V{self.version_number}"
 
 
 class EquipmentSettings(models.Model):
     diameter_cm = models.DecimalField("diamètre de la cuve (cm)", max_digits=6, decimal_places=1, default=40)
     height_cm = models.DecimalField("hauteur de la cuve (cm)", max_digits=6, decimal_places=1, default=45)
-    evaporation_l_min = models.DecimalField("évaporation (L/min)", max_digits=5, decimal_places=2, default=0.25)
+    bag_weight_kg = models.DecimalField("poids du sac (g)", max_digits=7, decimal_places=1, default=0)
+    evaporation_l_min = models.DecimalField("évaporation (L/h)", max_digits=5, decimal_places=2, default=15)
     grain_absorption_l_kg = models.DecimalField("absorption des grains (L/kg)", max_digits=5, decimal_places=2, default=0.8)
     dead_space_l = models.DecimalField("volume mort (L)", max_digits=5, decimal_places=2, default=0)
     mash_efficiency = models.DecimalField("rendement d'empâtage (%)", max_digits=5, decimal_places=1, default=75)
 
     def __str__(self):
         return "Paramètres de brassage"
+
+
+class ShoppingItem(models.Model):
+    name = models.CharField("article", max_length=160)
+    is_completed = models.BooleanField("acheté", default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["is_completed", "-created_at", "-id"]
+        verbose_name = "article de la liste de courses"
+        verbose_name_plural = "articles de la liste de courses"
+
+    def __str__(self):
+        return self.name
 
 
 class BeerCategory(models.Model):
@@ -81,11 +180,13 @@ class IngredientCatalog(models.Model):
         MALT = "malt", "Malt"
         HOP = "hop", "Houblon"
         YEAST = "yeast", "Levure"
+        OTHER = "other", "Divers"
 
     name = models.CharField("nom", max_length=120)
     kind = models.CharField("type", max_length=10, choices=Kind.choices)
-    quantity_available = models.PositiveIntegerField("quantité disponible", default=0)
-    manufacturer = models.CharField("fabricant / laboratoire", max_length=120, blank=True)
+    quantity_available = models.IntegerField("quantité disponible", default=0)
+    manufacturer = models.CharField("fournisseur", max_length=120, blank=True)
+    product_id = models.CharField("référence produit", max_length=120, blank=True)
     form = models.CharField("forme", max_length=60, blank=True)
     color_ebc = models.DecimalField("couleur (EBC)", max_digits=7, decimal_places=1, default=0)
     potential_yield = models.DecimalField("rendement potentiel (%)", max_digits=5, decimal_places=1, default=80)
@@ -106,6 +207,7 @@ class Ingredient(models.Model):
         MALT = "malt", "Malt"
         HOP = "hop", "Houblon"
         YEAST = "yeast", "Levure"
+        OTHER = "other", "Divers"
 
     recipe = models.ForeignKey(Recipe, on_delete=models.CASCADE, related_name="ingredients")
     catalog = models.ForeignKey(
@@ -118,9 +220,11 @@ class Ingredient(models.Model):
     name = models.CharField("nom", max_length=120)
     kind = models.CharField("type", max_length=10, choices=Kind.choices)
     amount_g = models.DecimalField("quantité (g)", max_digits=8, decimal_places=1)
-    manufacturer = models.CharField("fabricant / laboratoire", max_length=120, blank=True)
+    manufacturer = models.CharField("fournisseur", max_length=120, blank=True)
+    product_id = models.CharField("référence produit", max_length=120, blank=True)
     form = models.CharField("forme", max_length=60, blank=True)
     addition = models.CharField("ajout", max_length=100, blank=True)
+    notes = models.CharField("notes", max_length=300, blank=True)
     color_ebc = models.DecimalField("couleur (EBC)", max_digits=7, decimal_places=1, default=0)
     cost_total = models.DecimalField("coût total", max_digits=8, decimal_places=2, default=0)
     potential_yield = models.DecimalField("rendement potentiel (%)", max_digits=5, decimal_places=1, default=80)

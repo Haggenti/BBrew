@@ -11,9 +11,10 @@
 </head>
 <body class="bg-light">
   <nav class="navbar navbar-dark bg-dark mb-4">
-    <div class="container"><a class="navbar-brand fw-semibold" href="{% url 'recipes:list' %}">BBrew</a>
-      <a class="btn btn-outline-light btn-sm" href="{% url 'recipes:create' %}">Nouvelle recette</a>
+    <div class="container"><a class="btn btn-outline-light btn-sm" href="{% url 'recipes:list' %}">Recettes</a>
       <a class="btn btn-outline-light btn-sm" href="{% url 'recipes:catalog' %}">Stock</a>
+      <a class="btn btn-outline-light btn-sm" href="{% url 'recipes:brews' %}">Brassins</a>
+      <a class="btn btn-outline-light btn-sm" href="{% url 'recipes:shopping_list' %}">Courses</a>
       <a class="btn btn-outline-light btn-sm" href="{% url 'recipes:equipment_settings' %}">Paramètres</a>
       <a class="btn btn-outline-light btn-sm" href="{% url 'recipes:categories' %}">Catégories BJCP</a>
     </div>

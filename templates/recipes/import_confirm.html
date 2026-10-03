@@ -1,24 +1,46 @@
 {% extends "base.html" %}
 {% block title %}Confirmer l’import BeerXML · BBrew{% endblock %}
 {% block content %}
-<div class="row justify-content-center"><div class="col-lg-7">
+<div class="row justify-content-center"><div class="col-lg-9 col-xl-8">
   <a href="{% url 'recipes:import' %}" class="text-secondary text-decoration-none">← Nouvel import</a>
-  <h1 class="h2 mt-2 mb-1">Ingrédients absents du stock</h1>
-  <p class="text-secondary mb-4">La recette « {{ recipe_name }} » contient des ingrédients qui ne sont pas encore dans votre stock.</p>
-  <form method="post" class="card card-body shadow-sm">
+  <h1 class="h2 mt-2 mb-1">Confirmer l’import BeerXML</h1>
+  <p class="text-secondary mb-4">Vérifiez les options avant d’importer les recettes sélectionnées.</p>
+  <form method="post" class="card card-body shadow-sm p-4">
     {% csrf_token %}
     <input type="hidden" name="confirm_catalog" value="1">
-    <p>Souhaitez-vous les ajouter automatiquement au catalogue ?</p>
-    <div class="list-group mb-4">
-      {% for ingredient in missing_catalog %}
-      <label class="list-group-item d-flex align-items-center gap-2">
-        <input class="form-check-input mt-0" type="checkbox" name="add_to_catalog" value="{{ ingredient.index }}" checked>
-        <span>{{ ingredient.name }}</span>
-        <span class="badge text-bg-light ms-auto">{{ ingredient.kind }}</span>
-      </label>
-      {% endfor %}
-    </div>
-    <div class="d-flex gap-2"><a class="btn btn-outline-secondary" href="{% url 'recipes:list' %}">Annuler</a><button class="btn btn-primary" type="submit">Importer la recette</button></div>
+    {% for imported in imports %}
+    <section class="{% if not forloop.first %}border-top pt-4 mt-4{% endif %}">
+      <h2 class="h5 mb-3">{{ imported.name }} <span class="badge text-bg-light">{{ imported.source_name }}</span></h2>
+      {% if imported.missing_catalog %}
+      <h3 class="h6">Ingrédients absents du stock</h3>
+      <p class="small text-secondary">Ajouter ces fiches au catalogue ?</p>
+      <div class="list-group mb-3">
+        {% for ingredient in imported.missing_catalog %}
+        <label class="list-group-item d-flex align-items-center gap-2">
+          <input class="form-check-input mt-0" type="checkbox" name="add_to_catalog" value="{{ imported.file_index }}:{{ ingredient.index }}" checked>
+          <span>{{ ingredient.name }}</span>
+          <span class="badge text-bg-light ms-auto">{{ ingredient.kind }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% if imported.name_conflict %}
+      <div class="alert alert-warning mb-3">
+        <strong>Une recette porte déjà ce nom.</strong>
+        <span>« {{ imported.name }} » sera remplacée si vous choisissez l’écrasement.</span>
+      </div>
+      <div class="mb-3">
+        <label class="form-label" for="import-name-{{ imported.file_index }}">Nom de la recette importée</label>
+        <input id="import-name-{{ imported.file_index }}" class="form-control" type="text" name="import_name_{{ imported.file_index }}" value="{{ imported.name }}" maxlength="120" required>
+      </div>
+      <div class="mb-3">
+        <div class="form-check"><input class="form-check-input" type="radio" name="conflict_action_{{ imported.file_index }}" id="conflict-rename-{{ imported.file_index }}" value="rename" checked><label class="form-check-label" for="conflict-rename-{{ imported.file_index }}">Renommer l’import</label></div>
+        <div class="form-check"><input class="form-check-input" type="radio" name="conflict_action_{{ imported.file_index }}" id="conflict-replace-{{ imported.file_index }}" value="replace"><label class="form-check-label" for="conflict-replace-{{ imported.file_index }}">Écraser la recette existante</label></div>
+      </div>
+      {% else %}<input type="hidden" name="import_name_{{ imported.file_index }}" value="{{ imported.name }}">{% endif %}
+    </section>
+    {% endfor %}
+    <div class="d-flex flex-wrap gap-2 mt-4"><a class="btn btn-outline-secondary" href="{% url 'recipes:list' %}">Annuler</a><button class="btn btn-primary" type="submit">Importer les recettes</button></div>
   </form>
 </div></div>
 {% endblock %}

@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}{{ brew.recipe_name }} · Brassin{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-4">
+  <div>
+    <a href="{% url 'recipes:brews' %}" class="text-secondary text-decoration-none">← Brassins</a>
+    <h1 class="h2 mt-2 mb-1">{{ brew.recipe_name }}</h1>
+    <div class="small text-secondary">Brassin créé le {{ brew.created_at|date:"d/m/Y" }}</div>
+  </div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-primary" href="{% url 'recipes:brew_edit' brew.pk %}"><i class="bi bi-pencil me-1" aria-hidden="true"></i>Modifier</a>
+    {% if brew.stock_consumed_at %}
+    <span class="btn btn-outline-success disabled"><i class="bi bi-check-lg me-1" aria-hidden="true"></i>Stock consommé</span>
+    <button class="btn btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#rollback-stock-modal"><i class="bi bi-arrow-counterclockwise me-1" aria-hidden="true"></i>Annuler une consommation</button>
+    {% else %}
+    <button class="btn btn-outline-warning" type="button" data-bs-toggle="modal" data-bs-target="#consume-stock-modal"><i class="bi bi-box-arrow-down me-1" aria-hidden="true"></i>Consommer le stock</button>
+    {% endif %}
+    <form method="post" action="{% url 'recipes:brew_delete' brew.pk %}" onsubmit="return confirm('Supprimer ce brassin ?');">
+      {% csrf_token %}
+      <button class="btn btn-outline-danger" type="submit"><i class="bi bi-trash me-1" aria-hidden="true"></i>Supprimer</button>
+    </form>
+  </div>
+</div>
+<div class="row g-3">
+  <div class="col-lg-7">
+    <section class="card h-100">
+      <div class="card-header bg-light"><h2 class="h5 mb-0">État du brassin</h2></div>
+      <div class="card-body">
+        <span class="badge text-bg-primary mb-3">{{ brew.get_status_display }}</span>
+        <dl class="row mb-0">
+          <dt class="col-sm-6 text-secondary">Recette d’origine</dt>
+          <dd class="col-sm-6">{% if brew.recipe %}<a href="{% url 'recipes:detail' brew.recipe.pk %}">{{ brew.recipe.name }}</a>{% else %}{{ brew.recipe_name }}{% endif %}</dd>
+          <dt class="col-sm-6 text-secondary">Version brassée</dt>
+          <dd class="col-sm-6">{% if brew.recipe_version %}<a href="{% url 'recipes:history' brew.recipe.pk %}">{{ brew.recipe_version_label }}</a>{% else %}{{ brew.recipe_version_label|default:"—" }}{% endif %}</dd>
+          <dt class="col-sm-6 text-secondary">Date prévue</dt>
+          <dd class="col-sm-6">{{ brew.planned_date|date:"d/m/Y"|default:"—" }}</dd>
+          <dt class="col-sm-6 text-secondary">Date de fin</dt>
+          <dd class="col-sm-6">{{ brew.completed_date|date:"d/m/Y"|default:"—" }}</dd>
+          <dt class="col-sm-6 text-secondary">Volume réel</dt>
+          <dd class="col-sm-6">{% if brew.actual_batch_size_l %}{{ brew.actual_batch_size_l }} L{% else %}—{% endif %}</dd>
+        </dl>
+      </div>
+    </section>
+  </div>
+  <div class="col-lg-5">
+    <section class="card h-100">
+      <div class="card-header bg-light"><h2 class="h5 mb-0">Notes</h2></div>
+      <div class="card-body">{% if brew.notes %}{{ brew.notes|linebreaksbr }}{% else %}<span class="text-secondary">Aucune note.</span>{% endif %}</div>
+    </section>
+  </div>
+</div>
+<section class="card mt-3">
+  <div class="card-header bg-light"><h2 class="h5 mb-0"><i class="bi bi-bar-chart-line me-2" aria-hidden="true"></i>Analyse du brassin</h2></div>
+  <div class="card-body">
+    <div class="row g-4">
+      <div class="col-lg-6">
+        <h3 class="h6 text-uppercase text-secondary border-bottom pb-2">Volumes et absorption</h3>
+        <dl class="row small mb-0">
+          <dt class="col-7 text-secondary">Volume pré-ébullition</dt><dd class="col-5 text-end">{% if brew.actual_preboil_volume_l %}{{ brew.actual_preboil_volume_l }} L{% else %}—{% endif %}</dd>
+          <dt class="col-7 text-secondary">Volume final</dt><dd class="col-5 text-end">{% if brew.actual_batch_size_l %}{{ brew.actual_batch_size_l }} L{% else %}—{% endif %}</dd>
+          <dt class="col-7 text-secondary">Évaporation totale</dt><dd class="col-5 text-end">{% if comparison.evaporation_total is not None %}{{ comparison.evaporation_total|floatformat:2 }} L{% else %}—{% endif %}</dd>
+          <dt class="col-7 text-secondary">Évaporation horaire</dt><dd class="col-5 text-end">{% if comparison.evaporation_rate is not None %}{{ comparison.evaporation_rate|floatformat:2 }} L/h{% else %}—{% endif %}</dd>
+          <dt class="col-7 text-secondary">Poids de grain de départ</dt><dd class="col-5 text-end">{% if comparison.grain_weight_kg is not None %}{{ comparison.grain_weight_kg|floatformat:2 }} kg{% else %}—{% endif %}</dd>
+          <dt class="col-7 text-secondary">Drêches avec sac</dt><dd class="col-5 text-end">{% if brew.actual_spent_grains_weight_kg is not None %}{{ brew.actual_spent_grains_weight_kg }} kg{% else %}—{% endif %}</dd>
+          <dt class="col-7 text-secondary">Eau résiduelle absorbée</dt><dd class="col-5 text-end">{% if comparison.residual_water_kg is not None %}{{ comparison.residual_water_kg|floatformat:2 }} L{% else %}—{% endif %}</dd>
+          <dt class="col-7 text-secondary">Taux d’absorption</dt><dd class="col-5 text-end">{% if comparison.absorption_l_per_kg is not None %}{{ comparison.absorption_l_per_kg|floatformat:2 }} L/kg{% else %}—{% endif %}</dd>
+        </dl>
+      </div>
+      <div class="col-lg-6">
+        <h3 class="h6 text-uppercase text-secondary border-bottom pb-2">Fermentation et mesures</h3>
+        <dl class="row small mb-0">
+          <dt class="col-7 text-secondary">DI mesurée</dt><dd class="col-5 text-end">{{ brew.actual_og|default:"—" }}</dd>
+          <dt class="col-7 text-secondary">DF mesurée</dt><dd class="col-5 text-end">{{ brew.actual_fg|default:"—" }}</dd>
+          <dt class="col-7 text-secondary">ABV réel</dt><dd class="col-5 text-end">{% if brew.actual_abv is not None %}<strong>{{ brew.actual_abv }} %</strong>{% else %}—{% endif %}</dd>
+          <dt class="col-7 text-secondary">Température</dt><dd class="col-5 text-end">{% if brew.fermentation_temperature_c %}{{ brew.fermentation_temperature_c }} °C{% else %}—{% endif %}</dd>
+          <dt class="col-7 text-secondary">Stock</dt><dd class="col-5 text-end">{% if brew.stock_consumed_at %}Consommé le {{ brew.stock_consumed_at|date:"d/m/Y à H:i" }}{% else %}Non consommé{% endif %}</dd>
+        </dl>
+      </div>
+    </div>
+    <div class="border-top mt-4 pt-4">
+      <h3 class="h6 text-uppercase text-secondary border-bottom pb-2">Prévu / réel</h3>
+      <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+        <thead><tr><th>Indicateur</th><th>Prévu</th><th>Réel</th><th>Écart</th></tr></thead>
+        <tbody>
+          <tr><th>Volume final</th><td>{% if brew.planned_batch_size_l is not None %}{{ brew.planned_batch_size_l }} L{% else %}—{% endif %}</td><td>{% if brew.actual_batch_size_l is not None %}{{ brew.actual_batch_size_l }} L{% else %}—{% endif %}</td><td>{% if comparison.volume_delta is not None %}{{ comparison.volume_delta|floatformat:2 }} L{% else %}—{% endif %}</td></tr>
+          <tr><th>DI</th><td>{{ brew.planned_og|default:"—" }}</td><td>{{ brew.actual_og|default:"—" }}</td><td>{% if comparison.og_delta is not None %}{{ comparison.og_delta|floatformat:3 }}{% else %}—{% endif %}</td></tr>
+          <tr><th>DF</th><td>{{ brew.planned_fg|default:"—" }}</td><td>{{ brew.actual_fg|default:"—" }}</td><td>{% if comparison.fg_delta is not None %}{{ comparison.fg_delta|floatformat:3 }}{% else %}—{% endif %}</td></tr>
+          <tr><th>ABV</th><td>{% if brew.planned_abv is not None %}{{ brew.planned_abv }} %{% else %}—{% endif %}</td><td>{% if brew.actual_abv is not None %}{{ brew.actual_abv }} %{% else %}—{% endif %}</td><td>{% if comparison.abv_delta is not None %}{{ comparison.abv_delta|floatformat:2 }} %{% else %}—{% endif %}</td></tr>
+          <tr><th>Rendement</th><td>{% if brew.planned_efficiency is not None %}{{ brew.planned_efficiency }} %{% else %}—{% endif %}</td><td>{% if comparison.actual_efficiency is not None %}{{ comparison.actual_efficiency }} %{% else %}—{% endif %}</td><td>{% if comparison.efficiency_delta is not None %}{{ comparison.efficiency_delta|floatformat:1 }} points{% else %}—{% endif %}</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </div>
+</section>
+{% if not brew.stock_consumed_at %}
+<div class="modal fade" id="consume-stock-modal" tabindex="-1" aria-labelledby="consume-stock-title" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header"><h2 class="modal-title h5" id="consume-stock-title">Consommer le stock</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button></div>
+      <form method="post" action="{% url 'recipes:brew_consume_stock' brew.pk %}">
+        {% csrf_token %}
+        <div class="modal-body">
+          <p class="text-secondary small">Cochez les lignes réellement utilisées. Un stock négatif est autorisé.</p>
+          <div class="table-responsive"><table class="table table-sm align-middle">
+            <thead><tr><th></th><th>Ingrédient</th><th>Besoin</th><th>Stock actuel</th></tr></thead>
+            <tbody>
+              {% for item in stock_requirements %}
+              <tr>
+                <td>{% if item.catalog and not item.consumed %}<input class="form-check-input" type="checkbox" name="stock_item" value="{{ item.key }}" checked>{% elif item.consumed %}<i class="bi bi-check-circle text-success" aria-label="Déjà consommé"></i>{% endif %}</td>
+                <td>{{ item.name }}{% if not item.catalog %}<div class="small text-danger">Pas de fiche stock associée</div>{% endif %}</td>
+                <td>{{ item.required }} {{ item.unit }}</td>
+                <td>{% if item.available is not None %}{{ item.available }} {{ item.unit }}{% else %}—{% endif %}</td>
+              </tr>
+              {% empty %}<tr><td colspan="4" class="text-secondary">Aucun ingrédient associé au stock.</td></tr>{% endfor %}
+            </tbody>
+          </table></div>
+        </div>
+        <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button><button class="btn btn-warning" type="submit">Valider les lignes cochées</button></div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% if brew.stock_consumed_items %}
+<div class="modal fade" id="rollback-stock-modal" tabindex="-1" aria-labelledby="rollback-stock-title" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header"><h2 class="modal-title h5" id="rollback-stock-title">Annuler une consommation</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button></div>
+      <form method="post" action="{% url 'recipes:brew_rollback_stock' brew.pk %}">
+        {% csrf_token %}
+        <div class="modal-body">
+          <p class="text-secondary small">Sélectionnez les lignes à recréditer dans le stock.</p>
+          <div class="table-responsive"><table class="table table-sm align-middle">
+            <thead><tr><th></th><th>Ingrédient</th><th>Quantité à restaurer</th><th>Stock actuel</th></tr></thead>
+            <tbody>
+              {% for item in stock_requirements %}{% if item.consumed %}
+              <tr>
+                <td><input class="form-check-input" type="checkbox" name="stock_item" value="{{ item.key }}" checked></td>
+                <td>{{ item.name }}</td>
+                <td>{{ item.required }} {{ item.unit }}</td>
+                <td>{% if item.available is not None %}{{ item.available }} {{ item.unit }}{% else %}—{% endif %}</td>
+              </tr>
+              {% endif %}{% endfor %}
+            </tbody>
+          </table></div>
+        </div>
+        <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button><button class="btn btn-secondary" type="submit">Restaurer les lignes cochées</button></div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

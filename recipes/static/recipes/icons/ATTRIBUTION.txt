@@ -1,0 +1,10 @@
+Icons downloaded from Game-icons.net:
+- hops.svg: Hops by Delapouite
+- wheat.svg: Wheat by Lorc
+- erlenmeyer.svg: Erlenmeyer by Lorc
+- paddles.svg: Paddles by Delapouite
+
+Licensed under CC BY 3.0:
+https://creativecommons.org/licenses/by/3.0/
+Source:
+https://game-icons.net/

@@ -1,6 +1,85 @@
 from .models import Recipe
 
 
+FIELD_LABELS = {
+    "name": "Nom",
+    "batch_size_l": "Volume",
+    "efficiency": "Efficacité",
+    "target_og": "OG cible",
+    "target_ibu": "IBU cible",
+    "boil_time_min": "Ébullition",
+    "notes": "Notes",
+    "amount_g": "Quantité",
+    "manufacturer": "Fabricant",
+    "form": "Forme",
+    "addition": "Ajout",
+    "color_ebc": "Couleur",
+    "potential_yield": "Rendement",
+    "alpha_acid": "Acides alpha",
+    "boil_minutes": "Temps",
+    "attenuation": "Atténuation",
+    "temperature_c": "Température",
+    "duration_min": "Durée",
+    "duration_days": "Durée",
+    "action": "Action",
+}
+
+
+def _display_value(field, value):
+    if value in (None, ""):
+        return "vide"
+    suffixes = {
+        "batch_size_l": " L",
+        "efficiency": " %",
+        "amount_g": " g",
+        "color_ebc": " EBC",
+        "potential_yield": " %",
+        "alpha_acid": " %",
+        "temperature_c": " °C",
+        "duration_min": " min",
+        "duration_days": " j",
+        "boil_time_min": " min",
+    }
+    return f"{value}{suffixes.get(field, '')}"
+
+
+def _changed_fields(before, after, excluded=()):
+    changes = []
+    for field in after:
+        if field in excluded or before.get(field) == after.get(field):
+            continue
+        label = FIELD_LABELS.get(field, field)
+        changes.append(f"{label} : {_display_value(field, before.get(field))} → {_display_value(field, after.get(field))}")
+    return changes
+
+
+def _list_change_details(before, after, collection, key_fields, excluded=()):
+    before_items = {tuple(item.get(field) for field in key_fields): item for item in before.get(collection, [])}
+    after_items = {tuple(item.get(field) for field in key_fields): item for item in after.get(collection, [])}
+    details = []
+    for key, item in after_items.items():
+        if key not in before_items:
+            label = item.get("name") or item.get("phase") or item.get("kind") or "élément"
+            details.append(f"Ajout : {label}")
+        else:
+            details.extend(_changed_fields(before_items[key], item, excluded))
+    for key, item in before_items.items():
+        if key not in after_items:
+            label = item.get("name") or item.get("phase") or item.get("kind") or "élément"
+            details.append(f"Suppression : {label}")
+    return details
+
+
+def describe_version_change(before, after, reason):
+    if before is None:
+        return "Version initiale"
+    details = _changed_fields(before["recipe"], after["recipe"])
+    details += _list_change_details(before, after, "ingredients", ("kind", "name"), {"kind", "catalog"})
+    details += _list_change_details(before, after, "mash_steps", ("position",), {"position"})
+    details += _list_change_details(before, after, "fermentation_steps", ("position",), {"position"})
+    return "\n".join(details[:6]) or reason
+
+
 def recipe_snapshot(recipe):
     return {
         "recipe": {
@@ -21,6 +100,7 @@ def recipe_snapshot(recipe):
                 "manufacturer": item.manufacturer,
                 "form": item.form,
                 "addition": item.addition,
+                "notes": item.notes,
                 "color_ebc": str(item.color_ebc),
                 "cost_total": str(item.cost_total),
                 "potential_yield": str(item.potential_yield),

@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Liste de courses · BBrew{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-4">
+  <div>
+    <h1 class="h2 mb-1"><i class="bi bi-cart3 me-2" aria-hidden="true"></i>Liste de courses</h1>
+    <p class="text-secondary mb-0">Notez les articles à acheter pour vos prochains brassins.</p>
+  </div>
+</div>
+
+<section class="card">
+  <div class="card-body">
+    <form method="post" action="{% url 'recipes:shopping_item_create' %}" class="row g-2 mb-4">
+      {% csrf_token %}
+      <div class="col"><label class="visually-hidden" for="{{ form.name.id_for_label }}">Article à ajouter</label>{{ form.name }}</div>
+      <div class="col-auto"><button class="btn btn-primary" type="submit"><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>Ajouter</button></div>
+    </form>
+
+    {% if items %}
+    <div class="list-group">
+      {% for item in items %}
+      <div class="list-group-item d-flex align-items-center gap-3 {% if item.is_completed %}bg-light{% endif %}">
+        <form method="post" action="{% url 'recipes:shopping_item_toggle' item.pk %}" class="m-0">
+          {% csrf_token %}
+          <button class="btn btn-sm {% if item.is_completed %}btn-success{% else %}btn-outline-secondary{% endif %}" type="submit" aria-label="{% if item.is_completed %}Marquer {{ item.name }} comme non acheté{% else %}Marquer {{ item.name }} comme acheté{% endif %}" title="{% if item.is_completed %}Non acheté{% else %}Acheté{% endif %}">
+            <i class="bi {% if item.is_completed %}bi-check-lg{% else %}bi-circle{% endif %}" aria-hidden="true"></i>
+          </button>
+        </form>
+        <span class="flex-grow-1 {% if item.is_completed %}text-decoration-line-through text-secondary{% endif %}">{{ item.name }}</span>
+        <form method="post" action="{% url 'recipes:shopping_item_delete' item.pk %}" class="m-0">
+          {% csrf_token %}
+          <button class="btn btn-sm btn-outline-danger" type="submit" aria-label="Supprimer {{ item.name }}" title="Supprimer"><i class="bi bi-trash" aria-hidden="true"></i></button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-secondary text-center my-4">La liste de courses est vide.</p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

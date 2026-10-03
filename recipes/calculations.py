@@ -128,6 +128,40 @@ def estimated_abv(original_gravity: float, yeasts, mash_steps=None) -> float | N
     return round((original_gravity - final_gravity) * 131.25, 2)
 
 
+def estimate_snapshot(snapshot: dict) -> dict:
+    """Calcule les valeurs prévues à partir d'un snapshot de recette."""
+    from types import SimpleNamespace
+
+    recipe = snapshot["recipe"]
+    malts = [SimpleNamespace(**item) for item in snapshot.get("ingredients", []) if item["kind"] == "malt"]
+    yeasts = [SimpleNamespace(**item) for item in snapshot.get("ingredients", []) if item["kind"] == "yeast"]
+    mash_steps = [SimpleNamespace(**item) for item in snapshot.get("mash_steps", [])]
+    volume = float(recipe["batch_size_l"])
+    efficiency = float(recipe["efficiency"])
+    og = estimated_og(malts, volume, efficiency) if malts else None
+    reference_og = og or float(recipe["target_og"])
+    return {
+        "volume_l": volume,
+        "efficiency": efficiency,
+        "og": og,
+        "fg": estimated_final_gravity(reference_og, yeasts, mash_steps),
+        "abv": estimated_abv(reference_og, yeasts, mash_steps),
+    }
+
+
+def estimated_efficiency(malts, original_gravity: float, volume_l: float) -> float | None:
+    """Estime le rendement réel à partir d'une DI mesurée."""
+    original_gravity = float(original_gravity)
+    volume_l = float(volume_l)
+    potential_points = sum(
+        gravity_points(float(malt.amount_g) / 1000, float(malt.potential_yield), volume_l, 100)
+        for malt in malts
+    )
+    if potential_points <= 0:
+        return None
+    return round(((float(original_gravity) - 1) * 1000) / potential_points * 100, 1)
+
+
 def ibu_final_gravity_ratio(ibu: float | None, final_gravity: float | None) -> float | None:
     """Calcule le rapport entre l'amertume IBU et la densité finale."""
     if ibu is None or final_gravity is None or final_gravity <= 0:
