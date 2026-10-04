@@ -72,7 +72,6 @@
           <dt class="col-7 text-secondary">DI mesurée</dt><dd class="col-5 text-end">{{ brew.actual_og|default:"—" }}</dd>
           <dt class="col-7 text-secondary">DF mesurée</dt><dd class="col-5 text-end">{{ brew.actual_fg|default:"—" }}</dd>
           <dt class="col-7 text-secondary">ABV réel</dt><dd class="col-5 text-end">{% if brew.actual_abv is not None %}<strong>{{ brew.actual_abv }} %</strong>{% else %}—{% endif %}</dd>
-          <dt class="col-7 text-secondary">Température</dt><dd class="col-5 text-end">{% if brew.fermentation_temperature_c %}{{ brew.fermentation_temperature_c }} °C{% else %}—{% endif %}</dd>
           <dt class="col-7 text-secondary">Stock</dt><dd class="col-5 text-end">{% if brew.stock_consumed_at %}Consommé le {{ brew.stock_consumed_at|date:"d/m/Y à H:i" }}{% else %}Non consommé{% endif %}</dd>
         </dl>
       </div>

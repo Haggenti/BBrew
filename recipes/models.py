@@ -230,6 +230,14 @@ class Ingredient(models.Model):
     potential_yield = models.DecimalField("rendement potentiel (%)", max_digits=5, decimal_places=1, default=80)
     alpha_acid = models.DecimalField("acides alpha (%)", max_digits=5, decimal_places=2, default=5)
     boil_minutes = models.PositiveIntegerField("ébullition (min)", default=60)
+    addition_temperature_c = models.DecimalField(
+        "température d'ajout (°C)",
+        max_digits=5,
+        decimal_places=1,
+        blank=True,
+        null=True,
+    )
+    for_bottling = models.BooleanField("ajoutée à l'embouteillage", default=False)
     attenuation = models.DecimalField("atténuation (%)", max_digits=5, decimal_places=2, default=78)
 
     class Meta:

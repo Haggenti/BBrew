@@ -45,6 +45,23 @@ def _malt_form(value):
     }.get(normalized, value)
 
 
+def _hop_form(value):
+    normalized = value.strip().lower()
+    return {
+        "pellet": "Pellets",
+        "pellets": "Pellets",
+        "cone": "Cônes",
+        "cones": "Cônes",
+        "cône": "Cônes",
+        "cônes": "Cônes",
+        "flower": "Fleurs",
+        "flowers": "Fleurs",
+        "fleur": "Fleurs",
+        "fleurs": "Fleurs",
+        "cryo": "Cryo",
+    }.get(normalized, value)
+
+
 def export_recipe(recipe) -> bytes:
     root = ElementTree.Element("RECIPES")
     recipe_node = ElementTree.SubElement(root, "RECIPE")
@@ -80,11 +97,14 @@ def export_recipe(recipe) -> bytes:
                 ElementTree.SubElement(item, "ALPHA").text = str(ingredient.alpha_acid)
                 ElementTree.SubElement(item, "TIME").text = str(ingredient.boil_minutes)
                 ElementTree.SubElement(item, "FORM").text = ingredient.form
+                if ingredient.addition_temperature_c is not None:
+                    ElementTree.SubElement(item, "USE_TEMP").text = str(ingredient.addition_temperature_c)
             elif item_name == "YEAST":
                 ElementTree.SubElement(item, "FORM").text = ingredient.form
                 ElementTree.SubElement(item, "PRODUCT_ID").text = ingredient.product_id
                 ElementTree.SubElement(item, "LABORATORY").text = ingredient.manufacturer
                 ElementTree.SubElement(item, "ATTENUATION").text = str(ingredient.attenuation)
+                ElementTree.SubElement(item, "ADD_TO_BOTTLE").text = "TRUE" if ingredient.for_bottling else "FALSE"
             elif item_name == "MISC":
                 ElementTree.SubElement(item, "USE").text = ingredient.addition
                 ElementTree.SubElement(item, "TYPE").text = ingredient.form
@@ -133,7 +153,11 @@ def import_recipe(payload: bytes) -> dict:
                 "amount_g": float(_value(node, "AMOUNT", "0")) * 1000,
                 "alpha_acid": float(_value(node, "ALPHA", "5")),
                 "boil_minutes": int(float(_value(node, "TIME", "60"))),
-                "form": _value(node, "FORM", ""),
+                "form": _hop_form(_value(node, "FORM", "")),
+                "addition_temperature_c": (
+                    float(_value(node, "USE_TEMP", "0"))
+                    if _value(node, "USE_TEMP", "") else None
+                ),
             }
         )
     for node in recipe_node.findall("./YEASTS/YEAST"):
@@ -148,6 +172,7 @@ def import_recipe(payload: bytes) -> dict:
                 "product_id": product_id,
                 "manufacturer": _first_value(node, ("LABORATORY", "MANUFACTURER"), ""),
                 "attenuation": float(_value(node, "ATTENUATION", "78")),
+                "for_bottling": _value(node, "ADD_TO_BOTTLE", "FALSE").upper() in ("TRUE", "YES", "1"),
             }
         )
     for node in recipe_node.findall("./MISCS/MISC"):

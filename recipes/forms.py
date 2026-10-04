@@ -39,15 +39,13 @@ FORM_CHOICES_BY_KIND = {
     "other": OTHER_FORMS,
 }
 ADDITION_CHOICES = [
-    ("Brassage", "Brassage"),
-    ("Empâtage", "Empâtage"),
-    ("Mash-out", "Mash-out"),
     ("Ébullition", "Ébullition"),
-    ("Whirlpool", "Whirlpool"),
-    ("Fermentation primaire", "Fermentation primaire"),
+    ("Refroidissement", "Refroidissement"),
     ("Dry hop", "Dry hop"),
-    ("Garde", "Garde"),
-    ("Conditionnement", "Conditionnement"),
+]
+MALT_ADDITION_CHOICES = [
+    ("Brassage", "Brassage"),
+    ("Ébullition", "Ébullition"),
 ]
 
 
@@ -231,7 +229,7 @@ class BrewForm(StyledModelForm):
             "recipe", "recipe_version", "status", "planned_date", "completed_date",
             "actual_preboil_volume_l", "actual_batch_size_l", "actual_og",
             "actual_spent_grains_weight_kg",
-            "actual_fg", "fermentation_temperature_c", "notes",
+            "actual_fg", "notes",
         ]
         widgets = {
             "planned_date": forms.DateInput(attrs={"type": "date"}),
@@ -241,7 +239,6 @@ class BrewForm(StyledModelForm):
             "actual_spent_grains_weight_kg": forms.NumberInput(attrs={"min": "0", "step": "0.001"}),
             "actual_og": forms.NumberInput(attrs={"min": "0.9", "step": "0.001"}),
             "actual_fg": forms.NumberInput(attrs={"min": "0.9", "step": "0.001"}),
-            "fermentation_temperature_c": forms.NumberInput(attrs={"min": "0", "max": "40", "step": "0.1"}),
             "notes": forms.Textarea(attrs={"rows": 4}),
         }
 
@@ -396,7 +393,7 @@ class MaltForm(StyledModelForm):
         )
         self.fields["addition"] = forms.ChoiceField(
             label="Ajout",
-            choices=[("", "---------")] + ADDITION_CHOICES,
+            choices=[("", "---------")] + MALT_ADDITION_CHOICES,
             required=False,
             widget=forms.Select(attrs={"class": "form-select"}),
         )
@@ -405,11 +402,15 @@ class MaltForm(StyledModelForm):
 class HopForm(StyledModelForm):
     class Meta:
         model = Ingredient
-        fields = ["amount_g", "catalog", "name", "form", "alpha_acid", "addition", "boil_minutes"]
+        fields = [
+            "amount_g", "catalog", "name", "form", "alpha_acid", "addition",
+            "boil_minutes", "addition_temperature_c",
+        ]
         widgets = {
             "amount_g": forms.NumberInput(attrs={"step": "0.1", "min": "0", "placeholder": "25"}),
             "alpha_acid": forms.NumberInput(attrs={"step": "0.1", "min": "0", "placeholder": "5.0"}),
             "boil_minutes": forms.NumberInput(attrs={"min": "0", "placeholder": "60"}),
+            "addition_temperature_c": forms.NumberInput(attrs={"min": "0", "max": "100", "step": "0.5"}),
         }
 
     def __init__(self, *args, **kwargs):
@@ -433,11 +434,26 @@ class HopForm(StyledModelForm):
             widget=forms.Select(attrs={"class": "form-select"}),
         )
 
+    def clean(self):
+        cleaned_data = super().clean()
+        if (
+            cleaned_data.get("addition") == "Refroidissement"
+            and cleaned_data.get("addition_temperature_c") is None
+        ):
+            self.add_error(
+                "addition_temperature_c",
+                "Indiquez la température d'ajout pendant le refroidissement.",
+            )
+        return cleaned_data
+
 
 class YeastForm(StyledModelForm):
     class Meta:
         model = Ingredient
-        fields = ["amount_g", "catalog", "name", "manufacturer", "product_id", "form", "attenuation"]
+        fields = [
+            "amount_g", "catalog", "name", "manufacturer", "product_id", "form",
+            "attenuation", "for_bottling",
+        ]
         widgets = {
             "amount_g": forms.NumberInput(attrs={"step": "0.1", "min": "0", "placeholder": "11.5"}),
             "attenuation": forms.NumberInput(attrs={"step": "1", "min": "0", "max": "100", "placeholder": "78"}),
@@ -450,6 +466,8 @@ class YeastForm(StyledModelForm):
             widget=forms.NumberInput(attrs={"step": "1", "min": "1", "class": "form-control"}),
         )
         self.fields["manufacturer"].label = "Laboratoire"
+        self.fields["for_bottling"].label = "Ajoutée à l'embouteillage"
+        self.fields["for_bottling"].widget.attrs["class"] = "form-check-input"
         current_form = self.initial.get("form", "")
         self.fields["form"] = forms.ChoiceField(
             label="Forme",
@@ -619,6 +637,7 @@ def _catalog_form_init(form_class, kind):
     def init_with_catalog(self, *args, **kwargs):
         original_init(self, *args, **kwargs)
         self.fields["catalog"].queryset = IngredientCatalog.objects.filter(kind=kind)
+        self.fields["catalog"].label_from_instance = lambda catalog: catalog.name
         self.fields["catalog"].required = False
         self.fields["name"].required = False
         self.fields["name"].widget.attrs["data-catalog-name"] = "true"

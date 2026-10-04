@@ -100,6 +100,8 @@ def recipe_snapshot(recipe):
                 "manufacturer": item.manufacturer,
                 "form": item.form,
                 "addition": item.addition,
+                "addition_temperature_c": str(item.addition_temperature_c) if item.addition_temperature_c is not None else None,
+                "for_bottling": item.for_bottling,
                 "notes": item.notes,
                 "color_ebc": str(item.color_ebc),
                 "cost_total": str(item.cost_total),

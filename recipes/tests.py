@@ -18,7 +18,7 @@ from .calculations import (
     plato_from_gravity,
     tinseth_ibu,
 )
-from .forms import ADDITION_CHOICES, CatalogOtherForm, CatalogYeastForm, HopForm, MaltForm, OtherForm, YeastForm
+from .forms import ADDITION_CHOICES, MALT_ADDITION_CHOICES, CatalogOtherForm, CatalogYeastForm, HopForm, MaltForm, OtherForm, YeastForm
 from .beerxml import import_recipe
 from .models import BeerCategory, Brew, EquipmentSettings, FermentationStep, Ingredient, IngredientCatalog, MashStep, Recipe, RecipeVersion, ShoppingItem
 
@@ -870,13 +870,13 @@ class RecipeWorkflowTests(TestCase):
         events = response.context["boil_events"]
         self.assertEqual(
             [event["type"] for event in events],
-            ["start", "timer", "hop", "hop", "timer", "hop", "cool"],
+            ["start", "hop", "hop", "timer", "hop", "timer", "cool"],
         )
-        self.assertEqual(events[1]["minutes"], 60)
-        self.assertEqual(events[4]["minutes"], 5)
-        self.assertEqual(events[2]["row"]["ingredient"], early_hop)
-        self.assertEqual(events[3]["row"]["ingredient"], same_time_hop)
-        self.assertEqual(events[5]["row"]["ingredient"], late_hop)
+        self.assertEqual(events[3]["minutes"], 55)
+        self.assertEqual(events[5]["minutes"], 5)
+        self.assertEqual(events[1]["row"]["ingredient"], early_hop)
+        self.assertEqual(events[2]["row"]["ingredient"], same_time_hop)
+        self.assertEqual(events[4]["row"]["ingredient"], late_hop)
 
     def test_recipe_name_and_notes_can_be_updated(self):
         recipe = Recipe.objects.create(name="Ancien nom")
@@ -952,7 +952,7 @@ class RecipeWorkflowTests(TestCase):
             list(YeastForm().fields["form"].choices)[1:],
             [("Sèche", "Sèche"), ("Liquide", "Liquide"), ("Pâte", "Pâte")],
         )
-        self.assertEqual(list(MaltForm().fields["addition"].choices)[1:], ADDITION_CHOICES)
+        self.assertEqual(list(MaltForm().fields["addition"].choices)[1:], MALT_ADDITION_CHOICES)
         self.assertEqual(list(HopForm().fields["addition"].choices)[1:], ADDITION_CHOICES)
 
     def test_biab_mash_steps_can_be_created_edited_and_deleted(self):

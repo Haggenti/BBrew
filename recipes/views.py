@@ -7,7 +7,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from xml.etree import ElementTree
 import json
 
-from .calculations import average_mash_temperature, estimated_abv, estimated_color_ebc, estimated_efficiency, estimated_final_gravity, estimated_og, ibu_final_gravity_comment, ibu_final_gravity_ratio, plato_from_gravity, tinseth_ibu
+from .calculations import average_mash_temperature, ebc_color_rgb, estimated_abv, estimated_color_ebc, estimated_efficiency, estimated_final_gravity, estimated_og, ibu_final_gravity_comment, ibu_final_gravity_ratio, plato_from_gravity, tinseth_ibu
 from .beerxml import export_recipe, import_recipe
 from decimal import Decimal
 from decimal import ROUND_CEILING
@@ -36,6 +36,16 @@ def recipe_list(request):
             estimated_og_value or float(recipe.target_og),
             yeasts,
             mash_steps,
+        )
+        recipe.estimated_ebc_value = (
+            estimated_color_ebc(malts, float(recipe.batch_size_l))
+            if malts
+            else None
+        )
+        recipe.estimated_ebc_color = (
+            ebc_color_rgb(recipe.estimated_ebc_value)
+            if recipe.estimated_ebc_value is not None
+            else None
         )
     return render(request, "recipes/list.html", {"recipes": recipes})
 
@@ -570,6 +580,17 @@ def recipe_detail(request, pk, edit_forms=None):
             if indicator:
                 style_indicators.append(indicator)
     malt_total = sum(float(malt.amount_g) for malt in malts)
+    mash_chart_points = []
+    mash_elapsed = 0
+    if mash_steps:
+        mash_chart_points.append({"x": 0, "y": float(mash_steps[0].temperature_c)})
+        for index, step in enumerate(mash_steps):
+            mash_elapsed += step.duration_min
+            mash_chart_points.append({"x": mash_elapsed, "y": float(step.temperature_c)})
+            if index + 1 < len(mash_steps):
+                mash_chart_points.append(
+                    {"x": mash_elapsed, "y": float(mash_steps[index + 1].temperature_c)}
+                )
 
     def inline_form(form, form_id):
         for field in form.fields.values():
@@ -599,18 +620,31 @@ def recipe_detail(request, pk, edit_forms=None):
         for hop in hops
     ]
     hop_rows.sort(key=lambda row: (-row["ingredient"].boil_minutes, row["ingredient"].pk))
+    boil_hop_rows = [
+        row for row in hop_rows
+        if row["ingredient"].addition in ("", "Ébullition")
+    ]
+    cooling_hop_rows = [
+        row for row in hop_rows
+        if row["ingredient"].addition == "Refroidissement"
+    ]
     boil_events = [{"type": "start"}]
-    if hop_rows:
-        last_minute = None
-        for row in hop_rows:
-            minute = row["ingredient"].boil_minutes
-            if minute != last_minute:
-                boil_events.append({"type": "timer", "minutes": minute})
-                last_minute = minute
+    if boil_hop_rows:
+        previous_remaining = recipe.boil_time_min
+        for row in boil_hop_rows:
+            remaining = row["ingredient"].boil_minutes
+            wait_minutes = previous_remaining - remaining
+            if wait_minutes > 0:
+                boil_events.append({"type": "timer", "minutes": wait_minutes})
             boil_events.append({"type": "hop", "row": row})
+            previous_remaining = remaining
+        if previous_remaining > 0:
+            boil_events.append({"type": "timer", "minutes": previous_remaining})
     else:
         boil_events.append({"type": "timer", "minutes": recipe.boil_time_min})
     boil_events.append({"type": "cool"})
+    for row in cooling_hop_rows:
+        boil_events.append({"type": "cooling_hop", "row": row})
     return render(
         request,
         "recipes/detail.html",
@@ -627,6 +661,7 @@ def recipe_detail(request, pk, edit_forms=None):
             "other_form": OtherForm(),
             "malt_rows": malt_rows,
             "malt_total_g": malt_total,
+            "mash_chart_points": mash_chart_points,
             "water_equipment": {
                 "diameter_cm": float(equipment.diameter_cm),
                 "height_cm": float(equipment.height_cm),

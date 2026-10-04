@@ -58,6 +58,25 @@ def estimated_color_ebc(malts, volume_l: float) -> float:
     return round(srm * 1.97, 1)
 
 
+def ebc_color_rgb(ebc: float) -> str:
+    """Retourne une couleur d'aperçu cohérente avec l'échelle EBC de l'interface."""
+    palette = (
+        (0, (252, 235, 182)),
+        (4, (248, 225, 122)),
+        (8, (245, 200, 76)),
+        (12, (233, 165, 46)),
+        (20, (196, 106, 23)),
+        (30, (154, 70, 18)),
+        (40, (107, 47, 11)),
+        (50, (74, 30, 8)),
+        (60, (45, 18, 5)),
+        (80, (22, 10, 3)),
+    )
+    value = float(ebc)
+    color = next((color for limit, color in palette if value <= limit), palette[-1][1])
+    return f"rgb({color[0]}, {color[1]}, {color[2]})"
+
+
 DEFAULT_MASH_TEMPERATURE_C = 65.0
 MASH_FERMENTABILITY_LIMITS = (
     (60.0, 82.0),
@@ -101,12 +120,13 @@ def mash_fermentability_limit(temperature_c: float) -> float:
 
 def estimated_attenuation(yeasts, mash_steps=None) -> float | None:
     """Estime l'atténuation avec la fermentescibilité empirique du moût."""
+    yeasts = [yeast for yeast in yeasts if not getattr(yeast, "for_bottling", False)]
+    if not yeasts:
+        return None
     total_amount = sum(float(yeast.amount_g) for yeast in yeasts)
     if total_amount <= 0:
         return None
-    yeast_attenuation = sum(
-        float(yeast.attenuation) * float(yeast.amount_g) for yeast in yeasts
-    ) / total_amount
+    yeast_attenuation = max(float(yeast.attenuation) for yeast in yeasts)
     mash_limit = mash_fermentability_limit(average_mash_temperature(mash_steps))
     peak_limit = max(limit for _, limit in MASH_FERMENTABILITY_LIMITS)
     return round(max(0, min(100, yeast_attenuation * mash_limit / peak_limit)), 2)
