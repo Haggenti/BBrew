@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 from django.test import TestCase
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.utils import timezone
 
 from .calculations import (
     abv_from_gravity,
@@ -13,13 +14,14 @@ from .calculations import (
     estimated_final_gravity,
     gravity_points,
     average_mash_temperature,
+    ebc_color_rgb,
     ibu_final_gravity_comment,
     ibu_final_gravity_ratio,
     mash_fermentability_limit,
     plato_from_gravity,
     tinseth_ibu,
 )
-from .forms import ADDITION_CHOICES, MALT_ADDITION_CHOICES, BrewForm, CatalogOtherForm, CatalogYeastForm, HopForm, MaltForm, MashStepForm, OtherForm, YeastForm
+from .forms import ADDITION_CHOICES, MALT_ADDITION_CHOICES, BrewForm, CatalogForm, CatalogOtherForm, CatalogYeastForm, HopForm, MaltForm, MashStepForm, OtherForm, YeastForm
 from .beerxml import import_recipe
 from .models import BeerCategory, Brew, EquipmentSettings, FermentationStep, Ingredient, IngredientCatalog, MashStep, Recipe, RecipeVersion, ShoppingItem
 
@@ -70,6 +72,16 @@ class CalculationTests(TestCase):
         self.assertEqual(yeast["form"], "Sèche")
         self.assertEqual(yeast["product_id"], "S-33")
         self.assertEqual(yeast["manufacturer"], "Fermentis")
+
+    def test_beerxml_import_omits_empty_yeast_product_reference(self):
+        data = import_recipe(
+            b"""<RECIPES><RECIPE><NAME>Levure</NAME><YEASTS><YEAST>
+            <NAME>Abbaye Belgian</NAME><AMOUNT>0.001</AMOUNT><PRODUCT_ID>-</PRODUCT_ID>
+            </YEAST></YEASTS></RECIPE></RECIPES>"""
+        )
+        yeast = data["ingredients"][0]
+        self.assertEqual(yeast["name"], "Abbaye Belgian")
+        self.assertEqual(yeast["product_id"], "")
 
     def test_abv_from_gravity(self):
         self.assertEqual(abv_from_gravity(1.050, 1.010), 5.25)
@@ -139,8 +151,97 @@ class CalculationTests(TestCase):
             ]),
         )
 
+    def test_ebc_color_around_thirty_is_red(self):
+        color = ebc_color_rgb(31)
+        red, green, blue = (int(channel) for channel in color[4:-1].split(", "))
+        self.assertGreater(red, green * 2)
+        self.assertGreater(red, blue * 2)
+
 
 class RecipeWorkflowTests(TestCase):
+    def test_dashboard_alerts_only_planned_brew_stock_deficits(self):
+        catalog = IngredientCatalog.objects.create(
+            name="Pale malt",
+            kind=IngredientCatalog.Kind.MALT,
+            quantity_available=0,
+        )
+        response = self.client.get("/")
+        self.assertEqual(response.context["dashboard"]["stock_alert_count"], 0)
+
+        recipe = Recipe.objects.create(name="Brassin prévu")
+        version = recipe.versions.first()
+        version.snapshot = {
+            "ingredients": [
+                {"catalog": catalog.pk, "kind": Ingredient.Kind.MALT, "amount_g": 1000}
+            ]
+        }
+        version.save(update_fields=["snapshot"])
+        Brew.objects.create(
+            recipe=recipe,
+            recipe_version=version,
+            recipe_name=recipe.name,
+            planned_date=timezone.localdate(),
+            status=Brew.Status.PLANNED,
+        )
+
+        response = self.client.get("/")
+        self.assertEqual(response.context["dashboard"]["stock_alert_count"], 1)
+
+        Brew.objects.update(status=Brew.Status.BREWING)
+        response = self.client.get("/")
+        self.assertEqual(response.context["dashboard"]["stock_alert_count"], 0)
+
+    def test_catalog_groups_stock_deficits_by_planned_brew(self):
+        malt = IngredientCatalog.objects.create(
+            name="Pale malt",
+            kind=IngredientCatalog.Kind.MALT,
+            quantity_available=0,
+        )
+        hop = IngredientCatalog.objects.create(
+            name="Cascade",
+            kind=IngredientCatalog.Kind.HOP,
+            quantity_available=2,
+        )
+        recipe = Recipe.objects.create(name="Bière de Noël")
+        version = recipe.versions.first()
+        version.snapshot = {
+            "ingredients": [
+                {
+                    "catalog": malt.pk,
+                    "kind": Ingredient.Kind.MALT,
+                    "name": malt.name,
+                    "amount_g": 1000,
+                },
+                {
+                    "catalog": hop.pk,
+                    "kind": Ingredient.Kind.HOP,
+                    "name": hop.name,
+                    "amount_g": 5,
+                },
+            ]
+        }
+        version.save(update_fields=["snapshot"])
+        brew = Brew.objects.create(
+            recipe=recipe,
+            recipe_version=version,
+            recipe_name=recipe.name,
+            planned_date=timezone.localdate(),
+            status=Brew.Status.PLANNED,
+        )
+
+        response = self.client.get("/catalogue/")
+
+        alerts = response.context["stock_alert_brews"]
+        self.assertEqual(len(alerts), 1)
+        self.assertEqual(alerts[0]["brew"], brew)
+        self.assertEqual(
+            [(item["name"], item["deficit"]) for item in alerts[0]["missing_items"]],
+            [("Pale malt", 1000), ("Cascade", 3)],
+        )
+        self.assertContains(response, f"Pour <a class=\"fw-semibold\" href=\"/brassins/{brew.pk}/\">{brew.recipe_name}</a>")
+        self.assertContains(response, "Pale malt")
+        self.assertContains(response, "Cascade")
+
     def test_brew_form_rejects_bottling_before_brew_date(self):
         form = BrewForm(
             data={
@@ -207,6 +308,17 @@ class RecipeWorkflowTests(TestCase):
         self.assertTrue(0 < indicators[0]["position"] < 100)
         self.assertContains(response, f'width: {indicators[0]["position"]}%')
 
+    def test_recipe_without_category_gets_default_18a_profile(self):
+        recipe = Recipe.objects.create(name="Sans profil")
+
+        response = self.client.get(f"/recettes/{recipe.pk}/")
+
+        recipe.refresh_from_db()
+        self.assertEqual(recipe.category.code, "18A")
+        self.assertContains(response, "Profil de la bière")
+        self.assertContains(response, "18A")
+        self.assertEqual(response.context["style_indicators"], [])
+
     def test_recipe_creation_uses_mash_efficiency_as_default(self):
         EquipmentSettings.objects.create(mash_efficiency=82)
         response = self.client.get("/recettes/nouvelle/")
@@ -249,6 +361,20 @@ class RecipeWorkflowTests(TestCase):
         category = BeerCategory.objects.get(code="99")
         self.assertEqual(category.og_min, Decimal("1.040"))
         self.assertEqual(category.ibu_max, Decimal("40.0"))
+
+        target = BeerCategory.objects.get(code="1B")
+        target_name = target.name
+        response = self.client.post(
+            f"/categories/{target.pk}/copier-fourchettes/",
+            {"source_id": category.pk},
+        )
+        self.assertRedirects(response, "/categories/")
+        target.refresh_from_db()
+        self.assertEqual(target.og_min, category.og_min)
+        self.assertEqual(target.og_max, category.og_max)
+        self.assertEqual(target.ibu_min, category.ibu_min)
+        self.assertEqual(target.ibu_max, category.ibu_max)
+        self.assertEqual(target.name, target_name)
 
     def test_equipment_settings_can_be_saved(self):
         response = self.client.get("/parametres/")
@@ -421,11 +547,12 @@ class RecipeWorkflowTests(TestCase):
         self.assertNotContains(response, "recipe-chart-data")
         self.assertContains(response, "Carbonatation")
         self.assertContains(response, "carb-result")
-        self.assertContains(response, "Eau d’empâtage BIAB")
+        self.assertContains(response, "Eau de brassage BIAB")
         self.assertContains(response, "water-result")
         self.assertContains(response, "water-preboil")
         self.assertContains(response, "water-capacity-warning")
-        self.assertContains(response, "ebc-color-swatch")
+        self.assertContains(response, "beer-glass-preview")
+        self.assertIsNotNone(response.context["estimated_ebc_color"])
         self.assertIsNotNone(response.context["estimated_og"])
         self.assertIsNotNone(response.context["estimated_ibu"])
 
@@ -447,25 +574,72 @@ class RecipeWorkflowTests(TestCase):
 
     def test_ingredient_forms_create_their_own_kind(self):
         recipe = Recipe.objects.create(name="Session IPA")
+        catalog = IngredientCatalog.objects.create(name="Cascade", kind=IngredientCatalog.Kind.HOP)
         response = self.client.post(
             f"/recettes/{recipe.pk}/ingredients/ajouter/",
-            {"kind": "hop", "name": "Cascade", "amount_g": "25", "alpha_acid": "5.5", "boil_minutes": "10"},
+            {"kind": "hop", "catalog": catalog.pk, "amount_g": "25", "addition": "Ébullition", "boil_minutes": "10"},
         )
         self.assertRedirects(response, f"/recettes/{recipe.pk}/")
         ingredient = Ingredient.objects.get(recipe=recipe)
         self.assertEqual(ingredient.kind, Ingredient.Kind.HOP)
 
+    def test_ingredient_create_rejects_catalog_of_wrong_kind(self):
+        recipe = Recipe.objects.create(name="Validation")
+        malt = IngredientCatalog.objects.create(name="Pilsner", kind=IngredientCatalog.Kind.MALT)
+        response = self.client.post(
+            f"/recettes/{recipe.pk}/ingredients/ajouter/",
+            {"kind": "hop", "catalog": malt.pk, "amount_g": "25"},
+        )
+        self.assertRedirects(response, f"/recettes/{recipe.pk}/")
+        self.assertFalse(Ingredient.objects.filter(recipe=recipe).exists())
+
+    def test_recipe_detail_renders_inventory_and_drop_zone_hooks(self):
+        recipe = Recipe.objects.create(name="Drag and drop")
+        catalog = IngredientCatalog.objects.create(
+            name="Pale malt", kind=IngredientCatalog.Kind.MALT, quantity_available=5000
+        )
+        Ingredient.objects.create(
+            recipe=recipe,
+            catalog=catalog,
+            name=catalog.name,
+            kind=Ingredient.Kind.MALT,
+            amount_g=1000,
+        )
+        response = self.client.get(f"/recettes/{recipe.pk}/")
+        self.assertContains(response, 'id="recipe-inventory"')
+        self.assertContains(response, "Ingrédients référencés")
+        self.assertContains(response, 'data-bs-scroll="true"')
+        self.assertContains(response, 'data-bs-backdrop="false"')
+        self.assertContains(response, 'data-catalog-id=')
+        self.assertContains(response, 'data-drop-zone="malt"')
+        self.assertContains(response, 'data-drop-zone="hop"')
+        self.assertContains(response, 'data-inventory-kind="malt"')
+        self.assertContains(response, 'data-inventory-kind="hop"')
+        self.assertContains(response, 'data-sortable-table')
+        self.assertContains(response, 'data-sort-types="number,text')
+        self.assertContains(response, "recipe-sort:")
+        self.assertContains(response, "window.localStorage.setItem")
+        self.assertContains(response, 'quantityCell.addEventListener("dblclick"')
+        self.assertContains(response, 'input.form?.requestSubmit()')
+        self.assertContains(response, "recipe-scroll:")
+        self.assertContains(response, "window.scrollTo(0, Number(savedScroll))")
+        self.assertNotContains(response, 'id="add-malt"')
+        self.assertNotContains(response, 'id="add-hop"')
+        self.assertContains(response, 'id="inventory-add-modal"')
+
     def test_ingredient_can_be_edited_and_deleted(self):
         recipe = Recipe.objects.create(name="Porter")
+        catalog = IngredientCatalog.objects.create(name="Pale malt bio", kind=IngredientCatalog.Kind.MALT)
         ingredient = Ingredient.objects.create(
             recipe=recipe,
-            name="Pale malt",
+            catalog=catalog,
+            name=catalog.name,
             kind=Ingredient.Kind.MALT,
             amount_g=1000,
         )
         response = self.client.post(
             f"/ingredients/{ingredient.pk}/modifier/",
-            {"name": "Pale malt bio", "amount_g": "1200", "potential_yield": "37"},
+            {"catalog": catalog.pk, "amount_g": "1200", "addition": "Brassage"},
         )
         self.assertRedirects(response, f"/recettes/{recipe.pk}/")
         ingredient.refresh_from_db()
@@ -488,7 +662,7 @@ class RecipeWorkflowTests(TestCase):
 
         response = self.client.post(
             f"/ingredients/{ingredient.pk}/modifier/",
-            {"name": "", "amount_g": "0", "potential_yield": ""},
+            {"name": "", "amount_g": "", "potential_yield": ""},
         )
 
         self.assertEqual(response.status_code, 200)
@@ -826,6 +1000,8 @@ class RecipeWorkflowTests(TestCase):
     def test_shopping_list_items_can_be_added_checked_and_deleted(self):
         response = self.client.get("/courses/")
         self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Liste de courses")
+        self.assertContains(response, "À intégrer au stock")
         response = self.client.post("/courses/ajouter/", {"name": "Capsules rouges"})
         self.assertRedirects(response, "/courses/")
         item = ShoppingItem.objects.get()
@@ -836,32 +1012,60 @@ class RecipeWorkflowTests(TestCase):
         item.refresh_from_db()
         self.assertTrue(item.is_ordered)
 
+        response = self.client.get("/courses/")
+        self.assertNotContains(response, ">Tous</a>")
+        self.assertNotContains(response, "text-decoration-line-through")
+        self.assertContains(response, "Capsules rouges")
+
         response = self.client.post(f"/courses/{item.pk}/supprimer/")
         self.assertRedirects(response, "/courses/")
         self.assertFalse(ShoppingItem.objects.filter(pk=item.pk).exists())
 
     def test_shopping_receive_offers_kind_specific_quantity_presets(self):
-        IngredientCatalog.objects.create(name="Pilsen", kind=IngredientCatalog.Kind.MALT)
+        pilsen = IngredientCatalog.objects.create(name="Pilsen", kind=IngredientCatalog.Kind.MALT)
         IngredientCatalog.objects.create(name="Cascade", kind=IngredientCatalog.Kind.HOP)
         IngredientCatalog.objects.create(name="US-05", kind=IngredientCatalog.Kind.YEAST)
-        item = ShoppingItem.objects.create(name="Pilsen", is_ordered=True)
+        item = ShoppingItem.objects.create(name="Pilsen", is_ordered=True, received_quantity=5000)
 
         response = self.client.get("/courses/")
 
         self.assertContains(response, '"5000", "5000 g"')
         self.assertContains(response, '"250", "250 g"')
         self.assertContains(response, "Nombre de paquets")
-        self.assertContains(response, "data-kind=\"malt\"")
+        self.assertContains(response, f'name="catalog_id" value="{pilsen.pk}"')
         item.delete()
+
+    def test_shopping_item_can_be_marked_received_before_stock_integration(self):
+        item = ShoppingItem.objects.create(
+            name="Malt Pilsen",
+            is_ordered=True,
+            planned_quantity=5000,
+            unit="g",
+        )
+
+        response = self.client.post(
+            f"/courses/{item.pk}/receptionner-commande/",
+        )
+
+        self.assertRedirects(response, "/courses/")
+        item.refresh_from_db()
+        self.assertTrue(item.is_received)
+        self.assertIsNone(item.received_quantity)
+        response = self.client.get("/courses/")
+        self.assertContains(response, "À intégrer au stock")
+        self.assertContains(response, "Malt Pilsen")
+        self.assertContains(response, "Nouvelle fiche de stock")
 
     def test_shopping_list_can_be_cleared(self):
         ShoppingItem.objects.create(name="Malt")
         ShoppingItem.objects.create(name="Houblon")
+        ordered_item = ShoppingItem.objects.create(name="Commande en cours", is_ordered=True)
 
         response = self.client.post("/courses/vider/")
 
         self.assertRedirects(response, "/courses/")
-        self.assertFalse(ShoppingItem.objects.exists())
+        self.assertFalse(ShoppingItem.objects.filter(is_ordered=False).exists())
+        self.assertTrue(ShoppingItem.objects.filter(pk=ordered_item.pk).exists())
 
     def test_shopping_item_can_be_received_into_catalog_stock(self):
         catalog = IngredientCatalog.objects.create(
@@ -875,7 +1079,7 @@ class RecipeWorkflowTests(TestCase):
 
         response = self.client.post(
             f"/courses/{item.pk}/receptionner/",
-            {"catalog_id": catalog.pk, "quantity": "4000"},
+            {"quantity": "4000"},
         )
 
         self.assertRedirects(response, "/courses/")
@@ -986,6 +1190,9 @@ class RecipeWorkflowTests(TestCase):
         item = IngredientCatalog.objects.get(name="Capsules 26 mm")
         self.assertEqual(item.kind, IngredientCatalog.Kind.CONSUMABLE)
         self.assertEqual(item.quantity_available, 100)
+
+    def test_consumable_catalog_forms_only_expose_name_and_quantity(self):
+        self.assertEqual(set(CatalogForm(instance=IngredientCatalog(kind=IngredientCatalog.Kind.CONSUMABLE)).fields), {"name", "quantity_available"})
 
     def test_missing_stock_can_add_selected_items_without_duplicates(self):
         brew = Brew.objects.create(recipe_name="Brassin test")
@@ -1219,35 +1426,32 @@ class RecipeWorkflowTests(TestCase):
 
     def test_ingredient_forms_constrain_the_form_choices(self):
         self.assertEqual(MaltForm().fields["catalog"].label, "Stock")
-        self.assertEqual(MaltForm().fields["potential_yield"].label, "Rendement")
-        self.assertEqual(MaltForm().fields["form"].label, "Forme")
+        self.assertNotIn("form", MaltForm().fields)
+        self.assertNotIn("form", HopForm().fields)
+        self.assertNotIn("form", YeastForm().fields)
+        self.assertNotIn("form", OtherForm().fields)
         self.assertEqual(MaltForm().fields["addition"].label, "Ajout")
-        self.assertEqual(HopForm().fields["form"].label, "Forme")
         self.assertEqual(HopForm().fields["addition"].label, "Ajout")
-        self.assertEqual(YeastForm().fields["form"].label, "Forme")
-        self.assertEqual(OtherForm().fields["form"].label, "Forme")
         self.assertEqual(OtherForm().fields["addition"].label, "Ajout")
         self.assertEqual(OtherForm().fields["amount_g"].label, "Quantité")
         self.assertNotIn("manufacturer", OtherForm().fields)
-        self.assertEqual(YeastForm().fields["manufacturer"].label, "Laboratoire")
         self.assertEqual(CatalogYeastForm().fields["manufacturer"].label, "Laboratoire")
         self.assertNotIn("manufacturer", CatalogOtherForm().fields)
-        self.assertEqual(
-            list(MaltForm().fields["form"].choices)[1:],
-            [("Grains", "Grains"), ("Flocons", "Flocons"), ("Farine", "Farine"),
-             ("Extrait sec", "Extrait sec"), ("Extrait liquide", "Extrait liquide"),
-             ("Sucre solide", "Sucre solide"), ("Sirop", "Sirop")],
-        )
-        self.assertEqual(
-            list(HopForm().fields["form"].choices)[1:],
-            [("Pellets", "Pellets"), ("Cônes", "Cônes"), ("Fleurs", "Fleurs"), ("Cryo", "Cryo")],
-        )
-        self.assertEqual(
-            list(YeastForm().fields["form"].choices)[1:],
-            [("Sèche", "Sèche"), ("Liquide", "Liquide"), ("Pâte", "Pâte")],
-        )
         self.assertEqual(list(MaltForm().fields["addition"].choices)[1:], MALT_ADDITION_CHOICES)
         self.assertEqual(list(HopForm().fields["addition"].choices)[1:], ADDITION_CHOICES)
+
+    def test_ingredient_edit_form_only_exposes_quantity(self):
+        recipe = Recipe.objects.create(name="Quantité")
+        catalog = IngredientCatalog.objects.create(name="Pale malt", kind=IngredientCatalog.Kind.MALT)
+        ingredient = Ingredient.objects.create(
+            recipe=recipe,
+            catalog=catalog,
+            name=catalog.name,
+            kind=Ingredient.Kind.MALT,
+            amount_g=1000,
+        )
+
+        self.assertEqual(set(MaltForm(instance=ingredient).fields), {"amount_g"})
 
     def test_biab_mash_steps_can_be_created_edited_and_deleted(self):
         recipe = Recipe.objects.create(name="BIAB Pale Ale")

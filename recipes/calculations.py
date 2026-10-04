@@ -59,21 +59,35 @@ def estimated_color_ebc(malts, volume_l: float) -> float:
 
 
 def ebc_color_rgb(ebc: float) -> str:
-    """Retourne une couleur d'aperçu cohérente avec l'échelle EBC de l'interface."""
+    """Retourne une approximation visuelle continue de la couleur EBC."""
     palette = (
         (0, (252, 235, 182)),
         (4, (248, 225, 122)),
         (8, (245, 200, 76)),
         (12, (233, 165, 46)),
-        (20, (196, 106, 23)),
-        (30, (154, 70, 18)),
-        (40, (107, 47, 11)),
-        (50, (74, 30, 8)),
-        (60, (45, 18, 5)),
+        (18, (200, 107, 36)),
+        (25, (168, 58, 36)),
+        (30, (178, 53, 36)),
+        (35, (127, 36, 28)),
+        (40, (94, 30, 22)),
+        (50, (58, 18, 11)),
+        (60, (37, 12, 7)),
         (80, (22, 10, 3)),
     )
     value = float(ebc)
-    color = next((color for limit, color in palette if value <= limit), palette[-1][1])
+    if value <= palette[0][0]:
+        color = palette[0][1]
+    elif value >= palette[-1][0]:
+        color = palette[-1][1]
+    else:
+        for (lower_limit, lower_color), (upper_limit, upper_color) in zip(palette, palette[1:]):
+            if value <= upper_limit:
+                ratio = (value - lower_limit) / (upper_limit - lower_limit)
+                color = tuple(
+                    round(lower + ratio * (upper - lower))
+                    for lower, upper in zip(lower_color, upper_color)
+                )
+                break
     return f"rgb({color[0]}, {color[1]}, {color[2]})"
 
 

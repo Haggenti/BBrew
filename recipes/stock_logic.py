@@ -39,8 +39,9 @@ def brew_stock_requirements(brew):
 
 def planned_stock_needs():
     needs = {}
-    upcoming_brews = Brew.objects.filter(planned_date__gte=timezone.localdate()).exclude(
-        status__in=[Brew.Status.COMPLETED, Brew.Status.CANCELLED]
+    upcoming_brews = Brew.objects.filter(
+        planned_date__gte=timezone.localdate(),
+        status=Brew.Status.PLANNED,
     )
     for brew in upcoming_brews:
         for requirement in brew_stock_requirements(brew):

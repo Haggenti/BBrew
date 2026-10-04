@@ -2,6 +2,30 @@
 {% load l10n static %}
 {% block title %}{{ recipe.name }} · BBrew{% endblock %}
 {% block content %}
+<style>
+  .beer-glass-preview { position: relative; width: 4.5rem; height: 5.5rem; overflow: hidden; }
+  .beer-glass-preview span,
+  .beer-glass-preview img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  .beer-glass-preview span { z-index: 1; }
+  .beer-glass-preview img:nth-of-type(1) { z-index: 2; }
+  .beer-glass-preview img:nth-of-type(2) { z-index: 3; }
+  .beer-glass-preview img:nth-of-type(3) { z-index: 4; }
+  .beer-glass-preview span { background: var(--beer-color); -webkit-mask: url("{% static 'recipes/liquide.svg' %}") center / contain no-repeat; mask: url("{% static 'recipes/liquide.svg' %}") center / contain no-repeat; }
+  .beer-glass-preview.ebc-preview { width: 6rem; height: 8rem; flex: 0 0 auto; }
+  .ingredient-stock-preview { min-height: 1.25rem; }
+  [data-sortable-table] th[data-sort-type] { cursor: pointer; user-select: none; }
+  [data-sortable-table] th[data-sort-type]::after { content: " ↕"; color: var(--bs-secondary-color); font-size: .75em; }
+  [data-sortable-table] th[data-sort-type][aria-sort="ascending"]::after { content: " ↑"; color: var(--bs-primary); }
+  [data-sortable-table] th[data-sort-type][aria-sort="descending"]::after { content: " ↓"; color: var(--bs-primary); }
+  [data-inline-row] > td:first-child input { width: 6rem; }
+  [data-inline-row] > td:last-child > .ingredient-display button[data-inline-edit],
+  [data-inline-row] button[data-inline-cancel] { display: none !important; }
+  [data-inline-row].quantity-editing > td:first-child .ingredient-display { display: none !important; }
+  [data-inline-row].quantity-editing > td:first-child .ingredient-edit,
+  [data-inline-row].quantity-editing > td:last-child > .ingredient-edit { display: inline-block !important; }
+  [data-drop-zone] { transition: outline .15s, background-color .15s; }
+  [data-drop-zone].inventory-drop-active { outline: 2px dashed var(--bs-primary); background-color: var(--bs-primary-bg-subtle); }
+</style>
 <div class="mb-4">
   <div><a href="{% url 'recipes:list' %}" class="text-secondary text-decoration-none">← Recettes</a><h1 class="h2 mt-2 mb-1 d-flex align-items-center gap-2 flex-wrap">{{ recipe.name }} {% if recipe.current_version %}<span class="badge text-bg-primary">V{{ recipe.current_version.version_number }}</span>{% endif %}<button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#edit-recipe-name" aria-label="Modifier le nom" title="Modifier le nom"><i class="bi bi-pencil" aria-hidden="true"></i></button></h1><div class="small text-secondary">Créée le {{ recipe.created_at|date:"d/m/Y" }}</div>
     <form id="edit-recipe-name" class="collapse mt-2" method="post" action="{% url 'recipes:name_update' recipe.pk %}">{% csrf_token %}<div class="input-group input-group-sm" style="max-width: 420px">{{ name_form.name }}<button class="btn btn-primary" type="submit">Enregistrer</button></div></form>
@@ -11,6 +35,47 @@
   </div>
   <div class="d-flex flex-wrap gap-2 mt-3"><a class="btn btn-outline-secondary btn-sm" href="{% url 'recipes:history' recipe.pk %}"><i class="bi bi-clock-history me-1" aria-hidden="true"></i>Versions</a><a class="btn btn-outline-secondary btn-sm" href="{% url 'recipes:export' recipe.pk %}">Exporter BeerXML</a><a class="btn btn-primary btn-sm" href="{% url 'recipes:brew_create' %}?recipe={{ recipe.pk }}"><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>Créer un brassin à partir de cette recette</a></div>
 </div>
+<div class="offcanvas offcanvas-end" data-bs-scroll="true" data-bs-backdrop="false" tabindex="-1" id="recipe-inventory" aria-labelledby="recipe-inventory-title">
+  <div class="offcanvas-header"><h2 class="offcanvas-title h5" id="recipe-inventory-title">Ingrédients référencés</h2><button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Fermer"></button></div>
+  <div class="offcanvas-body">
+    <p class="small text-secondary">Faites glisser une fiche vers la section correspondante, ou utilisez Ajouter sur mobile.</p>
+    {% for group in inventory_by_kind %}
+      <h3 class="h6 mt-3">{{ group.label }}</h3>
+      <div class="vstack gap-2" data-inventory-kind="{{ group.kind }}">
+        {% for item in group.items %}
+          <div class="card card-body p-2 inventory-stock-card" draggable="true" data-catalog-id="{{ item.pk }}" data-kind="{{ item.kind }}">
+            <div class="d-flex justify-content-between align-items-center gap-2"><span class="fw-semibold">{{ item.name }}</span><span class="badge text-bg-light">{{ item.quantity_available }} g</span></div>
+            <button type="button" class="btn btn-sm btn-outline-primary mt-2 d-md-none inventory-add-button" data-catalog-id="{{ item.pk }}" data-kind="{{ item.kind }}" data-catalog-name="{{ item.name }}">Ajouter</button>
+          </div>
+        {% empty %}<p class="small text-secondary">Aucune fiche de stock.</p>{% endfor %}
+      </div>
+    {% endfor %}
+  </div>
+</div>
+<div class="modal fade" id="inventory-add-modal" tabindex="-1" aria-labelledby="inventory-add-title">
+  <div class="modal-dialog"><div class="modal-content">
+    <form method="post" action="{% url 'recipes:ingredient_create' recipe.pk %}" id="inventory-add-form">
+      {% csrf_token %}<input type="hidden" name="kind" id="inventory-kind"><input type="hidden" name="catalog" id="inventory-catalog">
+      <div class="modal-header"><h2 class="modal-title h5" id="inventory-add-title">Ajouter un ingrédient</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button></div>
+      <div class="modal-body">
+        <p class="small text-secondary" id="inventory-catalog-label"></p>
+        <div class="mb-3"><label class="form-label" for="inventory-amount">Quantité</label><input class="form-control" type="number" min="1" step="1" name="amount_g" id="inventory-amount" required></div>
+        <div class="mb-3 inventory-field inventory-field-malt"><label class="form-label" for="inventory-malt-addition">Ajout</label><select class="form-select" name="addition" id="inventory-malt-addition"><option value="">Brassage</option><option value="Ébullition">Ébullition</option></select></div>
+        <div class="inventory-field inventory-field-hop">
+          <div class="mb-3"><label class="form-label" for="inventory-hop-addition">Ajout</label><select class="form-select" name="addition" id="inventory-hop-addition"><option value="Ébullition">Ébullition</option><option value="Refroidissement">Refroidissement</option><option value="Dry hop">Dry hop</option></select></div>
+          <div class="mb-3"><label class="form-label" for="inventory-boil-minutes">Minutes d’ébullition</label><input class="form-control" type="number" min="0" name="boil_minutes" id="inventory-boil-minutes" value="60"></div>
+          <div class="mb-3"><label class="form-label" for="inventory-temperature">Température d’ajout (°C)</label><input class="form-control" type="number" min="0" max="100" step="0.5" name="addition_temperature_c" id="inventory-temperature"></div>
+        </div>
+        <div class="mb-3 form-check inventory-field inventory-field-yeast"><input class="form-check-input" type="checkbox" name="for_bottling" value="on" id="inventory-bottling"><label class="form-check-label" for="inventory-bottling">Ajoutée à l’embouteillage</label></div>
+        <div class="inventory-field inventory-field-other">
+          <div class="mb-3"><label class="form-label" for="inventory-other-addition">Ajout</label><select class="form-select" name="addition" id="inventory-other-addition"><option value="">—</option><option value="Ébullition">Ébullition</option><option value="Refroidissement">Refroidissement</option><option value="Fermentation">Fermentation</option></select></div>
+          <div class="mb-3"><label class="form-label" for="inventory-notes">Notes</label><input class="form-control" type="text" name="notes" id="inventory-notes"></div>
+        </div>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button><button class="btn btn-primary" type="submit">Ajouter</button></div>
+    </form>
+  </div></div>
+</div>
 <section class="card card-body mb-4">
   <h2 class="h5"><i class="bi bi-sticky me-2" aria-hidden="true"></i>Notes</h2>
   <form method="post" action="{% url 'recipes:notes_update' recipe.pk %}">
@@ -18,12 +83,12 @@
   </form>
 </section>
 <div class="row g-3 mb-4 align-items-stretch">
-  {% if recipe.category and style_indicators %}<div class="col-lg-5"><section class="card card-body h-100 border-info-subtle"><div class="d-flex justify-content-between align-items-center mb-3"><h2 class="h5 mb-0">Profil de la bière</h2><span class="badge text-bg-info">{{ recipe.category.code }} — {{ recipe.category.name }}</span></div>{% for indicator in style_indicators %}<div class="mb-3"><div class="d-flex justify-content-between small"><span class="fw-semibold">{{ indicator.label }}</span><span class="{% if indicator.ok %}text-success{% else %}text-warning{% endif %}">{{ indicator.value|floatformat:3 }}{{ indicator.unit }} · {{ indicator.status }}</span></div><div class="progress mt-1" role="progressbar" aria-label="{{ indicator.label }}" aria-valuemin="{{ indicator.minimum|unlocalize }}" aria-valuemax="{{ indicator.maximum|unlocalize }}" aria-valuenow="{{ indicator.value|unlocalize }}"><div class="progress-bar {% if indicator.ok %}bg-info{% else %}bg-warning{% endif %}" style="width: {{ indicator.position|unlocalize }}%"></div></div><div class="d-flex justify-content-between text-secondary" style="font-size: .75rem"><span>{{ indicator.minimum }}{{ indicator.unit }}</span><span>{{ indicator.maximum }}{{ indicator.unit }}</span></div></div>{% endfor %}</section></div>{% endif %}
-  <div class="{% if recipe.category and style_indicators %}col-lg-7{% else %}col-12{% endif %}"><section class="card card-body h-100"><div class="d-flex justify-content-between align-items-center gap-3 mb-3 flex-wrap"><h2 class="h5 mb-0">Caractéristiques</h2><form method="post" action="{% url 'recipes:boil_settings' recipe.pk %}" class="d-flex align-items-center gap-2">{% csrf_token %}<label class="small text-secondary mb-0" for="boil-time">Ébullition</label><input id="boil-time" class="form-control form-control-sm" style="width: 75px" type="number" name="boil_time_min" min="1" max="240" value="{{ recipe.boil_time_min }}"><span class="small text-secondary">min</span><button class="btn btn-sm btn-outline-primary" type="submit">Enregistrer</button></form></div><div class="row g-0">
+  {% if recipe.category %}<div class="col-lg-5"><section class="card card-body h-100 border-info-subtle"><div class="d-flex justify-content-between align-items-center mb-3"><h2 class="h5 mb-0">Profil de la bière</h2><span class="badge text-bg-info">{{ recipe.category.code }} — {{ recipe.category.name }}</span></div>{% for indicator in style_indicators %}<div class="mb-3"><div class="d-flex justify-content-between small"><span class="fw-semibold">{{ indicator.label }}</span><span class="{% if indicator.ok %}text-success{% else %}text-warning{% endif %}">{{ indicator.value|floatformat:3 }}{{ indicator.unit }} · {{ indicator.status }}</span></div><div class="progress mt-1" role="progressbar" aria-label="{{ indicator.label }}" aria-valuemin="{{ indicator.minimum|unlocalize }}" aria-valuemax="{{ indicator.maximum|unlocalize }}" aria-valuenow="{{ indicator.value|unlocalize }}"><div class="progress-bar {% if indicator.ok %}bg-info{% else %}bg-warning{% endif %}" style="width: {{ indicator.position|unlocalize }}%"></div></div><div class="d-flex justify-content-between text-secondary" style="font-size: .75rem"><span>{{ indicator.minimum }}{{ indicator.unit }}</span><span>{{ indicator.maximum }}{{ indicator.unit }}</span></div></div>{% endfor %}<div class="text-center mt-2"><div class="beer-glass-preview ebc-preview mx-auto" style="--beer-color: {% if estimated_ebc_color %}{{ estimated_ebc_color }}{% else %}transparent{% endif %}" role="img" aria-label="{% if estimated_ebc is not None %}Couleur estimée de la bière : {{ estimated_ebc }} EBC{% else %}Couleur de la bière non disponible{% endif %}" title="Couleur estimée de la bière"><span></span><img src="{% static 'recipes/mousse.svg' %}" alt="" aria-hidden="true"><img src="{% static 'recipes/verre.png' %}" alt="" aria-hidden="true"><img src="{% static 'recipes/reflets_verre.png' %}" alt="" aria-hidden="true"></div></div></section></div>{% endif %}
+  <div class="{% if recipe.category %}col-lg-7{% else %}col-12{% endif %}"><section class="card card-body h-100"><div class="d-flex justify-content-between align-items-start gap-3 mb-3 flex-wrap"><div><h2 class="h5 mb-0">Caractéristiques</h2><small class="text-secondary">Couleur estimée de la bière</small></div><form method="post" action="{% url 'recipes:boil_settings' recipe.pk %}" class="d-flex align-items-center gap-2">{% csrf_token %}<label class="small text-secondary mb-0" for="boil-time">Ébullition</label><input id="boil-time" class="form-control form-control-sm" style="width: 75px" type="number" name="boil_time_min" min="1" max="240" value="{{ recipe.boil_time_min }}"><span class="small text-secondary">min</span><button class="btn btn-sm btn-outline-primary" type="submit">Enregistrer</button></form></div><div class="row g-0">
     <div class="col-sm-6 border-bottom border-end-sm p-3"><small class="text-secondary d-block">OG estimée</small><strong class="fs-4">{% if estimated_og %}{{ estimated_og }} <small>/ {{ estimated_plato }} °P</small>{% else %}—{% endif %}</strong></div>
-    <div class="col-sm-6 border-bottom p-3"><small class="text-secondary d-block">DF estimée</small><strong class="fs-4">{% if estimated_final_gravity is not None %}{{ estimated_final_gravity }}{% else %}—{% endif %}</strong><small class="text-secondary d-block mt-1">Empâtage moyen : {{ mash_temperature|floatformat:1 }} °C{% if not has_mash_steps %} (valeur par défaut){% endif %}</small></div>
+    <div class="col-sm-6 border-bottom p-3"><small class="text-secondary d-block">DF estimée</small><strong class="fs-4">{% if estimated_final_gravity is not None %}{{ estimated_final_gravity }}{% else %}—{% endif %}</strong><small class="text-secondary d-block mt-1">Brassage moyen : {{ mash_temperature|floatformat:1 }} °C{% if not has_mash_steps %} (valeur par défaut){% endif %}</small></div>
     <div class="col-sm-6 border-bottom border-end-sm p-3"><small class="text-secondary d-block">ABV estimé</small><strong class="fs-4">{% if estimated_abv is not None %}{{ estimated_abv }} %{% else %}—{% endif %}</strong></div>
-    <div class="col-sm-6 border-bottom p-3"><small class="text-secondary d-block">Couleur</small><div class="d-flex align-items-center gap-2"><span id="ebc-color-swatch" class="rounded border" style="width: 2.25rem; height: 2.25rem; background-color: #e9ecef" aria-label="Couleur estimée de la bière" title="Couleur estimée de la bière"></span><strong class="fs-4">{% if estimated_ebc is not None %}{{ estimated_ebc }} EBC{% else %}—{% endif %}</strong></div></div>
+    <div class="col-sm-6 border-bottom p-3"><small class="text-secondary d-block">Couleur</small><strong class="fs-4">{% if estimated_ebc is not None %}{{ estimated_ebc }} EBC{% else %}—{% endif %}</strong></div>
     <div class="col-sm-6 border-end-sm p-3"><small class="text-secondary d-block">IBU estimés</small><strong class="fs-4">{{ estimated_ibu|default:"—" }}</strong></div>
     <div class="col-sm-6 p-3"><small class="text-secondary d-block">Ratio IBU / DF</small><strong class="fs-4">{% if ibu_df_ratio is not None %}{{ ibu_df_ratio }}{% else %}—{% endif %}</strong>{% if ibu_df_comment %}<small class="text-secondary d-block mt-1">{{ ibu_df_comment|capfirst }}</small>{% endif %}</div>
     <div class="col-sm-6 border-top p-3"><div class="d-flex justify-content-between align-items-start"><div><small class="text-secondary d-block">Efficacité</small><strong class="fs-4">{{ recipe.efficiency|floatformat:1 }} %</strong><small class="text-secondary d-block mt-1">Utilisée pour l’estimation de l’OG</small></div><button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#edit-efficiency" aria-label="Modifier l’efficacité" title="Modifier l’efficacité"><i class="bi bi-pencil" aria-hidden="true"></i></button></div><form id="edit-efficiency" class="collapse mt-2" method="post" action="{% url 'recipes:efficiency_update' recipe.pk %}">{% csrf_token %}<div class="input-group input-group-sm">{{ efficiency_form.efficiency }}<span class="input-group-text">%</span><button class="btn btn-primary" type="submit" aria-label="Enregistrer l’efficacité"><i class="bi bi-check-lg" aria-hidden="true"></i></button></div></form></div>
@@ -43,7 +108,7 @@
   </div>
   <div class="col-lg-6">
     <div class="card card-body h-100 border-info-subtle">
-      <h2 class="h6 mb-3"><i class="bi bi-droplet me-2" aria-hidden="true"></i>Eau d’empâtage BIAB</h2>
+      <h2 class="h6 mb-3"><i class="bi bi-droplet me-2" aria-hidden="true"></i>Eau de brassage BIAB</h2>
       <div class="row g-2 align-items-end">
         <div class="col-sm-4"><label class="form-label small mb-1" for="water-volume">Volume de bière souhaité (L)</label><input id="water-volume" class="form-control form-control-sm" style="max-width: 180px" type="number" min="1" step="0.1" value="{{ recipe.batch_size_l|unlocalize }}"></div>
         <div class="col-sm-8 ps-sm-4"><span class="small text-secondary d-block">Eau de départ</span><strong id="water-result" class="fs-4">— L</strong></div>
@@ -56,20 +121,16 @@
 </div>
 <div class="row g-4">
   <div class="col-12">
-    <section class="card h-100 border-warning-subtle">
-      <div class="card-header bg-warning-subtle d-flex justify-content-between align-items-center position-relative"><h2 class="h5 mb-0"><img src="{% static 'recipes/icons/wheat.svg' %}" width="22" height="22" class="me-2" alt="" aria-hidden="true">Malts &amp; Sucres</h2><span class="badge text-bg-warning fs-6 px-3 py-2 position-absolute top-50 start-50 translate-middle">{{ malt_total_g|floatformat:"0" }} g</span><div class="d-flex align-items-center gap-2"><span class="badge text-bg-light">{{ malt_rows|length }}</span><button class="btn btn-sm btn-warning" type="button" data-bs-toggle="collapse" data-bs-target="#add-malt" aria-label="Ajouter un malt" title="Ajouter"><i class="bi bi-plus-lg" aria-hidden="true"></i></button></div></div>
+    <section class="card h-100 border-warning-subtle" data-drop-zone="malt">
+      <div class="card-header bg-warning-subtle d-flex justify-content-between align-items-center position-relative"><h2 class="h5 mb-0"><img src="{% static 'recipes/icons/wheat.svg' %}" width="22" height="22" class="me-2" alt="" aria-hidden="true">Malts &amp; Sucres</h2><span class="badge text-bg-warning fs-6 px-3 py-2 position-absolute top-50 start-50 translate-middle">{{ malt_total_g|floatformat:"0" }} g</span><div class="d-flex align-items-center gap-2"><span class="badge text-bg-light">{{ malt_rows|length }}</span><button class="btn btn-sm btn-warning" type="button" data-bs-toggle="offcanvas" data-bs-target="#recipe-inventory" data-inventory-kind="malt" aria-controls="recipe-inventory" aria-label="Ajouter un malt depuis le stock" title="Ajouter depuis le stock"><i class="bi bi-plus-lg" aria-hidden="true"></i></button></div></div>
       <div class="card-body">
-        {% if malt_rows %}<div class="table-responsive mb-3"><table class="table table-sm align-middle mb-0"><thead><tr><th>Quantité</th><th>Nom</th><th>Fournisseur</th><th>Forme</th><th>Ajout</th><th>Couleur</th><th>Rendement</th><th>Proportion</th><th></th></tr></thead><tbody>{% for row in malt_rows %}<tr data-inline-row="edit-malt-{{ row.ingredient.pk }}"{% if row.edit_form.errors %} class="has-inline-errors"{% endif %}><td><span class="ingredient-display">{{ row.ingredient.amount_g|floatformat:"0" }} g</span><span class="ingredient-edit d-none">{{ row.edit_form.amount_g }}</span></td><td><span class="ingredient-display">{{ row.ingredient.name }}</span><span class="ingredient-edit d-none">{{ row.edit_form.name }}</span></td><td><span class="ingredient-display">{{ row.ingredient.manufacturer|default:"—" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.manufacturer }}</span></td><td><span class="ingredient-display">{{ row.ingredient.form|default:"Grains" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.form }}</span></td><td><span class="ingredient-display">{{ row.ingredient.addition|default:"Empâtage" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.addition }}</span></td><td><span class="ingredient-display">{{ row.ingredient.color_ebc }} EBC</span><span class="ingredient-edit d-none">{{ row.edit_form.color_ebc }}</span></td><td><span class="ingredient-display">{{ row.ingredient.potential_yield }} %</span><span class="ingredient-edit d-none">{{ row.edit_form.potential_yield }}</span></td><td><span class="ingredient-display">{{ row.proportion }} %</span><span class="ingredient-edit d-none">—</span></td><td class="text-nowrap"><span class="ingredient-display"><button class="btn btn-sm btn-outline-secondary" type="button" data-inline-edit="edit-malt-{{ row.ingredient.pk }}" aria-label="Modifier {{ row.ingredient.name }}" title="Modifier"><i class="bi bi-pencil" aria-hidden="true"></i></button></span><span class="ingredient-edit d-none"><button class="btn btn-sm btn-outline-primary" type="submit" form="edit-malt-{{ row.ingredient.pk }}" aria-label="Enregistrer {{ row.ingredient.name }}" title="Enregistrer"><i class="bi bi-check-lg" aria-hidden="true"></i></button> <button class="btn btn-sm btn-outline-secondary" type="button" data-inline-cancel="edit-malt-{{ row.ingredient.pk }}" aria-label="Annuler" title="Annuler"><i class="bi bi-x-lg" aria-hidden="true"></i></button><div class="text-danger small">{{ row.edit_form.errors }}</div></span><form class="d-inline ingredient-display" method="post" action="{% url 'recipes:ingredient_delete' row.ingredient.pk %}" onsubmit="return confirm('Supprimer cet ingrédient ?');">{% csrf_token %}<button class="btn btn-sm btn-outline-danger" type="submit" aria-label="Supprimer l'ingrédient" title="Supprimer"><i class="bi bi-dash-lg" aria-hidden="true"></i></button></form></td></tr><form id="edit-malt-{{ row.ingredient.pk }}" method="post" action="{% url 'recipes:ingredient_edit' row.ingredient.pk %}">{% csrf_token %}</form>{% endfor %}</tbody></table></div>{% else %}<p class="small text-secondary">Aucun malt ajouté.</p>{% endif %}
-        <form id="add-malt" class="collapse border-top pt-3 mt-3" method="post" action="{% url 'recipes:ingredient_create' recipe.pk %}">
-          {% csrf_token %}<input type="hidden" name="kind" value="malt"><h3 class="h6">Ajouter un malt</h3>
-          <div class="row g-2 align-items-end">{% for field in malt_form %}<div class="col-md"><label class="form-label small" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div>{% endfor %}<div class="col-md-auto"><button class="btn btn-outline-warning" type="submit" aria-label="Ajouter un malt" title="Ajouter"><i class="bi bi-plus-lg" aria-hidden="true"></i></button></div></div>
-        </form>
+        {% if malt_rows %}<div class="table-responsive mb-3"><table class="table table-sm align-middle mb-0" data-sortable-table data-sort-types="number,text,text,text,text,number,number,number"><thead><tr><th>Quantité</th><th>Nom</th><th>Fournisseur</th><th>Forme</th><th>Ajout</th><th>Couleur</th><th>Rendement</th><th>Proportion</th><th></th></tr></thead><tbody>{% for row in malt_rows %}<tr data-inline-row="edit-malt-{{ row.ingredient.pk }}"{% if row.edit_form.errors %} class="has-inline-errors"{% endif %}><td><span class="ingredient-display">{{ row.ingredient.amount_g|floatformat:"0" }} g</span><span class="ingredient-edit d-none">{{ row.edit_form.amount_g }}</span></td><td><span class="ingredient-display">{{ row.ingredient.name }}</span><span class="ingredient-edit d-none">{{ row.edit_form.name }}</span></td><td><span class="ingredient-display">{{ row.ingredient.manufacturer|default:"—" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.manufacturer }}</span></td><td><span class="ingredient-display">{{ row.ingredient.form|default:"Grains" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.form }}</span></td><td><span class="ingredient-display">{{ row.ingredient.addition|default:"Brassage" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.addition }}</span></td><td><span class="ingredient-display">{{ row.ingredient.color_ebc }} EBC</span><span class="ingredient-edit d-none">{{ row.edit_form.color_ebc }}</span></td><td><span class="ingredient-display">{{ row.ingredient.potential_yield }} %</span><span class="ingredient-edit d-none">{{ row.edit_form.potential_yield }}</span></td><td><span class="ingredient-display">{{ row.proportion }} %</span><span class="ingredient-edit d-none">—</span></td><td class="text-nowrap"><span class="ingredient-display"><button class="btn btn-sm btn-outline-secondary" type="button" data-inline-edit="edit-malt-{{ row.ingredient.pk }}" aria-label="Modifier {{ row.ingredient.name }}" title="Modifier"><i class="bi bi-pencil" aria-hidden="true"></i></button></span><span class="ingredient-edit d-none"><button class="btn btn-sm btn-outline-primary" type="submit" form="edit-malt-{{ row.ingredient.pk }}" aria-label="Enregistrer {{ row.ingredient.name }}" title="Enregistrer"><i class="bi bi-check-lg" aria-hidden="true"></i></button> <button class="btn btn-sm btn-outline-secondary" type="button" data-inline-cancel="edit-malt-{{ row.ingredient.pk }}" aria-label="Annuler" title="Annuler"><i class="bi bi-x-lg" aria-hidden="true"></i></button><div class="text-danger small">{{ row.edit_form.errors }}</div></span><form class="d-inline ingredient-display" method="post" action="{% url 'recipes:ingredient_delete' row.ingredient.pk %}" onsubmit="return confirm('Supprimer cet ingrédient ?');">{% csrf_token %}<button class="btn btn-sm btn-outline-danger" type="submit" aria-label="Supprimer l'ingrédient" title="Supprimer"><i class="bi bi-dash-lg" aria-hidden="true"></i></button></form></td></tr><form id="edit-malt-{{ row.ingredient.pk }}" method="post" action="{% url 'recipes:ingredient_edit' row.ingredient.pk %}">{% csrf_token %}</form>{% endfor %}</tbody></table></div>{% else %}<p class="small text-secondary">Aucun malt ajouté.</p>{% endif %}
       </div>
     </section>
   </div>
   <div class="col-12">
-    <section class="card h-100 border-success-subtle">
-      <div class="card-header bg-success-subtle d-flex justify-content-between align-items-center"><h2 class="h5 mb-0"><img src="{% static 'recipes/icons/hops.svg' %}" width="22" height="22" class="me-2" alt="" aria-hidden="true">Houblons</h2><div class="d-flex align-items-center gap-2"><span class="badge text-bg-success">{{ hop_rows|length }}</span><button class="btn btn-sm btn-success" type="button" data-bs-toggle="collapse" data-bs-target="#add-hop" aria-label="Ajouter un houblon" title="Ajouter"><i class="bi bi-plus-lg" aria-hidden="true"></i></button></div></div>
+    <section class="card h-100 border-success-subtle" data-drop-zone="hop">
+      <div class="card-header bg-success-subtle d-flex justify-content-between align-items-center"><h2 class="h5 mb-0"><img src="{% static 'recipes/icons/hops.svg' %}" width="22" height="22" class="me-2" alt="" aria-hidden="true">Houblons</h2><div class="d-flex align-items-center gap-2"><span class="badge text-bg-success">{{ hop_rows|length }}</span><button class="btn btn-sm btn-success" type="button" data-bs-toggle="offcanvas" data-bs-target="#recipe-inventory" data-inventory-kind="hop" aria-controls="recipe-inventory" aria-label="Ajouter un houblon depuis le stock" title="Ajouter depuis le stock"><i class="bi bi-plus-lg" aria-hidden="true"></i></button></div></div>
       <div class="card-body">
         <style>
           .hop-table { table-layout: fixed; }
@@ -84,11 +145,7 @@
           .hop-table .hop-actions { width: 13%; }
           .hop-table input, .hop-table select { min-width: 0; width: 100%; }
         </style>
-        {% if hop_rows %}<div class="table-responsive mb-3"><table class="table table-sm align-middle mb-0 hop-table"><colgroup><col class="hop-quantity"><col class="hop-name"><col class="hop-form"><col class="hop-alpha"><col class="hop-addition"><col class="hop-time"><col class="hop-ibu"><col class="hop-actions"></colgroup><thead><tr><th>Quantité</th><th>Nom</th><th>Forme</th><th>Alpha</th><th>Ajout</th><th>Temps</th><th>IBU</th><th></th></tr></thead><tbody>{% for row in hop_rows %}<tr data-inline-row="edit-hop-{{ row.ingredient.pk }}"{% if row.edit_form.errors %} class="has-inline-errors"{% endif %}><td><span class="ingredient-display">{{ row.ingredient.amount_g }} g</span><span class="ingredient-edit d-none">{{ row.edit_form.amount_g }}</span></td><td><span class="ingredient-display">{{ row.ingredient.name }}</span><span class="ingredient-edit d-none">{{ row.edit_form.name }}</span></td><td><span class="ingredient-display">{{ row.ingredient.form|default:"Pellets" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.form }}</span></td><td><span class="ingredient-display">{{ row.ingredient.alpha_acid }} %</span><span class="ingredient-edit d-none">{{ row.edit_form.alpha_acid }}</span></td><td><span class="ingredient-display">{{ row.ingredient.addition|default:"Ébullition" }}{% if row.ingredient.addition == "Refroidissement" and row.ingredient.addition_temperature_c %} · {{ row.ingredient.addition_temperature_c }} °C{% endif %}</span><span class="ingredient-edit d-none">{{ row.edit_form.addition }}</span><span class="ingredient-edit d-none hop-temperature-field">{{ row.edit_form.addition_temperature_c }}</span></td><td><span class="ingredient-display">{% if row.ingredient.addition == "Ébullition" or not row.ingredient.addition %}{{ row.ingredient.boil_minutes }} min{% else %}—{% endif %}</span><span class="ingredient-edit d-none hop-duration-field">{{ row.edit_form.boil_minutes }}</span></td><td><span class="ingredient-display">{{ row.ibu }}</span><span class="ingredient-edit d-none">—</span></td><td class="text-nowrap"><span class="ingredient-display"><button class="btn btn-sm btn-outline-secondary" type="button" data-inline-edit="edit-hop-{{ row.ingredient.pk }}" aria-label="Modifier {{ row.ingredient.name }}" title="Modifier"><i class="bi bi-pencil" aria-hidden="true"></i></button></span><span class="ingredient-edit d-none"><button class="btn btn-sm btn-outline-primary" type="submit" form="edit-hop-{{ row.ingredient.pk }}" aria-label="Enregistrer {{ row.ingredient.name }}" title="Enregistrer"><i class="bi bi-check-lg" aria-hidden="true"></i></button> <button class="btn btn-sm btn-outline-secondary" type="button" data-inline-cancel="edit-hop-{{ row.ingredient.pk }}" aria-label="Annuler" title="Annuler"><i class="bi bi-x-lg" aria-hidden="true"></i></button></span><form class="d-inline ingredient-display" method="post" action="{% url 'recipes:ingredient_delete' row.ingredient.pk %}" onsubmit="return confirm('Supprimer cet ingrédient ?');">{% csrf_token %}<button class="btn btn-sm btn-outline-danger" type="submit" aria-label="Supprimer" title="Supprimer"><i class="bi bi-dash-lg" aria-hidden="true"></i></button></form></td></tr><form id="edit-hop-{{ row.ingredient.pk }}" method="post" action="{% url 'recipes:ingredient_edit' row.ingredient.pk %}">{% csrf_token %}</form>{% endfor %}</tbody></table></div>{% else %}<p class="small text-secondary">Aucun houblon ajouté.</p>{% endif %}
-        <form id="add-hop" class="collapse border-top pt-3 mt-3" method="post" action="{% url 'recipes:ingredient_create' recipe.pk %}">
-          {% csrf_token %}<input type="hidden" name="kind" value="hop"><h3 class="h6">Ajouter un houblon</h3>
-          <div class="row g-2 align-items-end">{% for field in hop_form %}<div class="col-md"><label class="form-label small" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div>{% endfor %}<div class="col-md-auto"><button class="btn btn-outline-success" type="submit" aria-label="Ajouter un houblon" title="Ajouter"><i class="bi bi-plus-lg" aria-hidden="true"></i></button></div></div>
-        </form>
+        {% if hop_rows %}<div class="table-responsive mb-3"><table class="table table-sm align-middle mb-0 hop-table" data-sortable-table data-sort-types="number,text,text,number,text,number,number"><colgroup><col class="hop-quantity"><col class="hop-name"><col class="hop-form"><col class="hop-alpha"><col class="hop-addition"><col class="hop-time"><col class="hop-ibu"><col class="hop-actions"></colgroup><thead><tr><th>Quantité</th><th>Nom</th><th>Forme</th><th>Alpha</th><th>Ajout</th><th>Temps</th><th>IBU</th><th></th></tr></thead><tbody>{% for row in hop_rows %}<tr data-inline-row="edit-hop-{{ row.ingredient.pk }}"{% if row.edit_form.errors %} class="has-inline-errors"{% endif %}><td><span class="ingredient-display">{{ row.ingredient.amount_g }} g</span><span class="ingredient-edit d-none">{{ row.edit_form.amount_g }}</span></td><td><span class="ingredient-display">{{ row.ingredient.name }}</span><span class="ingredient-edit d-none">{{ row.edit_form.name }}</span></td><td><span class="ingredient-display">{{ row.ingredient.form|default:"Pellets" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.form }}</span></td><td><span class="ingredient-display">{{ row.ingredient.alpha_acid }} %</span><span class="ingredient-edit d-none">{{ row.edit_form.alpha_acid }}</span></td><td><span class="ingredient-display">{{ row.ingredient.addition|default:"Ébullition" }}{% if row.ingredient.addition == "Refroidissement" and row.ingredient.addition_temperature_c %} · {{ row.ingredient.addition_temperature_c }} °C{% endif %}</span><span class="ingredient-edit d-none">{{ row.edit_form.addition }}</span><span class="ingredient-edit d-none hop-temperature-field">{{ row.edit_form.addition_temperature_c }}</span></td><td><span class="ingredient-display">{% if row.ingredient.addition == "Ébullition" or not row.ingredient.addition %}{{ row.ingredient.boil_minutes }} min{% else %}—{% endif %}</span><span class="ingredient-edit d-none hop-duration-field">{{ row.edit_form.boil_minutes }}</span></td><td><span class="ingredient-display">{{ row.ibu }}</span><span class="ingredient-edit d-none">—</span></td><td class="text-nowrap"><span class="ingredient-display"><button class="btn btn-sm btn-outline-secondary" type="button" data-inline-edit="edit-hop-{{ row.ingredient.pk }}" aria-label="Modifier {{ row.ingredient.name }}" title="Modifier"><i class="bi bi-pencil" aria-hidden="true"></i></button></span><span class="ingredient-edit d-none"><button class="btn btn-sm btn-outline-primary" type="submit" form="edit-hop-{{ row.ingredient.pk }}" aria-label="Enregistrer {{ row.ingredient.name }}" title="Enregistrer"><i class="bi bi-check-lg" aria-hidden="true"></i></button> <button class="btn btn-sm btn-outline-secondary" type="button" data-inline-cancel="edit-hop-{{ row.ingredient.pk }}" aria-label="Annuler" title="Annuler"><i class="bi bi-x-lg" aria-hidden="true"></i></button></span><form class="d-inline ingredient-display" method="post" action="{% url 'recipes:ingredient_delete' row.ingredient.pk %}" onsubmit="return confirm('Supprimer cet ingrédient ?');">{% csrf_token %}<button class="btn btn-sm btn-outline-danger" type="submit" aria-label="Supprimer" title="Supprimer"><i class="bi bi-dash-lg" aria-hidden="true"></i></button></form></td></tr><form id="edit-hop-{{ row.ingredient.pk }}" method="post" action="{% url 'recipes:ingredient_edit' row.ingredient.pk %}">{% csrf_token %}</form>{% endfor %}</tbody></table></div>{% else %}<p class="small text-secondary">Aucun houblon ajouté.</p>{% endif %}
         <script>
           (() => {
             const style = document.createElement("style");
@@ -112,23 +169,18 @@
     </section>
   </div>
   <div class="col-12">
-    <section class="card h-100 border-info-subtle">
-      <div class="card-header bg-info-subtle d-flex justify-content-between align-items-center"><h2 class="h5 mb-0"><img src="{% static 'recipes/icons/erlenmeyer.svg' %}" width="22" height="22" class="me-2" alt="" aria-hidden="true">Levures</h2><div class="d-flex align-items-center gap-2"><span class="badge text-bg-info">{{ yeast_rows|length }}</span><button class="btn btn-sm btn-info" type="button" data-bs-toggle="collapse" data-bs-target="#add-yeast" aria-label="Ajouter une levure" title="Ajouter"><i class="bi bi-plus-lg" aria-hidden="true"></i></button></div></div>
+    <section class="card h-100 border-info-subtle" data-drop-zone="yeast">
+      <div class="card-header bg-info-subtle d-flex justify-content-between align-items-center"><h2 class="h5 mb-0"><img src="{% static 'recipes/icons/erlenmeyer.svg' %}" width="22" height="22" class="me-2" alt="" aria-hidden="true">Levures</h2><div class="d-flex align-items-center gap-2"><span class="badge text-bg-info">{{ yeast_rows|length }}</span><button class="btn btn-sm btn-info" type="button" data-bs-toggle="offcanvas" data-bs-target="#recipe-inventory" data-inventory-kind="yeast" aria-controls="recipe-inventory" aria-label="Ajouter une levure depuis le stock" title="Ajouter depuis le stock"><i class="bi bi-plus-lg" aria-hidden="true"></i></button></div></div>
       <div class="card-body">
-        {% if yeast_rows %}<div class="table-responsive mb-3"><table class="table table-sm align-middle mb-0"><thead><tr><th>Quantité</th><th>Nom</th><th>Laboratoire</th><th>Forme</th><th>Atténuation</th><th>Embouteillage</th><th></th></tr></thead><tbody>{% for row in yeast_rows %}<tr data-inline-row="edit-yeast-{{ row.ingredient.pk }}"{% if row.edit_form.errors %} class="has-inline-errors"{% endif %}><td><span class="ingredient-display">{{ row.ingredient.amount_g|floatformat:"0" }} paquet{{ row.ingredient.amount_g|pluralize:"s" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.amount_g }}</span></td><td><span class="ingredient-display">{{ row.ingredient.name }}</span><span class="ingredient-edit d-none">{{ row.edit_form.name }}</span></td><td><span class="ingredient-display">{{ row.ingredient.manufacturer|default:"—" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.manufacturer }}</span></td>        <td><span class="ingredient-display">{{ row.ingredient.form|default:"Sèche" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.form }}</span></td><td><span class="ingredient-display">{{ row.ingredient.attenuation }} %</span><span class="ingredient-edit d-none">{{ row.edit_form.attenuation }}</span></td><td><span class="ingredient-display">{% if row.ingredient.for_bottling %}Oui{% else %}Non{% endif %}</span><span class="ingredient-edit d-none">{{ row.edit_form.for_bottling }}</span></td><td class="text-nowrap"><span class="ingredient-display"><button class="btn btn-sm btn-outline-secondary" type="button" data-inline-edit="edit-yeast-{{ row.ingredient.pk }}" aria-label="Modifier {{ row.ingredient.name }}" title="Modifier"><i class="bi bi-pencil" aria-hidden="true"></i></button></span><span class="ingredient-edit d-none"><button class="btn btn-sm btn-outline-primary" type="submit" form="edit-yeast-{{ row.ingredient.pk }}" aria-label="Enregistrer {{ row.ingredient.name }}" title="Enregistrer"><i class="bi bi-check-lg" aria-hidden="true"></i></button> <button class="btn btn-sm btn-outline-secondary" type="button" data-inline-cancel="edit-yeast-{{ row.ingredient.pk }}" aria-label="Annuler" title="Annuler"><i class="bi bi-x-lg" aria-hidden="true"></i></button></span><form class="d-inline ingredient-display" method="post" action="{% url 'recipes:ingredient_delete' row.ingredient.pk %}" onsubmit="return confirm('Supprimer cet ingrédient ?');">{% csrf_token %}<button class="btn btn-sm btn-outline-danger" type="submit" aria-label="Supprimer l'ingrédient" title="Supprimer"><i class="bi bi-dash-lg" aria-hidden="true"></i></button></form></td></tr><form id="edit-yeast-{{ row.ingredient.pk }}" method="post" action="{% url 'recipes:ingredient_edit' row.ingredient.pk %}">{% csrf_token %}</form>{% endfor %}</tbody></table></div>{% else %}<p class="small text-secondary">Aucune levure ajoutée.</p>{% endif %}
-        <form id="add-yeast" class="collapse border-top pt-3 mt-3" method="post" action="{% url 'recipes:ingredient_create' recipe.pk %}">
-          {% csrf_token %}<input type="hidden" name="kind" value="yeast"><h3 class="h6">Ajouter une levure</h3>
-          <div class="row g-2 align-items-end">{% for field in yeast_form %}<div class="col-md"><label class="form-label small" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div>{% endfor %}<div class="col-md-auto"><button class="btn btn-outline-info" type="submit" aria-label="Ajouter une levure" title="Ajouter"><i class="bi bi-plus-lg" aria-hidden="true"></i></button></div></div>
-        </form>
+        {% if yeast_rows %}<div class="table-responsive mb-3"><table class="table table-sm align-middle mb-0" data-sortable-table data-sort-types="number,text,text,text,number,text"><thead><tr><th>Quantité</th><th>Nom</th><th>Laboratoire</th><th>Forme</th><th>Atténuation</th><th>Embouteillage</th><th></th></tr></thead><tbody>{% for row in yeast_rows %}<tr data-inline-row="edit-yeast-{{ row.ingredient.pk }}"{% if row.edit_form.errors %} class="has-inline-errors"{% endif %}><td><span class="ingredient-display">{{ row.ingredient.amount_g|floatformat:"0" }} paquet{{ row.ingredient.amount_g|pluralize:"s" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.amount_g }}</span></td><td><span class="ingredient-display">{{ row.ingredient.name }}</span><span class="ingredient-edit d-none">{{ row.edit_form.name }}</span></td><td><span class="ingredient-display">{{ row.ingredient.manufacturer|default:"—" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.manufacturer }}</span></td>        <td><span class="ingredient-display">{{ row.ingredient.form|default:"Sèche" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.form }}</span></td><td><span class="ingredient-display">{{ row.ingredient.attenuation }} %</span><span class="ingredient-edit d-none">{{ row.edit_form.attenuation }}</span></td><td><span class="ingredient-display">{% if row.ingredient.for_bottling %}Oui{% else %}Non{% endif %}</span><span class="ingredient-edit d-none">{{ row.edit_form.for_bottling }}</span></td><td class="text-nowrap"><span class="ingredient-display"><button class="btn btn-sm btn-outline-secondary" type="button" data-inline-edit="edit-yeast-{{ row.ingredient.pk }}" aria-label="Modifier {{ row.ingredient.name }}" title="Modifier"><i class="bi bi-pencil" aria-hidden="true"></i></button></span><span class="ingredient-edit d-none"><button class="btn btn-sm btn-outline-primary" type="submit" form="edit-yeast-{{ row.ingredient.pk }}" aria-label="Enregistrer {{ row.ingredient.name }}" title="Enregistrer"><i class="bi bi-check-lg" aria-hidden="true"></i></button> <button class="btn btn-sm btn-outline-secondary" type="button" data-inline-cancel="edit-yeast-{{ row.ingredient.pk }}" aria-label="Annuler" title="Annuler"><i class="bi bi-x-lg" aria-hidden="true"></i></button></span><form class="d-inline ingredient-display" method="post" action="{% url 'recipes:ingredient_delete' row.ingredient.pk %}" onsubmit="return confirm('Supprimer cet ingrédient ?');">{% csrf_token %}<button class="btn btn-sm btn-outline-danger" type="submit" aria-label="Supprimer l'ingrédient" title="Supprimer"><i class="bi bi-dash-lg" aria-hidden="true"></i></button></form></td></tr><form id="edit-yeast-{{ row.ingredient.pk }}" method="post" action="{% url 'recipes:ingredient_edit' row.ingredient.pk %}">{% csrf_token %}</form>{% endfor %}</tbody></table></div>{% else %}<p class="small text-secondary">Aucune levure ajoutée.</p>{% endif %}
       </div>
     </section>
   </div>
 </div>
-<section class="card border-secondary-subtle mt-4">
-  <div class="card-header bg-secondary-subtle d-flex justify-content-between align-items-center"><h2 class="h5 mb-0"><i class="bi bi-stars me-2" aria-hidden="true"></i>Divers</h2><div class="d-flex align-items-center gap-2"><span class="badge text-bg-secondary">{{ other_rows|length }}</span><button class="btn btn-sm btn-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#add-other" aria-label="Ajouter un ingrédient divers" title="Ajouter"><i class="bi bi-plus-lg" aria-hidden="true"></i></button></div></div>
+<section class="card border-secondary-subtle mt-4" data-drop-zone="other">
+  <div class="card-header bg-secondary-subtle d-flex justify-content-between align-items-center"><h2 class="h5 mb-0"><i class="bi bi-stars me-2" aria-hidden="true"></i>Divers</h2><div class="d-flex align-items-center gap-2"><span class="badge text-bg-secondary">{{ other_rows|length }}</span><button class="btn btn-sm btn-secondary" type="button" data-bs-toggle="offcanvas" data-bs-target="#recipe-inventory" data-inventory-kind="other" aria-controls="recipe-inventory" aria-label="Ajouter un ingrédient divers depuis le stock" title="Ajouter depuis le stock"><i class="bi bi-plus-lg" aria-hidden="true"></i></button></div></div>
   <div class="card-body">
-    {% if other_rows %}<div class="table-responsive mb-3"><table class="table table-sm align-middle mb-0"><thead><tr><th>Quantité</th><th>Nom</th><th>Type</th><th>Ajout</th><th>Notes</th><th></th></tr></thead><tbody>{% for row in other_rows %}<tr data-inline-row="edit-other-{{ row.ingredient.pk }}"><td><span class="ingredient-display">{{ row.ingredient.amount_g|floatformat:"1" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.amount_g }}</span></td><td><span class="ingredient-display">{{ row.ingredient.name }}</span><span class="ingredient-edit d-none">{{ row.edit_form.name }}</span></td><td><span class="ingredient-display">{{ row.ingredient.form|default:"—" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.form }}</span></td><td><span class="ingredient-display">{{ row.ingredient.addition|default:"—" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.addition }}</span></td><td><span class="ingredient-display">{{ row.ingredient.notes|default:"—" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.notes }}</span></td><td class="text-nowrap"><span class="ingredient-display"><button class="btn btn-sm btn-outline-secondary" type="button" data-inline-edit="edit-other-{{ row.ingredient.pk }}" aria-label="Modifier {{ row.ingredient.name }}" title="Modifier"><i class="bi bi-pencil" aria-hidden="true"></i></button></span><span class="ingredient-edit d-none"><button class="btn btn-sm btn-outline-primary" type="submit" form="edit-other-{{ row.ingredient.pk }}" aria-label="Enregistrer" title="Enregistrer"><i class="bi bi-check-lg" aria-hidden="true"></i></button> <button class="btn btn-sm btn-outline-secondary" type="button" data-inline-cancel="edit-other-{{ row.ingredient.pk }}" aria-label="Annuler" title="Annuler"><i class="bi bi-x-lg" aria-hidden="true"></i></button></span><form class="d-inline ingredient-display" method="post" action="{% url 'recipes:ingredient_delete' row.ingredient.pk %}" onsubmit="return confirm('Supprimer cet ingrédient ?');">{% csrf_token %}<button class="btn btn-sm btn-outline-danger" type="submit" aria-label="Supprimer {{ row.ingredient.name }}" title="Supprimer"><i class="bi bi-dash-lg" aria-hidden="true"></i></button></form></td></tr><form id="edit-other-{{ row.ingredient.pk }}" method="post" action="{% url 'recipes:ingredient_edit' row.ingredient.pk %}">{% csrf_token %}</form>{% endfor %}</tbody></table></div>{% else %}<p class="small text-secondary">Aucun ingrédient divers ajouté.</p>{% endif %}
-    <form id="add-other" class="collapse border-top pt-3 mt-3" method="post" action="{% url 'recipes:ingredient_create' recipe.pk %}">{% csrf_token %}<input type="hidden" name="kind" value="other"><h3 class="h6">Ajouter un ingrédient divers</h3><div class="row g-2 align-items-end">{% for field in other_form %}<div class="col-md"><label class="form-label small" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div>{% endfor %}<div class="col-md-auto"><button class="btn btn-outline-secondary" type="submit" aria-label="Ajouter" title="Ajouter"><i class="bi bi-plus-lg" aria-hidden="true"></i></button></div></div></form>
+    {% if other_rows %}<div class="table-responsive mb-3"><table class="table table-sm align-middle mb-0" data-sortable-table data-sort-types="number,text,text,text,text"><thead><tr><th>Quantité</th><th>Nom</th><th>Type</th><th>Ajout</th><th>Notes</th><th></th></tr></thead><tbody>{% for row in other_rows %}<tr data-inline-row="edit-other-{{ row.ingredient.pk }}"><td><span class="ingredient-display">{{ row.ingredient.amount_g|floatformat:"1" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.amount_g }}</span></td><td><span class="ingredient-display">{{ row.ingredient.name }}</span><span class="ingredient-edit d-none">{{ row.edit_form.name }}</span></td><td><span class="ingredient-display">{{ row.ingredient.form|default:"—" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.form }}</span></td><td><span class="ingredient-display">{{ row.ingredient.addition|default:"—" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.addition }}</span></td><td><span class="ingredient-display">{{ row.ingredient.notes|default:"—" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.notes }}</span></td><td class="text-nowrap"><span class="ingredient-display"><button class="btn btn-sm btn-outline-secondary" type="button" data-inline-edit="edit-other-{{ row.ingredient.pk }}" aria-label="Modifier {{ row.ingredient.name }}" title="Modifier"><i class="bi bi-pencil" aria-hidden="true"></i></button></span><span class="ingredient-edit d-none"><button class="btn btn-sm btn-outline-primary" type="submit" form="edit-other-{{ row.ingredient.pk }}" aria-label="Enregistrer" title="Enregistrer"><i class="bi bi-check-lg" aria-hidden="true"></i></button> <button class="btn btn-sm btn-outline-secondary" type="button" data-inline-cancel="edit-other-{{ row.ingredient.pk }}" aria-label="Annuler" title="Annuler"><i class="bi bi-x-lg" aria-hidden="true"></i></button></span><form class="d-inline ingredient-display" method="post" action="{% url 'recipes:ingredient_delete' row.ingredient.pk %}" onsubmit="return confirm('Supprimer cet ingrédient ?');">{% csrf_token %}<button class="btn btn-sm btn-outline-danger" type="submit" aria-label="Supprimer {{ row.ingredient.name }}" title="Supprimer"><i class="bi bi-dash-lg" aria-hidden="true"></i></button></form></td></tr><form id="edit-other-{{ row.ingredient.pk }}" method="post" action="{% url 'recipes:ingredient_edit' row.ingredient.pk %}">{% csrf_token %}</form>{% endfor %}</tbody></table></div>{% else %}<p class="small text-secondary">Aucun ingrédient divers ajouté.</p>{% endif %}
   </div>
 </section>
 <hr class="my-4">
@@ -329,13 +381,11 @@
           <div class="boil-event">
             <span class="boil-event-icon add"><i class="bi bi-plus-lg" aria-hidden="true"></i></span>
             <span class="boil-event-text">Ajouter : <strong>{{ event.row.ingredient.amount_g }} g de {{ event.row.ingredient.name }}</strong>{% if event.row.ingredient.addition %} <span class="small">({{ event.row.ingredient.addition }})</span>{% endif %}</span>
-            <a class="btn btn-sm btn-outline-secondary ms-auto" href="{% url 'recipes:ingredient_edit' event.row.ingredient.pk %}" aria-label="Modifier {{ event.row.ingredient.name }}" title="Modifier"><i class="bi bi-pencil" aria-hidden="true"></i></a>
           </div>
         {% elif event.type == "cooling_hop" %}
           <div class="boil-event">
             <span class="boil-event-icon add"><i class="bi bi-plus-lg" aria-hidden="true"></i></span>
             <span class="boil-event-text">À <strong>{{ event.row.ingredient.addition_temperature_c }} °C</strong>, ajouter : <strong>{{ event.row.ingredient.amount_g }} g de {{ event.row.ingredient.name }}</strong></span>
-            <a class="btn btn-sm btn-outline-secondary ms-auto" href="{% url 'recipes:ingredient_edit' event.row.ingredient.pk %}" aria-label="Modifier {{ event.row.ingredient.name }}" title="Modifier"><i class="bi bi-pencil" aria-hidden="true"></i></a>
           </div>
         {% else %}
           <div class="boil-event">
@@ -410,29 +460,192 @@
 </section>
 {{ catalog_data|json_script:"catalog-data" }}
 <script>
-  const catalogData = JSON.parse(document.getElementById("catalog-data").textContent);
-  const catalogById = Object.fromEntries(catalogData.map((item) => [String(item.id), item]));
-  document.querySelectorAll('select[name="catalog"]').forEach((select) => {
-    const nameField = select.form?.querySelector('[data-catalog-name="true"]');
-    const nameContainer = nameField?.closest(".col-md");
-    const updateNameVisibility = () => {
-      if (nameContainer) nameContainer.classList.toggle("d-none", Boolean(select.value));
-    };
-    updateNameVisibility();
-    select.addEventListener("change", () => {
-      const item = catalogById[select.value];
-      const form = select.form;
-      if (item) {
-        for (const fieldName of ["name", "manufacturer", "form", "color_ebc", "potential_yield", "alpha_acid", "attenuation"]) {
-          const field = form.elements[fieldName];
-          if (field && item[fieldName] !== undefined) field.value = item[fieldName];
-        }
-      }
-      updateNameVisibility();
+  (() => {
+    const modalElement = document.getElementById("inventory-add-modal");
+    if (!modalElement) return;
+    const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
+    const form = document.getElementById("inventory-add-form");
+    const kindInput = document.getElementById("inventory-kind");
+    const catalogInput = document.getElementById("inventory-catalog");
+    const label = document.getElementById("inventory-catalog-label");
+    const fields = [...modalElement.querySelectorAll(".inventory-field")];
+    const inventoryPanel = document.getElementById("recipe-inventory");
+    const inventoryGroups = [...inventoryPanel.querySelectorAll("[data-inventory-kind]")];
+    inventoryPanel.addEventListener("show.bs.offcanvas", (event) => {
+      const kind = event.relatedTarget?.dataset.inventoryKind;
+      inventoryGroups.forEach((group) => {
+        const visible = !kind || group.dataset.inventoryKind === kind;
+        group.hidden = !visible;
+        if (group.previousElementSibling?.matches("h3")) group.previousElementSibling.hidden = !visible;
+      });
     });
+    const open = (kind, catalogId, catalogName) => {
+      kindInput.value = kind;
+      catalogInput.value = catalogId;
+      label.textContent = catalogName || "Fiche de stock sélectionnée";
+      fields.forEach((field) => {
+        const active = field.classList.contains(`inventory-field-${kind}`);
+        field.classList.toggle("d-none", !active);
+        field.querySelectorAll("input, select, textarea").forEach((input) => { input.disabled = !active; });
+      });
+      form.reset();
+      kindInput.value = kind;
+      catalogInput.value = catalogId;
+      label.textContent = catalogName || "Fiche de stock sélectionnée";
+      modal.show();
+    };
+    document.querySelectorAll(".inventory-add-button").forEach((button) => {
+      button.addEventListener("click", () => open(button.dataset.kind, button.dataset.catalogId, button.dataset.catalogName));
+    });
+    document.querySelectorAll(".inventory-stock-card").forEach((card) => {
+      card.addEventListener("dragstart", (event) => {
+        event.dataTransfer.setData("text/plain", JSON.stringify({
+          kind: card.dataset.kind, catalogId: card.dataset.catalogId, catalogName: card.querySelector(".fw-semibold")?.textContent,
+        }));
+      });
+    });
+    document.querySelectorAll("[data-drop-zone]").forEach((zone) => {
+      zone.addEventListener("dragover", (event) => {
+        if (event.dataTransfer.types.includes("text/plain")) { event.preventDefault(); zone.classList.add("inventory-drop-active"); }
+      });
+      zone.addEventListener("dragleave", () => zone.classList.remove("inventory-drop-active"));
+      zone.addEventListener("drop", (event) => {
+        event.preventDefault();
+        zone.classList.remove("inventory-drop-active");
+        try {
+          const item = JSON.parse(event.dataTransfer.getData("text/plain"));
+          if (item.kind === zone.dataset.dropZone) open(item.kind, item.catalogId, item.catalogName);
+        } catch (_) {}
+      });
+    });
+  })();
+</script>
+<script>
+  document.querySelectorAll("[data-sortable-table]").forEach((table) => {
+    const types = (table.dataset.sortTypes || "").split(",");
+    const headers = [...table.tHead.rows[0].cells];
+    const tableKind = table.closest("[data-drop-zone]")?.dataset.dropZone || table.dataset.sortTypes;
+    const sortStorageKey = `recipe-sort:${window.location.pathname}:${tableKind}`;
+    const rows = () => [...table.tBodies[0].querySelectorAll(":scope > tr")];
+    const valueFor = (row, index, type) => {
+      const text = row.cells[index]?.textContent.trim() || "";
+      if (type !== "number") return text.toLocaleLowerCase("fr");
+      const match = text.replace(/\s/g, "").replace(",", ".").match(/-?\d+(?:\.\d+)?/);
+      return match ? Number(match[0]) : Number.POSITIVE_INFINITY;
+    };
+    const sortBy = (index, savedDirection = null) => {
+      const header = headers[index];
+      const descending = savedDirection === null
+        ? header.getAttribute("aria-sort") === "ascending"
+        : savedDirection === -1;
+      headers.forEach((cell) => cell.removeAttribute("aria-sort"));
+      header.setAttribute("aria-sort", descending ? "descending" : "ascending");
+      const direction = descending ? -1 : 1;
+      rows()
+        .map((row, position) => ({ row, position, value: valueFor(row, index, types[index] || "text") }))
+        .sort((left, right) => {
+          const comparison = typeof left.value === "number" && typeof right.value === "number"
+            ? left.value - right.value
+            : left.value.localeCompare(right.value, "fr", { numeric: true, sensitivity: "base" });
+          return comparison === 0 ? left.position - right.position : comparison * direction;
+        })
+        .forEach(({ row }) => table.tBodies[0].append(row));
+      if (savedDirection === null) {
+        window.localStorage.setItem(sortStorageKey, JSON.stringify({ index, direction }));
+      }
+    };
+    headers.forEach((header, index) => {
+      if (!types[index]) return;
+      header.dataset.sortType = types[index];
+      header.setAttribute("role", "button");
+      header.setAttribute("tabindex", "0");
+      header.addEventListener("click", () => sortBy(index));
+      header.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          sortBy(index);
+        }
+      });
+    });
+    const savedSort = window.localStorage.getItem(sortStorageKey);
+    if (savedSort) {
+      try {
+        const { index, direction } = JSON.parse(savedSort);
+        if (types[index] && (direction === 1 || direction === -1)) sortBy(index, direction);
+      } catch (error) {
+        window.localStorage.removeItem(sortStorageKey);
+      }
+    }
   });
 </script>
 <script>
+  const catalogData = JSON.parse(document.getElementById("catalog-data").textContent);
+  const catalogById = Object.fromEntries(catalogData.map((item) => [String(item.id), item]));
+  document.querySelectorAll('select[data-catalog-name="true"]').forEach((select) => {
+    const preview = document.createElement("div");
+    preview.className = "ingredient-stock-preview small text-secondary mt-1";
+    select.closest(".col-md")?.append(preview);
+    const updatePreview = () => {
+      const item = catalogById[select.value];
+      if (!item) {
+        preview.textContent = "Choisissez une fiche déjà présente dans le stock.";
+        return;
+      }
+      const details = [item.form, item.manufacturer].filter(Boolean).join(" · ");
+      const technical = item.color_ebc && item.color_ebc !== "None"
+        ? `${item.color_ebc} EBC`
+        : item.alpha_acid && item.alpha_acid !== "None"
+          ? `${item.alpha_acid} % alpha`
+          : item.attenuation && item.attenuation !== "None"
+            ? `${item.attenuation} % atténuation`
+            : "";
+      preview.textContent = [details, technical].filter(Boolean).join(" · ");
+    };
+    updatePreview();
+    select.addEventListener("change", updatePreview);
+  });
+</script>
+<script>
+  (() => {
+    const scrollKey = `recipe-scroll:${window.location.pathname}`;
+    const savedScroll = window.sessionStorage.getItem(scrollKey);
+    if (savedScroll !== null) {
+      window.sessionStorage.removeItem(scrollKey);
+      window.addEventListener("pageshow", () => {
+        window.requestAnimationFrame(() => window.scrollTo(0, Number(savedScroll)));
+      }, { once: true });
+    }
+    document.querySelectorAll("form").forEach((form) => {
+      form.addEventListener("submit", () => {
+        window.sessionStorage.setItem(scrollKey, String(window.scrollY));
+      });
+    });
+  })();
+</script>
+<script>
+  document.querySelectorAll("[data-inline-row]").forEach((row) => {
+    const quantityCell = row.cells[0];
+    const display = quantityCell?.querySelector(".ingredient-display");
+    const edit = quantityCell?.querySelector(".ingredient-edit");
+    const input = edit?.querySelector("input");
+    if (!quantityCell || !display || !edit || !input) return;
+    const activateQuantityEdit = (focus = true) => {
+      row.classList.add("quantity-editing");
+      if (focus) {
+        input.focus();
+        input.select();
+      }
+    };
+    quantityCell.addEventListener("dblclick", () => activateQuantityEdit());
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        input.form?.requestSubmit();
+      }
+    });
+    if (row.classList.contains("has-inline-errors")) activateQuantityEdit(false);
+  });
+
   document.querySelectorAll("[data-inline-edit], [data-inline-cancel]").forEach((button) => {
     button.addEventListener("click", () => {
       const row = document.querySelector(`[data-inline-row="${button.dataset.inlineEdit || button.dataset.inlineCancel}"]`);
@@ -440,11 +653,6 @@
       row.querySelectorAll(".ingredient-display, .ingredient-edit").forEach((element) => {
         element.classList.toggle("d-none");
       });
-    });
-  });
-  document.querySelectorAll(".has-inline-errors").forEach((row) => {
-    row.querySelectorAll(".ingredient-display, .ingredient-edit").forEach((element) => {
-      element.classList.toggle("d-none");
     });
   });
 </script>
@@ -525,27 +733,6 @@
 
   waterVolume.addEventListener("input", updateWater);
   updateWater();
-</script>
-<script>
-  const ebcSwatch = document.getElementById("ebc-color-swatch");
-  const estimatedEbc = {% if estimated_ebc is not None %}{{ estimated_ebc|unlocalize }}{% else %}null{% endif %};
-  const ebcPalette = [
-    [0, [252, 235, 182]],
-    [4, [248, 225, 122]],
-    [8, [245, 200, 76]],
-    [12, [233, 165, 46]],
-    [20, [196, 106, 23]],
-    [30, [154, 70, 18]],
-    [40, [107, 47, 11]],
-    [50, [74, 30, 8]],
-    [60, [45, 18, 5]],
-    [80, [22, 10, 3]]
-  ];
-
-  if (estimatedEbc !== null) {
-    const color = ebcPalette.find(([ebc]) => estimatedEbc <= ebc)?.[1] || ebcPalette.at(-1)[1];
-    ebcSwatch.style.backgroundColor = `rgb(${color.join(", ")})`;
-  }
 </script>
 <script>
   const fermentationList = document.getElementById("fermentation-steps-list");

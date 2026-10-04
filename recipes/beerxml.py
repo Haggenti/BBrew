@@ -163,6 +163,8 @@ def import_recipe(payload: bytes) -> dict:
     for node in recipe_node.findall("./YEASTS/YEAST"):
         yeast_name = _value(node, "NAME", "Levure importée")
         product_id = _value(node, "PRODUCT_ID", "")
+        if product_id.strip() in {"-", "—"}:
+            product_id = ""
         recipe["ingredients"].append(
             {
                 "kind": "yeast",

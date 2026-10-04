@@ -1,15 +1,55 @@
 {% extends "base.html" %}
 {% block title %}Catégories BJCP · BBrew{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-start mb-4">
-  <div><h1 class="h2 mb-1"><i class="bi bi-list-stars me-2" aria-hidden="true"></i>Catégories BJCP</h1><p class="text-secondary mb-0">Référentiel des grandes catégories de styles de bière.</p></div>
-  <a class="btn btn-primary" href="{% url 'recipes:category_create' %}"><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>Ajouter</a>
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <div><h1 class="h2 mb-1"><i class="bi bi-list-stars me-2" aria-hidden="true"></i>Catégories BJCP</h1><p class="small text-secondary mb-0">Référentiel des styles de bière.</p></div>
+  <a class="btn btn-primary btn-sm" href="{% url 'recipes:category_create' %}"><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>Ajouter une catégorie</a>
 </div>
 <section class="card">
   <div class="card-body p-0">
-    <div class="table-responsive"><table class="table table-sm align-middle mb-0"><thead><tr><th>Code</th><th>Catégorie</th><th>Fourchettes</th><th>Description</th><th></th></tr></thead><tbody>
-      {% for category in categories %}<tr><td><span class="badge text-bg-secondary">{{ category.code }}</span></td><td>{{ category.name }}</td><td class="small">{% if category.og_min and category.og_max %}OG {{ category.og_min }}–{{ category.og_max }}<br>{% endif %}{% if category.fg_min and category.fg_max %}FG {{ category.fg_min }}–{{ category.fg_max }}<br>{% endif %}{% if category.ibu_min is not None and category.ibu_max is not None %}IBU {{ category.ibu_min }}–{{ category.ibu_max }}<br>{% endif %}{% if category.ebc_min is not None and category.ebc_max is not None %}EBC {{ category.ebc_min }}–{{ category.ebc_max }}<br>{% endif %}{% if category.abv_min is not None and category.abv_max is not None %}ABV {{ category.abv_min }}–{{ category.abv_max }} %{% endif %}{% if not category.og_min and not category.fg_min and category.ibu_min is None and category.ebc_min is None and category.abv_min is None %}—{% endif %}</td><td>{{ category.description|default:"—" }}</td><td class="text-nowrap"><a class="btn btn-sm btn-outline-secondary" href="{% url 'recipes:category_edit' category.pk %}" aria-label="Modifier {{ category.name }}" title="Modifier"><i class="bi bi-pencil" aria-hidden="true"></i></a> <form class="d-inline" method="post" action="{% url 'recipes:category_delete' category.pk %}" onsubmit="return confirm('Supprimer cette catégorie ?');">{% csrf_token %}<button class="btn btn-sm btn-outline-danger" type="submit" aria-label="Supprimer {{ category.name }}" title="Supprimer"><i class="bi bi-dash-lg" aria-hidden="true"></i></button></form></td></tr>{% empty %}<tr><td colspan="5" class="text-secondary p-3">Aucune catégorie définie.</td></tr>{% endfor %}
+    <div class="table-responsive"><table class="table table-sm align-middle mb-0 bjcp-table"><thead class="table-light"><tr><th>Code</th><th>Catégorie</th><th>Fourchettes</th><th>Description</th><th></th></tr></thead><tbody>
+      {% for category in categories %}<tr><td><span class="badge text-bg-secondary">{{ category.code }}</span></td><td class="fw-semibold">{{ category.name }}</td><td class="small"><div class="bjcp-ranges">{% if category.og_min and category.og_max %}<span>OG {{ category.og_min }}–{{ category.og_max }}</span>{% endif %}{% if category.fg_min and category.fg_max %}<span>FG {{ category.fg_min }}–{{ category.fg_max }}</span>{% endif %}{% if category.ibu_min is not None and category.ibu_max is not None %}<span>IBU {{ category.ibu_min }}–{{ category.ibu_max }}</span>{% endif %}{% if category.ebc_min is not None and category.ebc_max is not None %}<span>EBC {{ category.ebc_min }}–{{ category.ebc_max }}</span>{% endif %}{% if category.abv_min is not None and category.abv_max is not None %}<span>ABV {{ category.abv_min }}–{{ category.abv_max }} %</span>{% endif %}{% if not category.og_min and not category.fg_min and category.ibu_min is None and category.ebc_min is None and category.abv_min is None %}<span>—</span>{% endif %}</div></td><td class="small text-secondary">{{ category.description|default:"—" }}</td><td class="text-nowrap"><a class="btn btn-sm btn-outline-secondary" href="{% url 'recipes:category_edit' category.pk %}" aria-label="Modifier {{ category.name }}" title="Modifier"><i class="bi bi-pencil" aria-hidden="true"></i></a> <button class="btn btn-sm btn-outline-primary" type="button" data-copy-ranges="{{ category.pk }}" data-copy-url="{% url 'recipes:category_copy_ranges' category.pk %}" aria-label="Copier les fourchettes de {{ category.name }}" title="Copier les fourchettes"><i class="bi bi-copy" aria-hidden="true"></i></button> <button class="btn btn-sm btn-outline-success" type="button" data-paste-ranges="{{ category.pk }}" aria-label="Coller les fourchettes dans {{ category.name }}" title="Coller les fourchettes" disabled><i class="bi bi-clipboard-check" aria-hidden="true"></i></button> <form class="d-inline" method="post" action="{% url 'recipes:category_delete' category.pk %}" onsubmit="return confirm('Supprimer cette catégorie ?');">{% csrf_token %}<button class="btn btn-sm btn-outline-danger" type="submit" aria-label="Supprimer {{ category.name }}" title="Supprimer"><i class="bi bi-dash-lg" aria-hidden="true"></i></button></form></td></tr>{% empty %}<tr><td colspan="5" class="text-secondary p-3">Aucune catégorie définie.</td></tr>{% endfor %}
     </tbody></table></div>
   </div>
 </section>
+<style>
+  .bjcp-table th, .bjcp-table td { padding: .45rem .6rem; }
+  .bjcp-ranges { display: flex; flex-wrap: wrap; gap: .1rem .9rem; }
+  .bjcp-ranges span { white-space: nowrap; }
+</style>
+<script>
+  (() => {
+    const storageKey = "bbrew-bjcp-range-clipboard";
+    const csrfToken = document.querySelector("[name='csrfmiddlewaretoken']")?.value;
+    const pasteButtons = document.querySelectorAll("[data-paste-ranges]");
+    const updatePasteButtons = () => {
+      const available = Boolean(window.sessionStorage.getItem(storageKey));
+      pasteButtons.forEach((button) => {
+        button.disabled = !available;
+      });
+    };
+    document.querySelectorAll("[data-copy-ranges]").forEach((button) => {
+      button.addEventListener("click", () => {
+        window.sessionStorage.setItem(storageKey, JSON.stringify({sourceId: button.dataset.copyRanges}));
+        updatePasteButtons();
+        button.title = "Fourchettes copiées";
+      });
+    });
+    pasteButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const clipboard = JSON.parse(window.sessionStorage.getItem(storageKey) || "null");
+        if (!clipboard || !csrfToken) return;
+        const form = document.createElement("form");
+        form.method = "post";
+        form.action = document.querySelector(`[data-copy-ranges][data-copy-url]`)?.dataset.copyUrl || "";
+        if (!form.action) return;
+        form.action = form.action.replace(/\/\d+\/copier-fourchettes\/$/, `/${button.dataset.pasteRanges}/copier-fourchettes/`);
+        form.innerHTML = `<input type="hidden" name="csrfmiddlewaretoken" value="${csrfToken}"><input type="hidden" name="source_id" value="${clipboard.sourceId}">`;
+        document.body.appendChild(form);
+        form.submit();
+      });
+    });
+    updatePasteButtons();
+  })();
+</script>
 {% endblock %}

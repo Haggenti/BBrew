@@ -167,7 +167,8 @@ class EquipmentSettings(models.Model):
     evaporation_l_h = models.DecimalField("évaporation (L/h)", max_digits=5, decimal_places=2, default=15)
     grain_absorption_l_kg = models.DecimalField("absorption des grains (L/kg)", max_digits=5, decimal_places=2, default=0.8)
     dead_space_l = models.DecimalField("volume mort (L)", max_digits=5, decimal_places=2, default=0)
-    mash_efficiency = models.DecimalField("rendement d'empâtage (%)", max_digits=5, decimal_places=1, default=75)
+    mash_efficiency = models.DecimalField("rendement de brassage (%)", max_digits=5, decimal_places=1, default=75)
+    style_tolerance_percent = models.DecimalField("tolérance des styles (%)", max_digits=5, decimal_places=1, default=10)
 
     def __str__(self):
         return "Paramètres de brassage"
@@ -193,6 +194,7 @@ class ShoppingItem(models.Model):
     planned_quantity = models.PositiveIntegerField("quantité prévue", null=True, blank=True)
     unit = models.CharField("unité", max_length=30, blank=True)
     received_quantity = models.PositiveIntegerField("quantité reçue", null=True, blank=True)
+    is_received = models.BooleanField("réceptionné", default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

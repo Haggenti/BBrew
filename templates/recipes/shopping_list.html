@@ -6,16 +6,24 @@
     <h1 class="h2 mb-1"><i class="bi bi-cart3 me-2" aria-hidden="true"></i>Liste de courses</h1>
     <p class="text-secondary mb-0">Notez les articles à acheter pour vos prochains brassins.</p>
   </div>
-  {% if items %}
-  <form method="post" action="{% url 'recipes:shopping_list_clear' %}" onsubmit="return confirm('Vider toute la liste de courses ?');">
-    {% csrf_token %}
-    <button class="btn btn-outline-danger" type="submit"><i class="bi bi-trash me-1" aria-hidden="true"></i>Vider la liste</button>
-  </form>
-  {% endif %}
 </div>
 
-<section class="card">
-  <div class="card-body">
+<div class="row g-4">
+  <div class="col-lg-4">
+    <section class="card h-100">
+      <div class="card-header bg-light d-flex justify-content-between align-items-center">
+        <h2 class="h5 mb-0"><i class="bi bi-cart3 me-2" aria-hidden="true"></i>Liste de courses</h2>
+        <div class="d-flex align-items-center gap-2">
+          <span class="badge text-bg-secondary">{{ todo_items|length }}</span>
+          {% if todo_items %}
+          <form method="post" action="{% url 'recipes:shopping_list_clear' %}" onsubmit="return confirm('Vider la liste de courses ?');">
+            {% csrf_token %}
+            <button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-trash me-1" aria-hidden="true"></i>Vider</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+      <div class="card-body">
     <form method="post" action="{% url 'recipes:shopping_item_create' %}" class="row g-2 mb-4">
       {% csrf_token %}
       <div class="col"><label class="visually-hidden" for="{{ form.name.id_for_label }}">Article à ajouter</label>{{ form.name }}</div>
@@ -23,74 +31,42 @@
       <div class="col-auto">{{ form.unit }}</div>
       <div class="col-auto"><button class="btn btn-primary" type="submit"><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>Ajouter</button></div>
     </form>
-
-    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-      <div class="btn-group btn-group-sm" role="group" aria-label="Filtrer les articles">
-        <a class="btn {% if shopping_status == 'all' %}btn-secondary{% else %}btn-outline-secondary{% endif %}" href="{% url 'recipes:shopping_list' %}?status=all">Tous</a>
-        <a class="btn {% if shopping_status == 'todo' %}btn-secondary{% else %}btn-outline-secondary{% endif %}" href="{% url 'recipes:shopping_list' %}?status=todo">À acheter</a>
-        <a class="btn {% if shopping_status == 'ordered' %}btn-secondary{% else %}btn-outline-secondary{% endif %}" href="{% url 'recipes:shopping_list' %}?status=ordered">Commandés</a>
+    {% if todo_items %}<div class="list-group">{% for item in todo_items %}{% include "recipes/_shopping_item.html" %}{% endfor %}</div>{% else %}<div class="text-center bg-light border rounded p-4"><p class="text-secondary mb-0">Aucun article à acheter.</p></div>{% endif %}
       </div>
-    </div>
-
-    {% if items %}
-    <div class="list-group">
-      {% for item in items %}
-      <div class="list-group-item d-flex align-items-center gap-3 {% if item.is_ordered %}bg-light{% endif %}">
-        <form method="post" action="{% url 'recipes:shopping_item_toggle' item.pk %}" class="m-0">
-          {% csrf_token %}
-          <button class="btn btn-sm {% if item.is_ordered %}btn-success{% else %}btn-outline-secondary{% endif %}" type="submit" aria-label="{% if item.is_ordered %}Marquer {{ item.name }} comme non commandé{% else %}Marquer {{ item.name }} comme commandé{% endif %}" title="{% if item.is_ordered %}Non commandé{% else %}Commandé{% endif %}">
-            <i class="bi {% if item.is_ordered %}bi-check-lg{% else %}bi-circle{% endif %}" aria-hidden="true"></i>
-          </button>
-        </form>
-        <span class="flex-grow-1 {% if item.is_ordered %}text-decoration-line-through text-secondary{% endif %}">{{ item.name }}{% if item.planned_quantity %}<small class="d-block text-secondary">Prévu : {{ item.planned_quantity }} {{ item.unit }}</small>{% endif %}{% if item.received_quantity %}<small class="d-block {% if item.is_ordered %}text-success{% else %}text-warning{% endif %}"><i class="bi bi-box-seam me-1" aria-hidden="true"></i>Reçu : {{ item.received_quantity }}{% if item.unit %} {{ item.unit }}{% endif %}{% if item.planned_quantity and not item.is_ordered %} · Reste : {{ item.remaining_quantity }} {{ item.unit }}{% endif %}</small>{% endif %}{% if item.source_brews.all %}<small class="d-block text-secondary"><i class="bi bi-beer me-1" aria-hidden="true"></i>Pour : {% for brew in item.source_brews.all %}<a href="{% url 'recipes:brew_detail' brew.pk %}">{{ brew.recipe_name }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}</small>{% endif %}</span>
-        <button class="btn btn-sm btn-outline-success" type="button" data-bs-toggle="collapse" data-bs-target="#receive-{{ item.pk }}" aria-label="Intégrer {{ item.name }} au stock" title="{% if item.is_ordered %}Intégrer au stock{% else %}Marquez d’abord l’article comme commandé{% endif %}" {% if not item.is_ordered %}disabled{% endif %}><i class="bi bi-box-arrow-in-down" aria-hidden="true"></i></button>
-        <form id="receive-{{ item.pk }}" class="collapse{% if not item.is_ordered %} d-none{% endif %}" method="post" action="{% url 'recipes:shopping_item_receive' item.pk %}">
-          {% csrf_token %}
-          <div class="input-group input-group-sm">
-            <select class="form-select" name="catalog_id" aria-label="Fiche de stock pour {{ item.name }}" required>
-              <option value="">Fiche de stock</option>
-              {% for catalog in catalog_items %}<option value="{{ catalog.pk }}" data-kind="{{ catalog.kind }}"{% if item.catalog_match and item.catalog_match.pk == catalog.pk %} selected{% endif %}>{{ catalog.name }}</option>{% endfor %}
-              <option value="new">Créer une nouvelle fiche</option>
-            </select>
-            <select class="form-select d-none" name="new_kind" data-new-kind aria-label="Type de la nouvelle fiche">
-              <option value="">Type</option>
-              {% for kind_value, kind_label in catalog_kinds %}<option value="{{ kind_value }}" data-kind="{{ kind_value }}">{{ kind_label }}</option>{% endfor %}
-            </select>
-            <select class="form-select d-none" data-quantity-preset aria-label="Quantité usuelle">
-              <option value="">Quantité usuelle</option>
-            </select>
-            <input class="form-control" type="number" name="quantity" min="1" step="1" value="{{ item.planned_quantity|default:'' }}" placeholder="Quantité" aria-label="Quantité reçue pour {{ item.name }}" required>
-            <button class="btn btn-success" type="submit" title="Ajouter au stock"><i class="bi bi-check-lg" aria-hidden="true"></i></button>
-          </div>
-        </form>
-        <form method="post" action="{% url 'recipes:shopping_item_delete' item.pk %}" class="m-0" onsubmit="return confirm('Supprimer {{ item.name|escapejs }} de la liste de courses ?');">
-          {% csrf_token %}
-          <button class="btn btn-sm btn-outline-danger" type="submit" aria-label="Supprimer {{ item.name }}" title="Supprimer"><i class="bi bi-trash" aria-hidden="true"></i></button>
-        </form>
-      </div>
-      {% endfor %}
-    </div>
-    {% else %}
-    <div class="text-center bg-light border rounded p-4 my-4">
-      <p class="text-secondary mb-3">La liste de courses est vide.</p>
-      <p class="small text-secondary mb-0">Ajoutez un article ci-dessus ou créez une liste depuis un brassin dont le stock est insuffisant.</p>
-    </div>
-    {% endif %}
+    </section>
   </div>
-</section>
+  <div class="col-lg-4">
+    <section class="card h-100">
+      <div class="card-header bg-primary-subtle d-flex justify-content-between align-items-center">
+        <h2 class="h5 mb-0"><i class="bi bi-truck me-2" aria-hidden="true"></i>Commande en cours</h2>
+        <span class="badge text-bg-primary">{{ ordered_items|length }}</span>
+      </div>
+      <div class="card-body">
+        {% if ordered_items %}<div class="list-group">{% for item in ordered_items %}{% include "recipes/_shopping_item.html" %}{% endfor %}</div>{% else %}<div class="text-center bg-light border rounded p-4"><p class="text-secondary mb-0">Aucune commande en cours.</p></div>{% endif %}
+      </div>
+    </section>
+  </div>
+  <div class="col-lg-4">
+    <section class="card h-100">
+      <div class="card-header bg-success-subtle d-flex justify-content-between align-items-center">
+        <h2 class="h5 mb-0"><i class="bi bi-box-seam me-2" aria-hidden="true"></i>À intégrer au stock</h2>
+        <span class="badge text-bg-success">{{ received_items|length }}</span>
+      </div>
+      <div class="card-body">
+        {% if received_items %}<div class="list-group">{% for item in received_items %}{% include "recipes/_shopping_item.html" %}{% endfor %}</div>{% else %}<div class="text-center bg-light border rounded p-4"><p class="text-secondary mb-0">Aucune commande en attente d’intégration.</p></div>{% endif %}
+      </div>
+    </section>
+  </div>
+</div>
 {{ shopping_quantity_presets|json_script:"shopping-quantity-presets" }}
 <script>
   const presetsByKind = JSON.parse(document.getElementById("shopping-quantity-presets").textContent);
-  document.querySelectorAll("[data-new-kind]").forEach((kindSelect) => {
-    const form = kindSelect.closest("form");
-    const catalogSelect = form.querySelector("[name='catalog_id']");
+  document.querySelectorAll("[data-integration-form]").forEach((form) => {
+    const kindSelect = form.querySelector("[data-new-kind]");
     const quantityInput = form.querySelector("[name='quantity']");
     const quantityPreset = form.querySelector("[data-quantity-preset]");
     const selectedKind = () => {
-      if (catalogSelect.value === "new") {
-        return kindSelect.value;
-      }
-      return catalogSelect.selectedOptions[0]?.dataset.kind || "";
+      return form.dataset.catalogKind || kindSelect?.value || "";
     };
     const updateQuantityOptions = () => {
       const kind = selectedKind();
@@ -101,20 +77,13 @@
       quantityInput.placeholder = kind === "yeast" ? "Nombre de paquets" : "Quantité";
       quantityInput.setAttribute("aria-label", kind === "yeast" ? "Nombre de paquets reçus" : "Quantité reçue");
     };
-    const updateKindVisibility = () => {
-      const isNew = catalogSelect.value === "new";
-      kindSelect.classList.toggle("d-none", !isNew);
-      kindSelect.required = isNew;
-      updateQuantityOptions();
-    };
-    catalogSelect.addEventListener("change", updateKindVisibility);
-    kindSelect.addEventListener("change", updateQuantityOptions);
+    kindSelect?.addEventListener("change", updateQuantityOptions);
     quantityPreset.addEventListener("change", () => {
       if (quantityPreset.value) {
         quantityInput.value = quantityPreset.value;
       }
     });
-    updateKindVisibility();
+    updateQuantityOptions();
   });
 </script>
 {% endblock %}

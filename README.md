@@ -4,7 +4,7 @@ Application de conception de recettes de bière basée sur Django, SQLite,
 Django Templates, HTMX et Bootstrap.
 
 BBrew permet de gérer les recettes et leurs versions, les paliers
-d'empâtage, les brassins, le stock d'ingrédients et de consommables, ainsi
+de brassage, les brassins, le stock d'ingrédients et de consommables, ainsi
 que la liste de courses. Les recettes peuvent être importées et exportées au
 format BeerXML.
 
@@ -32,7 +32,9 @@ deactivate
 ## Utilisation
 
 - **Recettes** : créer une recette, gérer ses ingrédients, ses paliers,
-  ses phases de fermentation et ses versions.
+  ses phases de fermentation et ses versions. Les ingrédients d'une recette
+  sont sélectionnés parmi les fiches du stock ; l'import crée automatiquement
+  les fiches manquantes.
 - **Stock** : gérer les malts, houblons, levures, ingrédients divers et
   consommables comme les capsules.
 - **Brassins** : sélectionner la version d'une recette, saisir les mesures

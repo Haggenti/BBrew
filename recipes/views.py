@@ -60,8 +60,7 @@ def dashboard(request):
     stock_alert_count = sum(
         1
         for item in IngredientCatalog.objects.all()
-        if item.quantity_available <= 0
-        or planned_needs.get(item.pk, {}).get("required", 0) > item.quantity_available
+        if planned_needs.get(item.pk, {}).get("required", 0) > item.quantity_available
     )
     dashboard = {
         "recipe_count": Recipe.objects.count(),
@@ -156,14 +155,7 @@ def brew_list(request):
 
 
 def shopping_list(request):
-    status = request.GET.get("status", "all")
     items_query = ShoppingItem.objects.select_related("catalog").prefetch_related("source_brews")
-    if status == "todo":
-        items_query = items_query.filter(is_ordered=False)
-    elif status == "ordered":
-        items_query = items_query.filter(is_ordered=True)
-    else:
-        status = "all"
     items = list(items_query)
     catalog_items = IngredientCatalog.objects.all().order_by("kind", "name")
     catalog_by_name = {item.name.casefold(): item for item in catalog_items}
@@ -179,6 +171,15 @@ def shopping_list(request):
         "recipes/shopping_list.html",
         {
             "items": items,
+            "todo_items": [item for item in items if not item.is_ordered],
+            "ordered_items": [
+                item for item in items
+                if item.is_ordered and not item.is_received and not item.received_quantity
+            ],
+            "received_items": [
+                item for item in items
+                if item.is_ordered and (item.is_received or item.received_quantity)
+            ],
             "form": ShoppingItemForm(),
             "catalog_items": catalog_items,
             "catalog_kinds": IngredientCatalog.Kind.choices,
@@ -186,7 +187,6 @@ def shopping_list(request):
                 kind: rules["quantity_presets"]
                 for kind, rules in CATALOG_KIND_RULES.items()
             },
-            "shopping_status": status,
         },
     )
 
@@ -205,6 +205,18 @@ def shopping_item_toggle(request, pk):
     item = get_object_or_404(ShoppingItem, pk=pk)
     item.is_ordered = not item.is_ordered
     item.save(update_fields=["is_ordered"])
+    return redirect("recipes:shopping_list")
+
+
+@require_POST
+def shopping_item_mark_received(request, pk):
+    item = get_object_or_404(ShoppingItem, pk=pk)
+    if not item.is_ordered:
+        messages.error(request, f"« {item.name} » doit d’abord être marqué comme commandé.")
+        return redirect("recipes:shopping_list")
+    item.is_received = True
+    item.save(update_fields=["is_received"])
+    messages.success(request, f"« {item.name} » est maintenant en attente d’intégration au stock.")
     return redirect("recipes:shopping_list")
 
 
@@ -267,7 +279,7 @@ def shopping_item_receive(request, pk):
 
 @require_POST
 def shopping_list_clear(request):
-    deleted_count, _ = ShoppingItem.objects.all().delete()
+    deleted_count, _ = ShoppingItem.objects.filter(is_ordered=False).delete()
     if deleted_count:
         messages.success(request, "La liste de courses a été vidée.")
     else:
@@ -578,7 +590,6 @@ def database_reset(request):
         "recipes": ("recettes", (Recipe,)),
         "brews": ("brassins", (Brew,)),
         "stock": ("stock", (IngredientCatalog,)),
-        "styles": ("catégories BJCP", (BeerCategory,)),
         "equipment": ("paramètres d’équipement", (EquipmentSettings,)),
     }
     selected = [key for key in request.POST.getlist("reset_section") if key in sections]
@@ -653,6 +664,18 @@ def category_edit(request, pk):
         messages.success(request, "La catégorie a été modifiée.")
         return redirect("recipes:categories")
     return render(request, "recipes/category_form.html", {"form": form, "category": category})
+
+
+@require_POST
+def category_copy_ranges(request, pk):
+    source = get_object_or_404(BeerCategory, pk=request.POST.get("source_id"))
+    target = get_object_or_404(BeerCategory, pk=pk)
+    range_fields = ("og_min", "og_max", "fg_min", "fg_max", "ibu_min", "ibu_max", "ebc_min", "ebc_max", "abv_min", "abv_max")
+    for field in range_fields:
+        setattr(target, field, getattr(source, field))
+    target.save(update_fields=list(range_fields))
+    messages.success(request, f"Les fourchettes de « {source.name} » ont été copiées vers « {target.name} ».")
+    return redirect("recipes:categories")
 
 
 @require_POST
@@ -739,10 +762,31 @@ def catalog_list(request):
         planned_need = planned_needs.get(item.pk, {"required": 0, "unit": "", "brews": []})
         item.planned_required = planned_need["required"]
         item.planned_deficit = max(item.planned_required - item.quantity_available, 0)
-        item.stock_alert = item.quantity_available <= 0 or item.planned_deficit > 0
+        item.stock_alert = item.planned_deficit > 0
         item.planned_brews = planned_need["brews"]
         if item.stock_alert:
             stock_alerts.append(item)
+    stock_alert_brews = []
+    planned_brews = {
+        brew.pk: brew
+        for need in planned_needs.values()
+        for brew in need["brews"]
+    }
+    for brew in planned_brews.values():
+        missing_items = []
+        for requirement in brew_stock_requirements(brew):
+            catalog = requirement["catalog"]
+            if catalog is None or catalog.quantity_available >= requirement["required"]:
+                continue
+            missing_items.append(
+                {
+                    "name": requirement["name"],
+                    "deficit": requirement["required"] - catalog.quantity_available,
+                    "unit": requirement["unit"],
+                }
+            )
+        if missing_items:
+            stock_alert_brews.append({"brew": brew, "missing_items": missing_items})
     if query:
         catalog_items = [item for item in catalog_items if query.casefold() in item.name.casefold()]
     if alerts_only:
@@ -764,6 +808,7 @@ def catalog_list(request):
             "catalog_query": query,
             "alerts_only": alerts_only,
             "stock_alerts": stock_alerts,
+            "stock_alert_brews": stock_alert_brews,
         },
     )
 
@@ -828,6 +873,11 @@ def catalog_add_quantity(request, pk):
 
 def recipe_detail(request, pk, edit_forms=None):
     recipe = get_object_or_404(Recipe, pk=pk)
+    if recipe.category_id is None:
+        default_category = BeerCategory.objects.filter(code="18A").first()
+        if default_category:
+            recipe.category = default_category
+            recipe.save(update_fields=["category"])
     equipment = EquipmentSettings.objects.first() or EquipmentSettings()
     edit_forms = edit_forms or {}
     malts = recipe.ingredients.filter(kind="malt")
@@ -851,22 +901,31 @@ def recipe_detail(request, pk, edit_forms=None):
             (ebc, category.ebc_min, category.ebc_max),
             (abv, category.abv_min, category.abv_max),
         )
+
+        def within_range(value, minimum, maximum, tolerance=0):
+            if value is None or minimum is None or maximum is None:
+                return False
+            minimum = float(minimum)
+            maximum = float(maximum)
+            tolerance = (maximum - minimum) * tolerance
+            return minimum - tolerance <= float(value) <= maximum + tolerance
+
+        tolerance = float(equipment.style_tolerance_percent) / 100
         return all(
-            value is not None
-            and minimum is not None
-            and maximum is not None
-            and float(minimum) <= float(value) <= float(maximum)
+            within_range(value, minimum, maximum, tolerance)
             for value, minimum, maximum in values
         )
 
     categories = list(BeerCategory.objects.all())
     compatible_categories = [category for category in categories if category_matches_profile(category)]
-    other_categories = [category for category in categories if category not in compatible_categories]
+    incompatible_categories = [
+        category for category in categories if category not in compatible_categories
+    ]
     category_form = RecipeCategoryForm(instance=recipe)
     category_form.fields["category"].choices = [
         ("", "---------"),
         ("Styles compatibles avec la recette", [(category.pk, str(category)) for category in compatible_categories]),
-        ("Autres styles", [(category.pk, str(category)) for category in other_categories]),
+        ("Styles incompatibles", [(category.pk, str(category)) for category in incompatible_categories]),
     ]
 
     def style_indicator(label, value, minimum, maximum, unit):
@@ -986,6 +1045,17 @@ def recipe_detail(request, pk, edit_forms=None):
     boil_events.append({"type": "cool"})
     for row in cooling_hop_rows:
         boil_events.append({"type": "cooling_hop", "row": row})
+    inventory_by_kind = []
+    for kind, label in IngredientCatalog.Kind.choices:
+        if kind == IngredientCatalog.Kind.CONSUMABLE:
+            continue
+        inventory_by_kind.append(
+            {
+                "kind": kind,
+                "label": label,
+                "items": IngredientCatalog.objects.filter(kind=kind).order_by("name"),
+            }
+        )
     return render(
         request,
         "recipes/detail.html",
@@ -1048,6 +1118,8 @@ def recipe_detail(request, pk, edit_forms=None):
                 {
                     "id": item.pk,
                     "name": item.name,
+                    "kind": item.kind,
+                    "quantity_available": item.quantity_available,
                     "manufacturer": item.manufacturer,
                     "form": item.form,
                     "color_ebc": str(item.color_ebc),
@@ -1057,10 +1129,12 @@ def recipe_detail(request, pk, edit_forms=None):
                 }
                 for item in IngredientCatalog.objects.all()
             ],
+            "inventory_by_kind": inventory_by_kind,
             "estimated_og": og,
             "estimated_plato": plato_from_gravity(og) if og else None,
             "estimated_ibu": ibu,
             "estimated_ebc": ebc,
+            "estimated_ebc_color": ebc_color_rgb(ebc) if ebc is not None else None,
             "estimated_abv": abv,
             "estimated_final_gravity": final_gravity,
             "mash_temperature": average_mash_temperature(mash_steps),
@@ -1193,6 +1267,11 @@ def recipe_create(request):
     form = RecipeForm(request.POST or None, initial=initial)
     if request.method == "POST" and form.is_valid():
         recipe = form.save()
+        if recipe.category_id is None:
+            default_category = BeerCategory.objects.filter(code="18A").first()
+            if default_category:
+                recipe.category = default_category
+                recipe.save(update_fields=["category"])
         messages.success(request, f"La recette « {recipe.name} » a été créée.")
         return redirect("recipes:list")
     return render(request, "recipes/form.html", {"form": form})
@@ -1450,24 +1529,16 @@ def ingredient_create(request, pk):
     if form_class is None:
         messages.error(request, "Le type d'ingrédient est invalide.")
         return redirect("recipes:detail", pk=recipe.pk)
+    catalog_id = request.POST.get("catalog") or request.POST.get("name")
+    catalog = IngredientCatalog.objects.filter(pk=catalog_id, kind=kind).first()
+    if catalog is None:
+        messages.error(request, "La fiche de stock sélectionnée n'existe pas ou ne correspond pas au type.")
+        return redirect("recipes:detail", pk=recipe.pk)
     form = form_class(request.POST)
     if request.method == "POST" and form.is_valid():
         ingredient = form.save(commit=False)
         ingredient.recipe = recipe
         ingredient.kind = kind
-        if ingredient.catalog:
-            catalog = ingredient.catalog
-            ingredient.name = ingredient.name or catalog.name
-            ingredient.manufacturer = catalog.manufacturer
-            ingredient.product_id = catalog.product_id
-            ingredient.form = catalog.form
-            if kind == Ingredient.Kind.MALT:
-                ingredient.color_ebc = catalog.color_ebc
-                ingredient.potential_yield = catalog.potential_yield
-            elif kind == Ingredient.Kind.HOP:
-                ingredient.alpha_acid = catalog.alpha_acid
-            elif kind == Ingredient.Kind.YEAST:
-                ingredient.attenuation = catalog.attenuation
         ingredient.save()
         messages.success(request, f"{ingredient.name} a été ajouté à la recette.")
     return redirect("recipes:detail", pk=recipe.pk)

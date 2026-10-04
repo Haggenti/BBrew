@@ -11,19 +11,75 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 </head>
 <body class="bg-light">
-  <nav class="navbar navbar-dark bg-dark mb-4">
-    <div class="container"><a class="btn btn-outline-light btn-sm" href="{% url 'recipes:dashboard' %}">Tableau de bord</a>
-      <a class="btn btn-outline-light btn-sm" href="{% url 'recipes:list' %}">Recettes</a>
-      <a class="btn btn-outline-light btn-sm" href="{% url 'recipes:catalog' %}">Stock</a>
-      <a class="btn btn-outline-light btn-sm" href="{% url 'recipes:brews' %}">Brassins</a>
-      <a class="btn btn-outline-light btn-sm" href="{% url 'recipes:shopping_list' %}">Courses</a>
-      <a class="btn btn-outline-light btn-sm" href="{% url 'recipes:equipment_settings' %}">Paramètres</a>
-      <a class="btn btn-outline-light btn-sm" href="{% url 'recipes:categories' %}">Catégories BJCP</a>
+  <aside class="app-sidebar" id="app-sidebar">
+    <div class="sidebar-header">
+      <a class="sidebar-brand" href="{% url 'recipes:dashboard' %}" title="BBrew">
+        <span class="sidebar-brand-mark"><i class="bi bi-cup-straw" aria-hidden="true"></i></span>
+        <span class="sidebar-label">BBrew</span>
+      </a>
+      <button class="sidebar-toggle" id="sidebar-toggle" type="button" aria-controls="app-sidebar" aria-expanded="true" aria-label="Replier le menu" title="Replier le menu">
+        <i class="bi bi-chevron-left" aria-hidden="true"></i>
+      </button>
     </div>
-  </nav>
-  <main class="container pb-5">
+    <nav class="sidebar-nav" aria-label="Navigation principale">
+      <a class="sidebar-link{% if request.resolver_match.url_name == 'dashboard' %} active{% endif %}" href="{% url 'recipes:dashboard' %}" title="Tableau de bord"><i class="bi bi-grid-1x2" aria-hidden="true"></i><span class="sidebar-label">Tableau de bord</span></a>
+      <a class="sidebar-link{% if request.resolver_match.url_name == 'list' %} active{% endif %}" href="{% url 'recipes:list' %}" title="Recettes"><i class="bi bi-journal-text" aria-hidden="true"></i><span class="sidebar-label">Recettes</span></a>
+      <a class="sidebar-link{% if request.resolver_match.url_name == 'catalog' %} active{% endif %}" href="{% url 'recipes:catalog' %}" title="Stock"><i class="bi bi-box-seam" aria-hidden="true"></i><span class="sidebar-label">Stock</span></a>
+      <a class="sidebar-link{% if request.resolver_match.url_name == 'brews' %} active{% endif %}" href="{% url 'recipes:brews' %}" title="Brassins"><i class="bi bi-calendar3" aria-hidden="true"></i><span class="sidebar-label">Brassins</span></a>
+      <a class="sidebar-link{% if request.resolver_match.url_name == 'shopping_list' %} active{% endif %}" href="{% url 'recipes:shopping_list' %}" title="Courses"><i class="bi bi-cart3" aria-hidden="true"></i><span class="sidebar-label">Courses</span></a>
+      <a class="sidebar-link{% if request.resolver_match.url_name == 'equipment_settings' %} active{% endif %}" href="{% url 'recipes:equipment_settings' %}" title="Paramètres"><i class="bi bi-gear" aria-hidden="true"></i><span class="sidebar-label">Paramètres</span></a>
+    </nav>
+  </aside>
+  <main class="container pb-5 app-main" id="main-content">
     {% for message in messages %}<div class="alert alert-success">{{ message }}</div>{% endfor %}
     {% block content %}{% endblock %}
   </main>
+  <style>
+    :root { --sidebar-width: 15rem; --sidebar-collapsed-width: 4.75rem; }
+    .app-sidebar { background: #212529; bottom: 0; color: #fff; display: flex; flex-direction: column; left: 0; padding: 1rem .75rem; position: fixed; top: 0; transition: width .2s ease; width: var(--sidebar-width); z-index: 1030; }
+    .sidebar-header { align-items: center; display: flex; gap: .5rem; justify-content: space-between; margin-bottom: 2rem; }
+    .sidebar-brand { align-items: center; color: #fff; display: flex; font-size: 1.25rem; font-weight: 600; gap: .65rem; overflow: hidden; text-decoration: none; white-space: nowrap; }
+    .sidebar-brand-mark { align-items: center; background: #ffc107; border-radius: .65rem; color: #212529; display: inline-flex; height: 2.25rem; justify-content: center; min-width: 2.25rem; }
+    .sidebar-toggle { background: transparent; border: 1px solid rgba(255, 255, 255, .2); border-radius: .5rem; color: #adb5bd; height: 2.25rem; min-width: 2.25rem; }
+    .sidebar-toggle:hover { background: rgba(255, 255, 255, .1); color: #fff; }
+    .sidebar-nav { display: flex; flex-direction: column; gap: .35rem; }
+    .sidebar-link { align-items: center; border-radius: .65rem; color: #adb5bd; display: flex; gap: .8rem; padding: .75rem .8rem; text-decoration: none; transition: background-color .15s ease, color .15s ease; white-space: nowrap; }
+    .sidebar-link i { font-size: 1.1rem; min-width: 1.25rem; text-align: center; }
+    .sidebar-link:hover, .sidebar-link.active { background: rgba(255, 255, 255, .12); color: #fff; }
+    .app-main { margin-left: var(--sidebar-width); max-width: calc(100% - var(--sidebar-width)); padding-top: 1.5rem; transition: margin-left .2s ease, max-width .2s ease; }
+    body.sidebar-collapsed .app-sidebar { width: var(--sidebar-collapsed-width); }
+    body.sidebar-collapsed .app-main { margin-left: var(--sidebar-collapsed-width); max-width: calc(100% - var(--sidebar-collapsed-width)); }
+    body.sidebar-collapsed .sidebar-label { display: none; }
+    body.sidebar-collapsed .sidebar-header { justify-content: center; }
+    body.sidebar-collapsed .sidebar-toggle i { transform: rotate(180deg); }
+    body.sidebar-collapsed .sidebar-link { justify-content: center; padding-left: .75rem; padding-right: .75rem; }
+    @media (max-width: 767.98px) {
+      .app-sidebar { width: var(--sidebar-collapsed-width); }
+      .app-main { margin-left: var(--sidebar-collapsed-width); max-width: calc(100% - var(--sidebar-collapsed-width)); }
+      .sidebar-label { display: none; }
+      .sidebar-header { justify-content: center; }
+      .sidebar-link { justify-content: center; padding-left: .75rem; padding-right: .75rem; }
+    }
+  </style>
+  <script>
+    (() => {
+      const sidebar = document.getElementById("app-sidebar");
+      const toggle = document.getElementById("sidebar-toggle");
+      const storageKey = "bbrew-sidebar-collapsed";
+      const setCollapsed = (collapsed) => {
+        document.body.classList.toggle("sidebar-collapsed", collapsed);
+        toggle.setAttribute("aria-expanded", String(!collapsed));
+        toggle.setAttribute("aria-label", collapsed ? "Déployer le menu" : "Replier le menu");
+        toggle.title = collapsed ? "Déployer le menu" : "Replier le menu";
+      };
+      const savedState = window.localStorage.getItem(storageKey);
+      setCollapsed(savedState === "true");
+      toggle.addEventListener("click", () => {
+        const collapsed = !document.body.classList.contains("sidebar-collapsed");
+        setCollapsed(collapsed);
+        window.localStorage.setItem(storageKey, String(collapsed));
+      });
+    })();
+  </script>
 </body>
 </html>
