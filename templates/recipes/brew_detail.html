@@ -32,9 +32,9 @@
           <dd class="col-sm-6">{% if brew.recipe %}<a href="{% url 'recipes:detail' brew.recipe.pk %}">{{ brew.recipe.name }}</a>{% else %}{{ brew.recipe_name }}{% endif %}</dd>
           <dt class="col-sm-6 text-secondary">Version brassée</dt>
           <dd class="col-sm-6">{% if brew.recipe_version %}<a href="{% url 'recipes:history' brew.recipe.pk %}">{{ brew.recipe_version_label }}</a>{% else %}{{ brew.recipe_version_label|default:"—" }}{% endif %}</dd>
-          <dt class="col-sm-6 text-secondary">Date prévue</dt>
+          <dt class="col-sm-6 text-secondary">Date du brassage</dt>
           <dd class="col-sm-6">{{ brew.planned_date|date:"d/m/Y"|default:"—" }}</dd>
-          <dt class="col-sm-6 text-secondary">Date de fin</dt>
+          <dt class="col-sm-6 text-secondary">Date de mise en bouteille</dt>
           <dd class="col-sm-6">{{ brew.completed_date|date:"d/m/Y"|default:"—" }}</dd>
           <dt class="col-sm-6 text-secondary">Volume réel</dt>
           <dd class="col-sm-6">{% if brew.actual_batch_size_l %}{{ brew.actual_batch_size_l }} L{% else %}—{% endif %}</dd>
@@ -101,11 +101,11 @@
         <div class="modal-body">
           <p class="text-secondary small">Cochez les lignes réellement utilisées. Un stock négatif est autorisé.</p>
           <div class="table-responsive"><table class="table table-sm align-middle">
-            <thead><tr><th></th><th>Ingrédient</th><th>Besoin</th><th>Stock actuel</th></tr></thead>
+            <thead><tr><th><div class="form-check mb-0"><input class="form-check-input" type="checkbox" id="consume-stock-toggle" checked aria-label="Tout sélectionner"><label class="form-check-label visually-hidden" for="consume-stock-toggle">Tout sélectionner</label></div></th><th>Ingrédient</th><th>Besoin</th><th>Stock actuel</th></tr></thead>
             <tbody>
               {% for item in stock_requirements %}
               <tr>
-                <td>{% if item.catalog and not item.consumed %}<input class="form-check-input" type="checkbox" name="stock_item" value="{{ item.key }}" checked>{% elif item.consumed %}<i class="bi bi-check-circle text-success" aria-label="Déjà consommé"></i>{% endif %}</td>
+                <td>{% if item.catalog and not item.consumed %}<input class="form-check-input consume-stock-item" type="checkbox" name="stock_item" value="{{ item.key }}" checked>{% elif item.consumed %}<i class="bi bi-check-circle text-success" aria-label="Déjà consommé"></i>{% endif %}</td>
                 <td>{{ item.name }}{% if not item.catalog %}<div class="small text-danger">Pas de fiche stock associée</div>{% endif %}</td>
                 <td>{{ item.required }} {{ item.unit }}</td>
                 <td>{% if item.available is not None %}{{ item.available }} {{ item.unit }}{% else %}—{% endif %}</td>
@@ -119,6 +119,23 @@
     </div>
   </div>
 </div>
+<script>
+  (() => {
+    const toggle = document.getElementById("consume-stock-toggle");
+    if (!toggle) return;
+    const items = [...document.querySelectorAll(".consume-stock-item")];
+    const updateToggle = () => {
+      toggle.checked = items.length > 0 && items.every((item) => item.checked);
+      toggle.indeterminate = items.some((item) => item.checked) && !toggle.checked;
+    };
+    toggle.addEventListener("change", () => {
+      items.forEach((item) => { item.checked = toggle.checked; });
+      toggle.indeterminate = false;
+    });
+    items.forEach((item) => item.addEventListener("change", updateToggle));
+    updateToggle();
+  })();
+</script>
 {% endif %}
 {% if brew.stock_consumed_items %}
 <div class="modal fade" id="rollback-stock-modal" tabindex="-1" aria-labelledby="rollback-stock-title" aria-hidden="true">

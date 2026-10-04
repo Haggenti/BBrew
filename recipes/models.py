@@ -75,8 +75,8 @@ class Brew(models.Model):
     planned_abv = models.DecimalField("ABV prévu (%)", max_digits=5, decimal_places=2, null=True, blank=True)
     planned_efficiency = models.DecimalField("rendement prévu (%)", max_digits=5, decimal_places=1, null=True, blank=True)
     status = models.CharField("statut", max_length=20, choices=Status.choices, default=Status.PLANNED)
-    planned_date = models.DateField("date prévue", null=True, blank=True)
-    completed_date = models.DateField("date de fin", null=True, blank=True)
+    planned_date = models.DateField("date du brassage", null=True, blank=True)
+    completed_date = models.DateField("date de mise en bouteille", null=True, blank=True)
     actual_preboil_volume_l = models.DecimalField(
         "volume pré-ébullition réel (L)", max_digits=6, decimal_places=2, null=True, blank=True
     )
@@ -140,6 +140,23 @@ class EquipmentSettings(models.Model):
 class ShoppingItem(models.Model):
     name = models.CharField("article", max_length=160)
     is_completed = models.BooleanField("acheté", default=False)
+    source_brews = models.ManyToManyField(
+        "Brew",
+        verbose_name="brassins à l'origine",
+        blank=True,
+        related_name="shopping_items",
+    )
+    catalog = models.ForeignKey(
+        "IngredientCatalog",
+        verbose_name="fiche de stock",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="shopping_items",
+    )
+    planned_quantity = models.PositiveIntegerField("quantité prévue", null=True, blank=True)
+    unit = models.CharField("unité", max_length=30, blank=True)
+    received_quantity = models.PositiveIntegerField("quantité reçue", null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -181,6 +198,7 @@ class IngredientCatalog(models.Model):
         HOP = "hop", "Houblon"
         YEAST = "yeast", "Levure"
         OTHER = "other", "Divers"
+        CONSUMABLE = "consumable", "Consommable"
 
     name = models.CharField("nom", max_length=120)
     kind = models.CharField("type", max_length=10, choices=Kind.choices)

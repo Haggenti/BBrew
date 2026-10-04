@@ -32,6 +32,10 @@ OTHER_FORMS = [
     ("Agent de clarification", "Agent de clarification"),
     ("Autre", "Autre"),
 ]
+CONSUMABLE_FORMS = [
+    ("Capsules", "Capsules"),
+    ("Autre", "Autre"),
+]
 FORM_CHOICES_BY_KIND = {
     "malt": MALT_FORMS,
     "hop": HOP_FORMS,
@@ -121,9 +125,11 @@ class EquipmentSettingsForm(StyledModelForm):
 class ShoppingItemForm(StyledModelForm):
     class Meta:
         model = ShoppingItem
-        fields = ["name"]
+        fields = ["name", "planned_quantity", "unit"]
         widgets = {
             "name": forms.TextInput(attrs={"placeholder": "Ex. capsules rouges"}),
+            "planned_quantity": forms.NumberInput(attrs={"min": "1", "step": "1", "placeholder": "Quantité"}),
+            "unit": forms.TextInput(attrs={"placeholder": "g, paquets, unités"}),
         }
 
 
@@ -232,8 +238,8 @@ class BrewForm(StyledModelForm):
             "actual_fg", "notes",
         ]
         widgets = {
-            "planned_date": forms.DateInput(attrs={"type": "date"}),
-            "completed_date": forms.DateInput(attrs={"type": "date"}),
+            "planned_date": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"}),
+            "completed_date": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"}),
             "actual_batch_size_l": forms.NumberInput(attrs={"min": "0", "step": "0.1"}),
             "actual_preboil_volume_l": forms.NumberInput(attrs={"min": "0", "step": "0.1"}),
             "actual_spent_grains_weight_kg": forms.NumberInput(attrs={"min": "0", "step": "0.001"}),
@@ -594,6 +600,22 @@ class CatalogOtherForm(StyledModelForm):
             widget=forms.Select(attrs={"class": "form-select"}),
         )
         self.fields["quantity_available"].label = "Quantité disponible"
+
+
+class CatalogConsumableForm(StyledModelForm):
+    class Meta:
+        model = IngredientCatalog
+        fields = ["name", "form", "quantity_available"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["form"] = forms.ChoiceField(
+            label="Type",
+            choices=[("", "---------")] + CONSUMABLE_FORMS,
+            required=False,
+            widget=forms.Select(attrs={"class": "form-select"}),
+        )
+        self.fields["quantity_available"].label = "Quantité disponible (unités)"
 
 
 class MultipleBeerXMLFileInput(forms.ClearableFileInput):

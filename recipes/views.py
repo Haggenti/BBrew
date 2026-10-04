@@ -6,6 +6,8 @@ from django.views.decorators.http import require_POST
 from django.shortcuts import get_object_or_404, redirect, render
 from xml.etree import ElementTree
 import json
+import calendar
+from datetime import date, timedelta
 
 from .calculations import average_mash_temperature, ebc_color_rgb, estimated_abv, estimated_color_ebc, estimated_efficiency, estimated_final_gravity, estimated_og, ibu_final_gravity_comment, ibu_final_gravity_ratio, plato_from_gravity, tinseth_ibu
 from .beerxml import export_recipe, import_recipe
@@ -13,7 +15,7 @@ from decimal import Decimal
 from decimal import ROUND_CEILING
 from django.utils import timezone
 
-from .forms import BackupUploadForm, BeerCategoryForm, BeerXMLUploadForm, BoilSettingsForm, BrewForm, CatalogHopForm, CatalogMaltForm, CatalogOtherForm, CatalogYeastForm, CatalogForm, EquipmentSettingsForm, FermentationStepForm, HopForm, MaltForm, MashStepForm, OtherForm, RecipeCategoryForm, RecipeEfficiencyForm, RecipeForm, RecipeNameForm, RecipeNotesForm, ScaleForm, ShoppingItemForm, YeastForm
+from .forms import BackupUploadForm, BeerCategoryForm, BeerXMLUploadForm, BoilSettingsForm, BrewForm, CatalogConsumableForm, CatalogHopForm, CatalogMaltForm, CatalogOtherForm, CatalogYeastForm, CatalogForm, EquipmentSettingsForm, FermentationStepForm, HopForm, MaltForm, MashStepForm, OtherForm, RecipeCategoryForm, RecipeEfficiencyForm, RecipeForm, RecipeNameForm, RecipeNotesForm, ScaleForm, ShoppingItemForm, YeastForm
 from .models import BeerCategory, Brew, EquipmentSettings, FermentationStep, Ingredient, IngredientCatalog, MashStep, Recipe, RecipeVersion, ShoppingItem
 from .signals import save_version, suspend_versioning
 from .versioning import describe_version_change
@@ -51,14 +53,115 @@ def recipe_list(request):
 
 
 def brew_list(request):
-    return render(request, "recipes/brews.html", {"brews": Brew.objects.all()})
+    brews = list(Brew.objects.all())
+    existing_shopping_names = {
+        item.name.strip().casefold()
+        for item in ShoppingItem.objects.all()
+    }
+    for brew in brews:
+        if brew.status == Brew.Status.PLANNED:
+            requirements = _brew_stock_requirements(brew)
+            missing_items = [
+                item for item in requirements
+                if item["catalog"] is None
+                or item["available"] is None
+                or item["available"] < item["required"]
+            ]
+            brew.stock_missing_items = [
+                item for item in missing_items
+                if item["name"].strip().casefold() not in existing_shopping_names
+            ]
+            if brew.recipe_version and not missing_items:
+                brew.stock_status = "ok"
+            elif missing_items and not brew.stock_missing_items:
+                brew.stock_status = "shopping"
+            else:
+                brew.stock_status = "insufficient"
+        else:
+            brew.stock_status = None
+            brew.stock_missing_items = []
+    today = timezone.localdate()
+    try:
+        calendar_date = date.fromisoformat(f"{request.GET.get('month', '')}-01")
+    except ValueError:
+        calendar_date = today.replace(day=1)
+    previous_month = (calendar_date.replace(day=1) - timedelta(days=1)).replace(day=1)
+    next_month = (calendar_date.replace(day=28) + timedelta(days=4)).replace(day=1)
+    month_names = (
+        "janvier", "février", "mars", "avril", "mai", "juin",
+        "juillet", "août", "septembre", "octobre", "novembre", "décembre",
+    )
+    calendar_days = {brew.planned_date: [] for brew in brews if brew.planned_date}
+    for brew in brews:
+        if brew.planned_date:
+            calendar_days[brew.planned_date].append(brew)
+    calendar_weeks = []
+    for week in calendar.Calendar(firstweekday=0).monthdatescalendar(
+        calendar_date.year, calendar_date.month
+    ):
+        calendar_weeks.append(
+            {
+                "number": week[0].isocalendar().week,
+                "days": [
+                    {
+                        "number": day.day,
+                        "date": day,
+                        "in_month": day.month == calendar_date.month,
+                        "brews": calendar_days.get(day, []),
+                    }
+                    for day in week
+                ],
+            }
+        )
+    return render(
+        request,
+        "recipes/brews.html",
+        {
+            "brews": brews,
+            "calendar_month": f"{month_names[calendar_date.month - 1]} {calendar_date.year}",
+            "calendar_weekdays": ("Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"),
+            "calendar_weeks": calendar_weeks,
+            "calendar_days": calendar_days,
+            "calendar_today": today,
+            "calendar_date": calendar_date,
+            "calendar_month_value": calendar_date.strftime("%Y-%m"),
+            "today_month": today.strftime("%Y-%m"),
+            "previous_month": previous_month.strftime("%Y-%m"),
+            "next_month": next_month.strftime("%Y-%m"),
+            "calendar_statuses": Brew.Status.choices,
+        },
+    )
 
 
 def shopping_list(request):
+    status = request.GET.get("status", "all")
+    items_query = ShoppingItem.objects.select_related("catalog").prefetch_related("source_brews")
+    if status == "todo":
+        items_query = items_query.filter(is_completed=False)
+    elif status == "ordered":
+        items_query = items_query.filter(is_completed=True)
+    else:
+        status = "all"
+    items = list(items_query)
+    catalog_items = IngredientCatalog.objects.all().order_by("kind", "name")
+    catalog_by_name = {item.name.casefold(): item for item in catalog_items}
+    for item in items:
+        item.catalog_match = item.catalog or catalog_by_name.get(item.name.strip().casefold())
+        item.remaining_quantity = (
+            max(item.planned_quantity - (item.received_quantity or 0), 0)
+            if item.planned_quantity is not None
+            else None
+        )
     return render(
         request,
         "recipes/shopping_list.html",
-        {"items": ShoppingItem.objects.all(), "form": ShoppingItemForm()},
+        {
+            "items": items,
+            "form": ShoppingItemForm(),
+            "catalog_items": catalog_items,
+            "catalog_kinds": IngredientCatalog.Kind.choices,
+            "shopping_status": status,
+        },
     )
 
 
@@ -85,6 +188,103 @@ def shopping_item_delete(request, pk):
     item.delete()
     messages.success(request, "Article supprimé de la liste de courses.")
     return redirect("recipes:shopping_list")
+
+
+@require_POST
+def shopping_item_receive(request, pk):
+    item = get_object_or_404(ShoppingItem, pk=pk)
+    if not item.is_completed:
+        messages.error(request, f"« {item.name} » doit d’abord être marqué comme commandé.")
+        return redirect("recipes:shopping_list")
+    try:
+        quantity = int(request.POST.get("quantity", ""))
+    except (TypeError, ValueError):
+        quantity = 0
+    if quantity <= 0:
+        messages.error(request, "La quantité reçue doit être un nombre entier positif.")
+        return redirect("recipes:shopping_list")
+
+    catalog_id = request.POST.get("catalog_id")
+    catalog = item.catalog
+    created_catalog = False
+    if catalog_id == "new":
+        kind = request.POST.get("new_kind", "")
+        if kind not in IngredientCatalog.Kind.values:
+            messages.error(request, "Sélectionnez un type valide pour la nouvelle fiche de stock.")
+            return redirect("recipes:shopping_list")
+        catalog = IngredientCatalog.objects.create(
+            name=item.name.strip(),
+            kind=kind,
+            quantity_available=0,
+        )
+        created_catalog = True
+    elif catalog is None and catalog_id:
+        catalog = IngredientCatalog.objects.filter(pk=catalog_id).first()
+    if catalog is None:
+        catalog = IngredientCatalog.objects.filter(name__iexact=item.name.strip()).first()
+
+    if catalog is None:
+        messages.error(request, f"Aucune fiche de stock ne correspond à « {item.name} ».")
+        return redirect("recipes:shopping_list")
+    catalog.quantity_available += quantity
+    catalog.save(update_fields=["quantity_available"])
+    item.catalog = catalog
+    suffix = " (nouvelle fiche créée)" if created_catalog else ""
+    item.delete()
+    messages.success(request, f"{quantity} unité(s) de « {item.name} » ajoutée(s) au stock{suffix}.")
+    return redirect("recipes:shopping_list")
+
+
+@require_POST
+def shopping_list_clear(request):
+    deleted_count, _ = ShoppingItem.objects.all().delete()
+    if deleted_count:
+        messages.success(request, "La liste de courses a été vidée.")
+    else:
+        messages.info(request, "La liste de courses est déjà vide.")
+    return redirect("recipes:shopping_list")
+
+
+@require_POST
+def shopping_list_clear_received(request):
+    deleted_count, _ = ShoppingItem.objects.filter(is_completed=True).delete()
+    if deleted_count:
+        messages.success(request, "Les articles reçus ont été supprimés de la liste de courses.")
+    else:
+        messages.info(request, "Aucun article reçu à supprimer.")
+    return redirect("recipes:shopping_list")
+
+
+@require_POST
+def brew_missing_stock_to_shopping(request, pk):
+    brew = get_object_or_404(Brew, pk=pk)
+    names = request.POST.getlist("names") or [request.POST.get("name", "")]
+    names = list(dict.fromkeys(name.strip() for name in names if name.strip()))
+    existing_items = {
+        item.name.casefold(): item
+        for item in ShoppingItem.objects.all()
+    }
+    added_names = []
+    for name in names:
+        normalized_name = name.casefold()
+        if normalized_name in existing_items:
+            existing_items[normalized_name].source_brews.add(brew)
+            continue
+        shopping_item = ShoppingItem.objects.create(name=name)
+        shopping_item.source_brews.add(brew)
+        existing_items[normalized_name] = shopping_item
+        added_names.append(name)
+
+    if not names:
+        messages.error(request, "Impossible d’ajouter un article sans nom.")
+    elif added_names:
+        messages.success(
+            request,
+            f"{len(added_names)} article(s) ajouté(s) à la liste de courses.",
+        )
+    else:
+        messages.info(request, "Les articles sélectionnés sont déjà dans la liste de courses.")
+    return redirect("recipes:brews")
 
 
 def brew_create(request):
@@ -461,6 +661,8 @@ def catalog_list(request):
             "yeasts": IngredientCatalog.objects.filter(kind=IngredientCatalog.Kind.YEAST),
             "others": IngredientCatalog.objects.filter(kind=IngredientCatalog.Kind.OTHER),
             "other_form": CatalogOtherForm(),
+            "consumables": IngredientCatalog.objects.filter(kind=IngredientCatalog.Kind.CONSUMABLE),
+            "consumable_form": CatalogConsumableForm(),
         },
     )
 
@@ -471,6 +673,7 @@ def catalog_create(request):
         IngredientCatalog.Kind.HOP: CatalogHopForm,
         IngredientCatalog.Kind.YEAST: CatalogYeastForm,
         IngredientCatalog.Kind.OTHER: CatalogOtherForm,
+        IngredientCatalog.Kind.CONSUMABLE: CatalogConsumableForm,
     }
     kind = request.POST.get("kind")
     form_class = form_classes.get(kind)
@@ -502,6 +705,23 @@ def catalog_delete(request, pk):
     item_name = item.name
     item.delete()
     messages.success(request, f"{item_name} a été supprimé du catalogue.")
+    return redirect("recipes:catalog")
+
+
+@require_POST
+def catalog_add_quantity(request, pk):
+    item = get_object_or_404(IngredientCatalog, pk=pk)
+    try:
+        quantity = int(request.POST.get("quantity", ""))
+    except (TypeError, ValueError):
+        quantity = 0
+    if quantity == 0:
+        messages.error(request, "La quantité doit être un nombre entier différent de zéro.")
+    else:
+        item.quantity_available += quantity
+        item.save(update_fields=["quantity_available"])
+        action = "ajoutée(s) au stock" if quantity > 0 else "retirée(s) du stock"
+        messages.success(request, f"{abs(quantity)} unité(s) {action} de {item.name}.")
     return redirect("recipes:catalog")
 
 
@@ -628,6 +848,12 @@ def recipe_detail(request, pk, edit_forms=None):
         row for row in hop_rows
         if row["ingredient"].addition == "Refroidissement"
     ]
+    cooling_hop_rows.sort(
+        key=lambda row: (
+            -float(row["ingredient"].addition_temperature_c),
+            row["ingredient"].pk,
+        )
+    )
     boil_events = [{"type": "start"}]
     if boil_hop_rows:
         previous_remaining = recipe.boil_time_min

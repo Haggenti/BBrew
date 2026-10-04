@@ -643,6 +643,8 @@ class RecipeWorkflowTests(TestCase):
         form_response = self.client.get("/brassins/ajouter/")
         self.assertContains(form_response, "Version initiale")
         self.assertEqual(form_response.context["latest_versions"][recipe.pk], brew.recipe_version.pk)
+        edit_response = self.client.get(f"/brassins/{brew.pk}/modifier/")
+        self.assertContains(edit_response, 'value="2026-10-10"')
 
         response = self.client.get(f"/brassins/{brew.pk}/")
         self.assertContains(response, "Prévoir un palier de 66 °C.")
@@ -737,6 +739,149 @@ class RecipeWorkflowTests(TestCase):
         response = self.client.post(f"/courses/{item.pk}/supprimer/")
         self.assertRedirects(response, "/courses/")
         self.assertFalse(ShoppingItem.objects.filter(pk=item.pk).exists())
+
+    def test_shopping_receive_offers_kind_specific_quantity_presets(self):
+        IngredientCatalog.objects.create(name="Pilsen", kind=IngredientCatalog.Kind.MALT)
+        IngredientCatalog.objects.create(name="Cascade", kind=IngredientCatalog.Kind.HOP)
+        IngredientCatalog.objects.create(name="US-05", kind=IngredientCatalog.Kind.YEAST)
+        item = ShoppingItem.objects.create(name="Pilsen", is_completed=True)
+
+        response = self.client.get("/courses/")
+
+        self.assertContains(response, '"5000", "5000 g"')
+        self.assertContains(response, '"250", "250 g"')
+        self.assertContains(response, "Nombre de paquets")
+        self.assertContains(response, "data-kind=\"malt\"")
+        item.delete()
+
+    def test_shopping_list_can_be_cleared(self):
+        ShoppingItem.objects.create(name="Malt")
+        ShoppingItem.objects.create(name="Houblon")
+
+        response = self.client.post("/courses/vider/")
+
+        self.assertRedirects(response, "/courses/")
+        self.assertFalse(ShoppingItem.objects.exists())
+
+    def test_shopping_item_can_be_received_into_catalog_stock(self):
+        catalog = IngredientCatalog.objects.create(
+            name="Malt Pilsen",
+            kind=IngredientCatalog.Kind.MALT,
+            quantity_available=1000,
+        )
+        item = ShoppingItem.objects.create(name="Malt Pilsen", planned_quantity=5000, unit="g")
+        item.is_completed = True
+        item.save(update_fields=["is_completed"])
+
+        response = self.client.post(
+            f"/courses/{item.pk}/receptionner/",
+            {"catalog_id": catalog.pk, "quantity": "4000"},
+        )
+
+        self.assertRedirects(response, "/courses/")
+        catalog.refresh_from_db()
+        self.assertEqual(catalog.quantity_available, 5000)
+        self.assertFalse(ShoppingItem.objects.filter(pk=item.pk).exists())
+
+    def test_shopping_item_can_create_missing_catalog_when_received(self):
+        item = ShoppingItem.objects.create(name="Houblon Nelson", planned_quantity=100, unit="g")
+        item.is_completed = True
+        item.save(update_fields=["is_completed"])
+
+        response = self.client.post(
+            f"/courses/{item.pk}/receptionner/",
+            {"catalog_id": "new", "new_kind": IngredientCatalog.Kind.HOP, "quantity": "100"},
+        )
+
+        self.assertRedirects(response, "/courses/")
+        catalog = IngredientCatalog.objects.get(name="Houblon Nelson")
+        self.assertEqual(catalog.kind, IngredientCatalog.Kind.HOP)
+        self.assertEqual(catalog.quantity_available, 100)
+        self.assertFalse(ShoppingItem.objects.filter(pk=item.pk).exists())
+
+    def test_shopping_item_cannot_be_received_before_being_ordered(self):
+        catalog = IngredientCatalog.objects.create(
+            name="Malt Pilsen",
+            kind=IngredientCatalog.Kind.MALT,
+            quantity_available=1000,
+        )
+        item = ShoppingItem.objects.create(name="Malt Pilsen", planned_quantity=5000)
+
+        response = self.client.post(
+            f"/courses/{item.pk}/receptionner/",
+            {"catalog_id": catalog.pk, "quantity": "5000"},
+        )
+
+        self.assertRedirects(response, "/courses/")
+        catalog.refresh_from_db()
+        self.assertEqual(catalog.quantity_available, 1000)
+        self.assertTrue(ShoppingItem.objects.filter(pk=item.pk).exists())
+
+    def test_received_shopping_items_can_be_cleared(self):
+        ShoppingItem.objects.create(name="Reçu", is_completed=True)
+        ShoppingItem.objects.create(name="À acheter", is_completed=False)
+
+        response = self.client.post("/courses/vider-recus/")
+
+        self.assertRedirects(response, "/courses/")
+        self.assertFalse(ShoppingItem.objects.filter(name="Reçu").exists())
+        self.assertTrue(ShoppingItem.objects.filter(name="À acheter").exists())
+
+    def test_catalog_quantity_can_be_added_without_editing_item(self):
+        item = IngredientCatalog.objects.create(
+            name="Pilsen",
+            kind=IngredientCatalog.Kind.MALT,
+            quantity_available=1000,
+        )
+
+        response = self.client.post(
+            f"/catalogue/{item.pk}/ajouter-quantite/",
+            {"quantity": "500"},
+        )
+
+        self.assertRedirects(response, "/catalogue/")
+        item.refresh_from_db()
+        self.assertEqual(item.quantity_available, 1500)
+
+        response = self.client.post(
+            f"/catalogue/{item.pk}/ajouter-quantite/",
+            {"quantity": "-200"},
+        )
+
+        self.assertRedirects(response, "/catalogue/")
+        item.refresh_from_db()
+        self.assertEqual(item.quantity_available, 1300)
+
+    def test_consumable_catalog_item_can_be_created(self):
+        response = self.client.post(
+            "/catalogue/ajouter/",
+            {
+                "kind": IngredientCatalog.Kind.CONSUMABLE,
+                "name": "Capsules 26 mm",
+                "form": "Capsules",
+                "quantity_available": "100",
+            },
+        )
+
+        self.assertRedirects(response, "/catalogue/")
+        item = IngredientCatalog.objects.get(name="Capsules 26 mm")
+        self.assertEqual(item.kind, IngredientCatalog.Kind.CONSUMABLE)
+        self.assertEqual(item.quantity_available, 100)
+
+    def test_missing_stock_can_add_selected_items_without_duplicates(self):
+        brew = Brew.objects.create(recipe_name="Brassin test")
+        ShoppingItem.objects.create(name="Houblon déjà prévu")
+
+        response = self.client.post(
+            f"/brassins/{brew.pk}/stock-manquant-courses/",
+            {"names": ["Houblon déjà prévu", "Levure nouvelle", "Levure nouvelle"]},
+        )
+
+        self.assertRedirects(response, "/brassins/")
+        self.assertEqual(
+            set(ShoppingItem.objects.values_list("name", flat=True)),
+            {"Houblon déjà prévu", "Levure nouvelle"},
+        )
 
     def test_beerxml_import_can_replace_existing_recipe(self):
         recipe = Recipe.objects.create(name="Même nom", target_ibu=10)
@@ -877,6 +1022,36 @@ class RecipeWorkflowTests(TestCase):
         self.assertEqual(events[1]["row"]["ingredient"], early_hop)
         self.assertEqual(events[2]["row"]["ingredient"], same_time_hop)
         self.assertEqual(events[4]["row"]["ingredient"], late_hop)
+
+    def test_cooling_hops_are_ordered_from_highest_to_lowest_temperature(self):
+        recipe = Recipe.objects.create(name="Cooling hop order")
+        cold_hop = Ingredient.objects.create(
+            recipe=recipe,
+            name="Cold hop",
+            kind=Ingredient.Kind.HOP,
+            amount_g=10,
+            addition="Refroidissement",
+            addition_temperature_c=70,
+        )
+        hot_hop = Ingredient.objects.create(
+            recipe=recipe,
+            name="Hot hop",
+            kind=Ingredient.Kind.HOP,
+            amount_g=10,
+            addition="Refroidissement",
+            addition_temperature_c=80,
+        )
+
+        response = self.client.get(f"/recettes/{recipe.pk}/")
+
+        cooling_events = [
+            event for event in response.context["boil_events"]
+            if event["type"] == "cooling_hop"
+        ]
+        self.assertEqual(
+            [event["row"]["ingredient"] for event in cooling_events],
+            [hot_hop, cold_hop],
+        )
 
     def test_recipe_name_and_notes_can_be_updated(self):
         recipe = Recipe.objects.create(name="Ancien nom")

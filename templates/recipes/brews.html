@@ -5,36 +5,139 @@
   <h1 class="h2 mb-0">Brassins</h1>
   <a class="btn btn-primary" href="{% url 'recipes:brew_create' %}"><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>Ajouter un brassin</a>
 </div>
-{% if brews %}
-<div class="row g-3">
-  {% for brew in brews %}
-  <div class="col-md-6 col-lg-4">
-    <article class="card h-100 shadow-sm">
-      <div class="card-body">
-        <h2 class="h5"><a class="text-decoration-none" href="{% url 'recipes:brew_detail' brew.pk %}">{{ brew.recipe_name }}</a></h2>
-        <span class="badge text-bg-secondary">{{ brew.get_status_display }}</span>
-        <dl class="row small mt-3 mb-0">
-          <dt class="col-6 text-secondary">Date prévue</dt>
-          <dd class="col-6">{{ brew.planned_date|date:"d/m/Y"|default:"—" }}</dd>
-          <dt class="col-6 text-secondary">Version</dt>
-          <dd class="col-6">{{ brew.recipe_version_label|default:"—" }}</dd>
-          <dt class="col-6 text-secondary">Volume réel</dt>
-          <dd class="col-6">{% if brew.actual_batch_size_l %}{{ brew.actual_batch_size_l }} L{% else %}—{% endif %}</dd>
-          <dt class="col-6 text-secondary">ABV réel</dt>
-          <dd class="col-6">{% if brew.actual_abv is not None %}{{ brew.actual_abv }} %{% else %}—{% endif %}</dd>
-        </dl>
-        <div class="mt-3 d-flex gap-2">
-          <a class="btn btn-outline-primary btn-sm" href="{% url 'recipes:brew_detail' brew.pk %}">Ouvrir</a>
-          <form method="post" action="{% url 'recipes:brew_delete' brew.pk %}" onsubmit="return confirm('Supprimer ce brassin ?');">
-            {% csrf_token %}
-            <button class="btn btn-outline-danger btn-sm" type="submit" aria-label="Supprimer {{ brew.recipe_name }}" title="Supprimer"><i class="bi bi-dash-lg" aria-hidden="true"></i></button>
-          </form>
-        </div>
-      </div>
-    </article>
+<section class="card mb-4 shadow-sm">
+  <div class="card-header bg-light d-flex justify-content-between align-items-center">
+    <h2 class="h5 mb-0"><i class="bi bi-calendar3 me-2" aria-hidden="true"></i>Calendrier des brassins</h2>
+    <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+      <a class="btn btn-sm btn-outline-secondary" href="?month={{ previous_month }}" aria-label="Mois précédent" title="Mois précédent"><i class="bi bi-chevron-left" aria-hidden="true"></i></a>
+      <strong class="text-capitalize">{{ calendar_month }}</strong>
+      <form method="get" class="d-flex align-items-center gap-2">
+        <label class="visually-hidden" for="calendar-month">Choisir un mois</label>
+        <input class="form-control form-control-sm" id="calendar-month" type="month" name="month" value="{{ calendar_month_value }}" aria-label="Choisir un mois">
+        <button class="btn btn-sm btn-primary" type="submit">Afficher</button>
+      </form>
+      <a class="btn btn-sm btn-outline-secondary" href="?month={{ next_month }}" aria-label="Mois suivant" title="Mois suivant"><i class="bi bi-chevron-right" aria-hidden="true"></i></a>
+      <a class="btn btn-sm btn-outline-primary" href="?month={{ today_month }}">Aujourd’hui</a>
+    </div>
   </div>
-  {% endfor %}
+  <div class="card-body">
+    <div class="table-responsive">
+      <table class="table table-bordered align-middle text-center mb-0 brew-calendar">
+        <thead><tr><th class="small text-secondary fw-semibold">Sem.</th>{% for weekday in calendar_weekdays %}<th class="small text-secondary fw-semibold">{{ weekday }}</th>{% endfor %}</tr></thead>
+        <tbody>
+          {% for week in calendar_weeks %}
+          <tr>
+            <td class="small text-secondary fw-semibold">{{ week.number }}</td>
+            {% for day in week.days %}
+            <td class="brew-calendar-day{% if not day.in_month %} text-bg-light{% endif %}">
+              <div class="small {% if day.date == calendar_today %}fw-bold text-primary{% else %}text-secondary{% endif %}">{{ day.number }}</div>
+              {% if day.brews %}<div class="d-flex justify-content-center flex-wrap gap-1 mt-1">{% for brew in day.brews %}<a href="{% url 'recipes:brew_detail' brew.pk %}" class="brew-calendar-dot status-{{ brew.status }}{% if brew.stock_status == 'ok' %} stock-ok{% elif brew.stock_status == 'shopping' %} stock-shopping{% elif brew.stock_status == 'insufficient' %} stock-insufficient{% endif %}" aria-label="{{ brew.recipe_name }}" title="{{ brew.recipe_name }} — {{ brew.get_status_display }}{% if brew.stock_status == 'ok' %} — stock OK{% elif brew.stock_status == 'shopping' %} — stock manquant, prévu dans les courses{% elif brew.stock_status == 'insufficient' %} — stock insuffisant{% endif %}"></a>{% endfor %}</div>{% endif %}
+            </td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="d-flex flex-wrap gap-3 small text-secondary mt-3" aria-label="Légende des statuts">
+      {% for status_value, status_label in calendar_statuses %}<span><span class="brew-calendar-dot status-{{ status_value }} d-inline-block me-1"></span>{{ status_label }}</span>{% endfor %}
+    </div>
+  </div>
+</section>
+<style>
+  .brew-calendar th { min-width: 5rem; }
+  .brew-calendar-day { height: 4.5rem; vertical-align: top !important; }
+  .brew-calendar-dot { width: .7rem; height: .7rem; border-radius: 50%; display: inline-block; border: 1px solid rgba(0, 0, 0, .15); }
+  .brew-calendar-dot.status-planned { background: var(--bs-primary); }
+  .brew-calendar-dot.status-brewing { background: var(--bs-warning); }
+  .brew-calendar-dot.status-fermenting { background: var(--bs-info); }
+  .brew-calendar-dot.status-conditioning { background: var(--bs-purple, #6f42c1); }
+  .brew-calendar-dot.status-completed { background: var(--bs-success); }
+  .brew-calendar-dot.status-cancelled { background: var(--bs-danger); }
+  .brew-calendar-dot.stock-ok { outline: 2px solid var(--bs-success); outline-offset: 1px; }
+  .brew-calendar-dot.stock-shopping { outline: 2px solid var(--bs-warning); outline-offset: 1px; }
+  .brew-calendar-dot.stock-insufficient { outline: 2px solid var(--bs-danger); outline-offset: 1px; }
+</style>
+{% if brews %}
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light"><tr><th>Recette</th><th>Statut</th><th>Date du brassage</th><th>Version</th><th>Volume réel</th><th>ABV réel</th><th></th></tr></thead>
+      <tbody>
+        {% for brew in brews %}
+        <tr>
+          <td><a class="fw-semibold text-decoration-none" href="{% url 'recipes:brew_detail' brew.pk %}">{{ brew.recipe_name }}</a></td>
+          <td><span class="badge text-bg-secondary">{{ brew.get_status_display }}</span>{% if brew.stock_status == "ok" %}<span class="ms-2 text-success" title="Stock suffisant" aria-label="Stock suffisant"><i class="bi bi-check-circle-fill" aria-hidden="true"></i></span>{% elif brew.stock_status == "shopping" %}<span class="ms-2 text-warning" title="Stock manquant, prévu dans la liste de courses" aria-label="Stock manquant, prévu dans la liste de courses"><i class="bi bi-cart-check-fill" aria-hidden="true"></i></span>{% elif brew.stock_status == "insufficient" %}{% if brew.stock_missing_items %}<button class="btn btn-link btn-sm p-0 ms-2 text-danger align-baseline" type="button" data-bs-toggle="modal" data-bs-target="#missing-stock-{{ brew.pk }}" title="Voir le stock manquant" aria-label="Voir le stock manquant"><i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i></button>{% else %}<span class="ms-2 text-danger" title="Stock insuffisant" aria-label="Stock insuffisant"><i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i></span>{% endif %}{% endif %}</td>
+          <td>{{ brew.planned_date|date:"d/m/Y"|default:"—" }}</td>
+          <td>{{ brew.recipe_version_label|default:"—" }}</td>
+          <td>{% if brew.actual_batch_size_l %}{{ brew.actual_batch_size_l }} L{% else %}—{% endif %}</td>
+          <td>{% if brew.actual_abv is not None %}{{ brew.actual_abv }} %{% else %}—{% endif %}</td>
+          <td class="text-nowrap">
+            <a class="btn btn-outline-primary btn-sm" href="{% url 'recipes:brew_detail' brew.pk %}" aria-label="Ouvrir {{ brew.recipe_name }}" title="Ouvrir"><i class="bi bi-eye" aria-hidden="true"></i></a>
+            <form class="d-inline" method="post" action="{% url 'recipes:brew_delete' brew.pk %}" onsubmit="return confirm('Supprimer ce brassin ?');">
+              {% csrf_token %}
+              <button class="btn btn-outline-danger btn-sm" type="submit" aria-label="Supprimer {{ brew.recipe_name }}" title="Supprimer"><i class="bi bi-dash-lg" aria-hidden="true"></i></button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
+{% for brew in brews %}{% if brew.stock_missing_items %}
+<div class="modal fade" id="missing-stock-{{ brew.pk }}" tabindex="-1" aria-labelledby="missing-stock-title-{{ brew.pk }}" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header"><h2 class="modal-title h5" id="missing-stock-title-{{ brew.pk }}">Stock manquant — {{ brew.recipe_name }}</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button></div>
+      <div class="modal-body">
+        <p class="text-secondary small">Les éléments suivants ne sont pas disponibles en quantité suffisante :</p>
+        <form method="post" action="{% url 'recipes:brew_missing_stock_to_shopping' brew.pk %}" data-shopping-selection>
+          {% csrf_token %}
+          <div class="form-check border-bottom pb-2 mb-0">
+            <input class="form-check-input" type="checkbox" id="select-all-missing-{{ brew.pk }}" data-select-all-missing>
+            <label class="form-check-label fw-semibold" for="select-all-missing-{{ brew.pk }}">Tout sélectionner</label>
+          </div>
+          <ul class="list-group mb-3">
+            {% for item in brew.stock_missing_items %}
+            <li class="list-group-item">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="names" value="{{ item.name }}" id="missing-{{ brew.pk }}-{{ forloop.counter }}" data-missing-item>
+                <label class="form-check-label w-100" for="missing-{{ brew.pk }}-{{ forloop.counter }}">
+                  {{ item.name }}<small class="d-block text-secondary">Besoin : {{ item.required }} {{ item.unit }}{% if item.available is not None %} · Disponible : {{ item.available }} {{ item.unit }}{% endif %}</small>
+                </label>
+              </div>
+            </li>
+            {% endfor %}
+          </ul>
+          <button class="btn btn-primary" type="submit"><i class="bi bi-cart-plus me-1" aria-hidden="true"></i>Ajouter les articles sélectionnés</button>
+        </form>
+        <p class="small text-secondary mt-2 mb-0">Les articles déjà présents dans la liste de courses ne sont pas proposés.</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}{% endfor %}
+<script>
+  document.querySelectorAll("[data-select-all-missing]").forEach((selectAll) => {
+    selectAll.addEventListener("change", () => {
+      const form = selectAll.closest("[data-shopping-selection]");
+      form.querySelectorAll("[data-missing-item]").forEach((item) => {
+        item.checked = selectAll.checked;
+      });
+    });
+  });
+  document.querySelectorAll("[data-shopping-selection]").forEach((form) => {
+    form.querySelectorAll("[data-missing-item]").forEach((item) => {
+      item.addEventListener("change", () => {
+        const selectAll = form.querySelector("[data-select-all-missing]");
+        const items = [...form.querySelectorAll("[data-missing-item]")];
+        selectAll.checked = items.length > 0 && items.every((entry) => entry.checked);
+        selectAll.indeterminate = items.some((entry) => entry.checked) && !selectAll.checked;
+      });
+    });
+  });
+</script>
 {% else %}
 <div class="text-center bg-white border rounded p-5">
   <h2 class="h4">Aucun brassin</h2>
