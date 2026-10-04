@@ -42,7 +42,7 @@
             <i class="bi {% if item.is_ordered %}bi-check-lg{% else %}bi-circle{% endif %}" aria-hidden="true"></i>
           </button>
         </form>
-        <span class="flex-grow-1 {% if item.is_ordered %}text-decoration-line-through text-secondary{% endif %}">{{ item.name }}{% if item.planned_quantity %}<small class="d-block text-secondary">Prévu : {{ item.planned_quantity }} {{ item.unit }}</small>{% endif %}{% if item.received_quantity %}<small class="d-block {% if item.is_ordered %}text-success{% else %}text-warning{% endif %}"><i class="bi bi-box-seam me-1" aria-hidden="true"></i>Reçu : {{ item.received_quantity }}{% if item.unit %} {{ item.unit }}{% endif %}{% if item.planned_quantity and not item.is_ordered %} · Reste : {{ item.remaining_quantity }} {{ item.unit }}{% endif %}</small>{% endif %}{% if item.source_brews.all %}<small class="d-block text-secondary"><i class="bi bi-beer me-1" aria-hidden="true"></i>Pour : {% for brew in item.source_brews.all %}{{ brew.recipe_name }}{% if not forloop.last %}, {% endif %}{% endfor %}</small>{% endif %}</span>
+        <span class="flex-grow-1 {% if item.is_ordered %}text-decoration-line-through text-secondary{% endif %}">{{ item.name }}{% if item.planned_quantity %}<small class="d-block text-secondary">Prévu : {{ item.planned_quantity }} {{ item.unit }}</small>{% endif %}{% if item.received_quantity %}<small class="d-block {% if item.is_ordered %}text-success{% else %}text-warning{% endif %}"><i class="bi bi-box-seam me-1" aria-hidden="true"></i>Reçu : {{ item.received_quantity }}{% if item.unit %} {{ item.unit }}{% endif %}{% if item.planned_quantity and not item.is_ordered %} · Reste : {{ item.remaining_quantity }} {{ item.unit }}{% endif %}</small>{% endif %}{% if item.source_brews.all %}<small class="d-block text-secondary"><i class="bi bi-beer me-1" aria-hidden="true"></i>Pour : {% for brew in item.source_brews.all %}<a href="{% url 'recipes:brew_detail' brew.pk %}">{{ brew.recipe_name }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}</small>{% endif %}</span>
         <button class="btn btn-sm btn-outline-success" type="button" data-bs-toggle="collapse" data-bs-target="#receive-{{ item.pk }}" aria-label="Intégrer {{ item.name }} au stock" title="{% if item.is_ordered %}Intégrer au stock{% else %}Marquez d’abord l’article comme commandé{% endif %}" {% if not item.is_ordered %}disabled{% endif %}><i class="bi bi-box-arrow-in-down" aria-hidden="true"></i></button>
         <form id="receive-{{ item.pk }}" class="collapse{% if not item.is_ordered %} d-none{% endif %}" method="post" action="{% url 'recipes:shopping_item_receive' item.pk %}">
           {% csrf_token %}
@@ -63,7 +63,7 @@
             <button class="btn btn-success" type="submit" title="Ajouter au stock"><i class="bi bi-check-lg" aria-hidden="true"></i></button>
           </div>
         </form>
-        <form method="post" action="{% url 'recipes:shopping_item_delete' item.pk %}" class="m-0">
+        <form method="post" action="{% url 'recipes:shopping_item_delete' item.pk %}" class="m-0" onsubmit="return confirm('Supprimer {{ item.name|escapejs }} de la liste de courses ?');">
           {% csrf_token %}
           <button class="btn btn-sm btn-outline-danger" type="submit" aria-label="Supprimer {{ item.name }}" title="Supprimer"><i class="bi bi-trash" aria-hidden="true"></i></button>
         </form>
@@ -71,22 +71,21 @@
       {% endfor %}
     </div>
     {% else %}
-    <p class="text-secondary text-center my-4">La liste de courses est vide.</p>
+    <div class="text-center bg-light border rounded p-4 my-4">
+      <p class="text-secondary mb-3">La liste de courses est vide.</p>
+      <p class="small text-secondary mb-0">Ajoutez un article ci-dessus ou créez une liste depuis un brassin dont le stock est insuffisant.</p>
+    </div>
     {% endif %}
   </div>
 </section>
+{{ shopping_quantity_presets|json_script:"shopping-quantity-presets" }}
 <script>
+  const presetsByKind = JSON.parse(document.getElementById("shopping-quantity-presets").textContent);
   document.querySelectorAll("[data-new-kind]").forEach((kindSelect) => {
     const form = kindSelect.closest("form");
     const catalogSelect = form.querySelector("[name='catalog_id']");
     const quantityInput = form.querySelector("[name='quantity']");
     const quantityPreset = form.querySelector("[data-quantity-preset]");
-    const presets = {
-      malt: [["500", "500 g"], ["1000", "1000 g"], ["5000", "5000 g"], ["25000", "25000 g"]],
-      hop: [["50", "50 g"], ["100", "100 g"], ["250", "250 g"]],
-      yeast: [],
-      other: [],
-    };
     const selectedKind = () => {
       if (catalogSelect.value === "new") {
         return kindSelect.value;
@@ -95,7 +94,7 @@
     };
     const updateQuantityOptions = () => {
       const kind = selectedKind();
-      const kindPresets = presets[kind] || [];
+      const kindPresets = presetsByKind[kind] || [];
       quantityPreset.replaceChildren(new Option("Quantité usuelle", ""));
       kindPresets.forEach(([value, label]) => quantityPreset.add(new Option(label, value)));
       quantityPreset.classList.toggle("d-none", kindPresets.length === 0);

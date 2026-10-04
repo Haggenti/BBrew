@@ -29,6 +29,13 @@ class Recipe(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(batch_size_l__gt=0), name="recipe_batch_size_positive"),
+            models.CheckConstraint(
+                condition=models.Q(efficiency__gte=1) & models.Q(efficiency__lte=100),
+                name="recipe_efficiency_between_1_100",
+            ),
+        ]
 
     def __str__(self):
         return self.name
@@ -77,6 +84,17 @@ class Brew(models.Model):
     status = models.CharField("statut", max_length=20, choices=Status.choices, default=Status.PLANNED)
     planned_date = models.DateField("date du brassage", null=True, blank=True)
     completed_date = models.DateField("date de mise en bouteille", null=True, blank=True)
+    bottled_bottle_count = models.PositiveIntegerField("nombre de bouteilles à capsuler", null=True, blank=True)
+    capsule_catalog = models.ForeignKey(
+        "IngredientCatalog",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="bottling_brews",
+        verbose_name="type de capsules",
+    )
+    capsules_consumed = models.PositiveIntegerField("capsules consommées", default=0)
+    capsules_consumed_at = models.DateTimeField("capsules consommées le", null=True, blank=True)
     actual_preboil_volume_l = models.DecimalField(
         "volume pré-ébullition réel (L)", max_digits=6, decimal_places=2, null=True, blank=True
     )
@@ -96,6 +114,24 @@ class Brew(models.Model):
 
     class Meta:
         ordering = ["-planned_date", "-created_at"]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(planned_date__isnull=True)
+                    | models.Q(completed_date__isnull=True)
+                    | models.Q(completed_date__gte=models.F("planned_date"))
+                ),
+                name="brew_bottling_after_brew",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(actual_preboil_volume_l__isnull=True) | models.Q(actual_preboil_volume_l__gte=0),
+                name="brew_preboil_volume_nonnegative",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(actual_batch_size_l__isnull=True) | models.Q(actual_batch_size_l__gte=0),
+                name="brew_batch_volume_nonnegative",
+            ),
+        ]
 
     def __str__(self):
         return f"{self.recipe_name} · {self.get_status_display()}"
@@ -127,8 +163,8 @@ class RecipeVersion(models.Model):
 class EquipmentSettings(models.Model):
     diameter_cm = models.DecimalField("diamètre de la cuve (cm)", max_digits=6, decimal_places=1, default=40)
     height_cm = models.DecimalField("hauteur de la cuve (cm)", max_digits=6, decimal_places=1, default=45)
-    bag_weight_kg = models.DecimalField("poids du sac (g)", max_digits=7, decimal_places=1, default=0)
-    evaporation_l_min = models.DecimalField("évaporation (L/h)", max_digits=5, decimal_places=2, default=15)
+    bag_weight_g = models.DecimalField("poids du sac (g)", max_digits=7, decimal_places=1, default=0)
+    evaporation_l_h = models.DecimalField("évaporation (L/h)", max_digits=5, decimal_places=2, default=15)
     grain_absorption_l_kg = models.DecimalField("absorption des grains (L/kg)", max_digits=5, decimal_places=2, default=0.8)
     dead_space_l = models.DecimalField("volume mort (L)", max_digits=5, decimal_places=2, default=0)
     mash_efficiency = models.DecimalField("rendement d'empâtage (%)", max_digits=5, decimal_places=1, default=75)
@@ -215,6 +251,12 @@ class IngredientCatalog(models.Model):
         ordering = ["kind", "name"]
         verbose_name = "ingrédient du catalogue"
         verbose_name_plural = "ingrédients du catalogue"
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(quantity_available__gte=0),
+                name="catalog_quantity_nonnegative",
+            ),
+        ]
 
     def __str__(self):
         return f"{self.name} ({self.get_kind_display()})"
@@ -274,6 +316,13 @@ class MashStep(models.Model):
 
     class Meta:
         ordering = ["position", "id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(temperature_c__gte=35) & models.Q(temperature_c__lte=100),
+                name="mash_temperature_between_35_100",
+            ),
+            models.CheckConstraint(condition=models.Q(duration_min__gt=0), name="mash_duration_positive"),
+        ]
 
     def __str__(self):
         return f"{self.name} — {self.temperature_c} °C / {self.duration_min} min"

@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Tableau de bord · BBrew{% endblock %}
+{% block content %}
+<div class="mb-4">
+  <h1 class="h2 mb-1">Tableau de bord</h1>
+  <p class="text-secondary mb-0">Vue d’ensemble de votre activité brassicole.</p>
+</div>
+<div class="row g-3" aria-label="Résumé de l'activité">
+  <div class="col-6 col-lg-3"><a class="card h-100 text-decoration-none shadow-sm" href="{% url 'recipes:list' %}"><div class="card-body"><div class="small text-secondary">Recettes</div><div class="display-6 text-dark">{{ dashboard.recipe_count }}</div></div></a></div>
+  <div class="col-6 col-lg-3"><a class="card h-100 text-decoration-none shadow-sm" href="{% url 'recipes:brews' %}"><div class="card-body"><div class="small text-secondary">Brassins à venir</div><div class="display-6 text-dark">{{ dashboard.upcoming_brew_count }}</div></div></a></div>
+  <div class="col-6 col-lg-3"><a class="card h-100 text-decoration-none shadow-sm" href="{% url 'recipes:shopping_list' %}?status=todo"><div class="card-body"><div class="small text-secondary">Articles à acheter</div><div class="display-6 text-dark">{{ dashboard.shopping_count }}</div></div></a></div>
+  <div class="col-6 col-lg-3"><a class="card h-100 text-decoration-none shadow-sm" href="{% url 'recipes:catalog' %}?alerts=1"><div class="card-body"><div class="small text-secondary">Alertes de stock</div><div class="display-6 {% if dashboard.stock_alert_count %}text-danger{% else %}text-success{% endif %}">{{ dashboard.stock_alert_count }}</div></div></a></div>
+</div>
+{% endblock %}

@@ -107,8 +107,8 @@ class EquipmentSettingsForm(StyledModelForm):
         fields = [
             "diameter_cm",
             "height_cm",
-            "bag_weight_kg",
-            "evaporation_l_min",
+            "bag_weight_g",
+            "evaporation_l_h",
             "grain_absorption_l_kg",
             "dead_space_l",
             "mash_efficiency",
@@ -116,13 +116,13 @@ class EquipmentSettingsForm(StyledModelForm):
         widgets = {
             "diameter_cm": forms.NumberInput(attrs={"min": "1", "step": "0.1"}),
             "height_cm": forms.NumberInput(attrs={"min": "1", "step": "0.1"}),
-            "bag_weight_kg": forms.NumberInput(attrs={"min": "0", "step": "1"}),
-            "evaporation_l_min": forms.NumberInput(attrs={"min": "0", "step": "0.01"}),
+            "bag_weight_g": forms.NumberInput(attrs={"min": "0", "step": "1"}),
+            "evaporation_l_h": forms.NumberInput(attrs={"min": "0", "step": "0.01"}),
             "grain_absorption_l_kg": forms.NumberInput(attrs={"min": "0", "step": "0.01"}),
             "dead_space_l": forms.NumberInput(attrs={"min": "0", "step": "0.01"}),
             "mash_efficiency": forms.NumberInput(attrs={"min": "1", "max": "100", "step": "0.1"}),
         }
-        labels = {"evaporation_l_min": "évaporation (L/h)"}
+        labels = {"evaporation_l_h": "évaporation (L/h)"}
 
 
 class ShoppingItemForm(StyledModelForm):
@@ -175,6 +175,7 @@ class BrewForm(StyledModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["recipe"].label = "Recette"
         self.fields["preboil_volume_mode"] = forms.ChoiceField(
             label="Mode de saisie du volume pré-ébullition",
             choices=self.VOLUME_INPUT_MODES,
@@ -207,6 +208,9 @@ class BrewForm(StyledModelForm):
             str(version.pk): version.recipe_id
             for version in RecipeVersion.objects.all()
         }
+        self.fields["capsule_catalog"].queryset = IngredientCatalog.objects.filter(
+            kind=IngredientCatalog.Kind.CONSUMABLE
+        )
 
     def clean(self):
         cleaned_data = super().clean()
@@ -243,6 +247,7 @@ class BrewForm(StyledModelForm):
         model = Brew
         fields = [
             "recipe", "recipe_version", "status", "planned_date", "completed_date",
+            "bottled_bottle_count", "capsule_catalog",
             "actual_preboil_volume_l", "actual_batch_size_l", "actual_og",
             "actual_spent_grains_weight_kg",
             "actual_fg", "notes",
@@ -253,6 +258,7 @@ class BrewForm(StyledModelForm):
             "actual_batch_size_l": forms.NumberInput(attrs={"min": "0", "step": "0.1"}),
             "actual_preboil_volume_l": forms.NumberInput(attrs={"min": "0", "step": "0.1"}),
             "actual_spent_grains_weight_kg": forms.NumberInput(attrs={"min": "0", "step": "0.001"}),
+            "bottled_bottle_count": forms.NumberInput(attrs={"min": "1", "step": "1"}),
             "actual_og": forms.NumberInput(attrs={"min": "0.9", "step": "0.001"}),
             "actual_fg": forms.NumberInput(attrs={"min": "0.9", "step": "0.001"}),
             "notes": forms.Textarea(attrs={"rows": 4}),

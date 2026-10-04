@@ -12,7 +12,8 @@
 </head>
 <body class="bg-light">
   <nav class="navbar navbar-dark bg-dark mb-4">
-    <div class="container"><a class="btn btn-outline-light btn-sm" href="{% url 'recipes:list' %}">Recettes</a>
+    <div class="container"><a class="btn btn-outline-light btn-sm" href="{% url 'recipes:dashboard' %}">Tableau de bord</a>
+      <a class="btn btn-outline-light btn-sm" href="{% url 'recipes:list' %}">Recettes</a>
       <a class="btn btn-outline-light btn-sm" href="{% url 'recipes:catalog' %}">Stock</a>
       <a class="btn btn-outline-light btn-sm" href="{% url 'recipes:brews' %}">Brassins</a>
       <a class="btn btn-outline-light btn-sm" href="{% url 'recipes:shopping_list' %}">Courses</a>

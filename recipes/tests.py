@@ -258,8 +258,8 @@ class RecipeWorkflowTests(TestCase):
             {
                 "diameter_cm": "50",
                 "height_cm": "60",
-                "bag_weight_kg": "1250",
-                "evaporation_l_min": "0.30",
+                "bag_weight_g": "1250",
+                "evaporation_l_h": "0.30",
                 "grain_absorption_l_kg": "0.80",
                 "dead_space_l": "1.5",
                 "mash_efficiency": "78",
@@ -269,7 +269,7 @@ class RecipeWorkflowTests(TestCase):
         settings = EquipmentSettings.objects.get()
         self.assertEqual(settings.diameter_cm, 50)
         self.assertEqual(settings.grain_absorption_l_kg, Decimal("0.80"))
-        self.assertEqual(settings.bag_weight_kg, Decimal("1250.0"))
+        self.assertEqual(settings.bag_weight_g, Decimal("1250.0"))
 
     def test_database_reset_requires_confirmation_and_selected_sections(self):
         recipe = Recipe.objects.create(name="À conserver")
@@ -387,8 +387,17 @@ class RecipeWorkflowTests(TestCase):
                 "target_ibu": "25",
             },
         )
-        self.assertRedirects(response, "/")
+        self.assertRedirects(response, "/recettes/")
         self.assertTrue(Recipe.objects.filter(name="Pale Ale").exists())
+
+    def test_brew_creation_can_start_from_recipe_detail(self):
+        recipe = Recipe.objects.create(name="Recipe de départ")
+
+        response = self.client.get(f"/brassins/ajouter/?recipe={recipe.pk}")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, ">Recette<")
+        self.assertEqual(response.context["form"].initial["recipe"], recipe)
 
     def test_recipe_detail_contains_estimates_without_chart(self):
         recipe = Recipe.objects.create(name="IPA", batch_size_l=20, efficiency=75)
@@ -431,7 +440,7 @@ class RecipeWorkflowTests(TestCase):
 
         response = self.client.post(f"/recettes/{recipe.pk}/supprimer/")
 
-        self.assertRedirects(response, "/")
+        self.assertRedirects(response, "/recettes/")
         self.assertFalse(Recipe.objects.filter(pk=recipe.pk).exists())
         self.assertFalse(Ingredient.objects.filter(recipe_id=recipe.pk).exists())
         self.assertFalse(RecipeVersion.objects.filter(recipe_id=recipe.pk).exists())
@@ -599,7 +608,7 @@ class RecipeWorkflowTests(TestCase):
                 ]
             },
         )
-        self.assertRedirects(response, "/")
+        self.assertRedirects(response, "/recettes/")
         self.assertEqual(Recipe.objects.filter(name__in=["One", "Two"]).count(), 2)
 
     def test_backup_can_be_downloaded_and_restored(self):
@@ -628,11 +637,83 @@ class RecipeWorkflowTests(TestCase):
             {"file": SimpleUploadedFile("bbrew.json", backup_response.content, content_type="application/json")},
         )
 
-        self.assertRedirects(restore_response, "/")
+        self.assertRedirects(restore_response, "/recettes/")
         restored = Recipe.objects.get()
         self.assertEqual(restored.name, "Sauvegarde Ale")
         self.assertEqual(restored.ingredients.get().catalog.name, "Pale malt")
         self.assertFalse(Recipe.objects.filter(name="Données à remplacer").exists())
+
+    def test_backup_restores_shopping_item_source_brews(self):
+        recipe = Recipe.objects.create(name="Brassin sauvegardé")
+        brew = Brew.objects.create(recipe=recipe, recipe_name=recipe.name)
+        item = ShoppingItem.objects.create(name="Malt sauvegardé")
+        item.source_brews.add(brew)
+
+        backup_response = self.client.get("/parametres/sauvegarde.json")
+        item.delete()
+        brew.delete()
+        recipe.delete()
+
+        restore_response = self.client.post(
+            "/parametres/restaurer/",
+            {"file": SimpleUploadedFile("bbrew.json", backup_response.content, content_type="application/json")},
+        )
+
+        self.assertRedirects(restore_response, "/recettes/")
+        restored_item = ShoppingItem.objects.get(name="Malt sauvegardé")
+        self.assertEqual(list(restored_item.source_brews.values_list("recipe_name", flat=True)), ["Brassin sauvegardé"])
+
+    def test_brew_capsules_can_be_consumed_and_rolled_back(self):
+        capsules = IngredientCatalog.objects.create(
+            name="Capsules noires",
+            kind=IngredientCatalog.Kind.CONSUMABLE,
+            quantity_available=100,
+        )
+        brew = Brew.objects.create(
+            recipe_name="Capsule Ale",
+        )
+
+        response = self.client.post(
+            f"/brassins/{brew.pk}/mise-en-bouteille/",
+            {"bottled_bottle_count": "10", "capsule_catalog": capsules.pk},
+        )
+        self.assertRedirects(response, f"/brassins/{brew.pk}/")
+
+        response = self.client.post(f"/brassins/{brew.pk}/consommer-capsules/")
+
+        self.assertRedirects(response, f"/brassins/{brew.pk}/")
+        capsules.refresh_from_db()
+        brew.refresh_from_db()
+        self.assertEqual(capsules.quantity_available, 90)
+        self.assertEqual(brew.capsules_consumed, 10)
+        self.assertIsNotNone(brew.capsules_consumed_at)
+
+        response = self.client.post(f"/brassins/{brew.pk}/annuler-consommation-capsules/")
+
+        self.assertRedirects(response, f"/brassins/{brew.pk}/")
+        capsules.refresh_from_db()
+        brew.refresh_from_db()
+        self.assertEqual(capsules.quantity_available, 100)
+        self.assertEqual(brew.capsules_consumed, 0)
+        self.assertIsNone(brew.capsules_consumed_at)
+
+    def test_brew_capsules_cannot_make_stock_negative(self):
+        capsules = IngredientCatalog.objects.create(
+            name="Capsules rouges",
+            kind=IngredientCatalog.Kind.CONSUMABLE,
+            quantity_available=5,
+        )
+        brew = Brew.objects.create(
+            recipe_name="Stock Ale",
+            bottled_bottle_count=10,
+            capsule_catalog=capsules,
+        )
+
+        response = self.client.post(f"/brassins/{brew.pk}/consommer-capsules/")
+
+        self.assertRedirects(response, f"/brassins/{brew.pk}/")
+        capsules.refresh_from_db()
+        self.assertEqual(capsules.quantity_available, 5)
 
     def test_brew_can_be_created_viewed_and_updated(self):
         recipe = Recipe.objects.create(name="Bière de test")
@@ -654,6 +735,8 @@ class RecipeWorkflowTests(TestCase):
         )
         brew = Brew.objects.get()
         self.assertRedirects(response, "/brassins/")
+        brews_response = self.client.get("/brassins/")
+        self.assertNotContains(brews_response, "Ajouter un brassin")
         self.assertEqual(brew.recipe_name, "Bière de test")
         self.assertIsNotNone(brew.recipe_version)
         self.assertIn("V1", brew.recipe_version_label)
@@ -720,7 +803,7 @@ class RecipeWorkflowTests(TestCase):
         self.assertAlmostEqual(float(brew.actual_batch_size_l), 43.98, places=2)
 
     def test_brew_calculates_residual_water_from_spent_grains(self):
-        EquipmentSettings.objects.create(bag_weight_kg=1200)
+        EquipmentSettings.objects.create(bag_weight_g=1200)
         recipe = Recipe.objects.create(name="Drêches")
         Ingredient.objects.create(
             recipe=recipe,

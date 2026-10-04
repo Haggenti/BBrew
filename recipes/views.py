@@ -20,6 +20,8 @@ from .models import BeerCategory, Brew, EquipmentSettings, FermentationStep, Ing
 from .signals import save_version, suspend_versioning
 from .versioning import describe_version_change
 from .backup import create_backup, restore_backup
+from .catalog_rules import CATALOG_KIND_RULES
+from .stock_logic import brew_stock_requirements, planned_stock_needs
 
 
 def recipe_list(request):
@@ -52,6 +54,26 @@ def recipe_list(request):
     return render(request, "recipes/list.html", {"recipes": recipes})
 
 
+def dashboard(request):
+    today = timezone.localdate()
+    planned_needs = planned_stock_needs()
+    stock_alert_count = sum(
+        1
+        for item in IngredientCatalog.objects.all()
+        if item.quantity_available <= 0
+        or planned_needs.get(item.pk, {}).get("required", 0) > item.quantity_available
+    )
+    dashboard = {
+        "recipe_count": Recipe.objects.count(),
+        "upcoming_brew_count": Brew.objects.filter(
+            planned_date__gte=today,
+        ).exclude(status__in=[Brew.Status.COMPLETED, Brew.Status.CANCELLED]).count(),
+        "shopping_count": ShoppingItem.objects.filter(is_ordered=False).count(),
+        "stock_alert_count": stock_alert_count,
+    }
+    return render(request, "recipes/dashboard.html", {"dashboard": dashboard})
+
+
 def brew_list(request):
     brews = list(Brew.objects.all())
     existing_shopping_names = {
@@ -60,7 +82,7 @@ def brew_list(request):
     }
     for brew in brews:
         if brew.status == Brew.Status.PLANNED:
-            requirements = _brew_stock_requirements(brew)
+            requirements = brew_stock_requirements(brew)
             missing_items = [
                 item for item in requirements
                 if item["catalog"] is None
@@ -160,6 +182,10 @@ def shopping_list(request):
             "form": ShoppingItemForm(),
             "catalog_items": catalog_items,
             "catalog_kinds": IngredientCatalog.Kind.choices,
+            "shopping_quantity_presets": {
+                kind: rules["quantity_presets"]
+                for kind, rules in CATALOG_KIND_RULES.items()
+            },
             "shopping_status": status,
         },
     )
@@ -292,7 +318,15 @@ def brew_missing_stock_to_shopping(request, pk):
 
 
 def brew_create(request):
-    form = BrewForm(request.POST or None, equipment_settings=EquipmentSettings.objects.first())
+    initial = {}
+    recipe_id = request.GET.get("recipe")
+    if request.method == "GET" and recipe_id:
+        initial["recipe"] = Recipe.objects.filter(pk=recipe_id).first()
+    form = BrewForm(
+        request.POST or None,
+        initial=initial,
+        equipment_settings=EquipmentSettings.objects.first(),
+    )
     if request.method == "POST" and form.is_valid():
         brew = form.save()
         messages.success(request, f"Le brassin « {brew.recipe_name} » a été créé.")
@@ -306,7 +340,14 @@ def brew_detail(request, pk):
     return render(
         request,
         "recipes/brew_detail.html",
-        {"brew": brew, "comparison": comparison, "stock_requirements": _brew_stock_requirements(brew)},
+        {
+            "brew": brew,
+            "comparison": comparison,
+            "stock_requirements": brew_stock_requirements(brew),
+            "capsule_catalogs": IngredientCatalog.objects.filter(
+                kind=IngredientCatalog.Kind.CONSUMABLE
+            ),
+        },
     )
 
 
@@ -341,42 +382,6 @@ def brew_delete(request, pk):
     return redirect("recipes:brews")
 
 
-def _brew_stock_requirements(brew):
-    requirements = {}
-    if not brew.recipe_version:
-        return []
-    for ingredient in brew.recipe_version.snapshot.get("ingredients", []):
-        catalog_id = ingredient.get("catalog")
-        kind = ingredient.get("kind")
-        key = f"{catalog_id}:{kind}" if catalog_id is not None else f"missing:{ingredient.get('name', 'unknown')}"
-        if key not in requirements:
-            requirements[key] = {
-                "key": key,
-                "catalog_id": catalog_id,
-                "kind": kind,
-                "name": ingredient.get("name", "Ingrédient inconnu"),
-                "required": 0,
-                "unit": (
-                    "paquet(s)"
-                    if kind == Ingredient.Kind.YEAST
-                    else "" if kind == Ingredient.Kind.OTHER else "g"
-                ),
-            }
-        requirements[key]["required"] += (
-            1
-            if kind == Ingredient.Kind.YEAST
-            else int(Decimal(str(ingredient.get("amount_g", 0))).to_integral_value(rounding=ROUND_CEILING))
-        )
-    catalog_ids = [item["catalog_id"] for item in requirements.values() if item["catalog_id"] is not None]
-    catalog_by_id = IngredientCatalog.objects.in_bulk(catalog_ids)
-    consumed = set(brew.stock_consumed_items or [])
-    for item in requirements.values():
-        item["catalog"] = catalog_by_id.get(item["catalog_id"])
-        item["available"] = item["catalog"].quantity_available if item["catalog"] else None
-        item["consumed"] = item["key"] in consumed
-    return list(requirements.values())
-
-
 def _brew_comparison(brew):
     actual_efficiency = None
     evaporation_total = None
@@ -395,8 +400,8 @@ def _brew_comparison(brew):
         ) / 1000
     if brew.actual_spent_grains_weight_kg is not None:
         equipment = EquipmentSettings.objects.first()
-        bag_weight_kg = float(equipment.bag_weight_kg) / 1000 if equipment else 0
-        residual_water_kg = float(brew.actual_spent_grains_weight_kg) - bag_weight_kg - dry_grains_kg
+        bag_weight_g = float(equipment.bag_weight_g) / 1000 if equipment else 0
+        residual_water_kg = float(brew.actual_spent_grains_weight_kg) - bag_weight_g - dry_grains_kg
     if brew.actual_preboil_volume_l is not None and brew.actual_batch_size_l is not None:
         evaporation_total = float(brew.actual_preboil_volume_l - brew.actual_batch_size_l)
         boil_time = None
@@ -438,7 +443,7 @@ def _brew_comparison(brew):
 def brew_consume_stock(request, pk):
     brew = get_object_or_404(Brew, pk=pk)
     selected = set(request.POST.getlist("stock_item"))
-    requirements = _brew_stock_requirements(brew)
+    requirements = brew_stock_requirements(brew)
     consumable = {item["key"]: item for item in requirements if item["catalog"] and not item["consumed"]}
     with transaction.atomic():
         consumed_items = set(brew.stock_consumed_items or [])
@@ -460,7 +465,7 @@ def brew_consume_stock(request, pk):
 def brew_rollback_stock(request, pk):
     brew = get_object_or_404(Brew, pk=pk)
     selected = set(request.POST.getlist("stock_item"))
-    requirements = _brew_stock_requirements(brew)
+    requirements = brew_stock_requirements(brew)
     restorable = {item["key"]: item for item in requirements if item["catalog"] and item["consumed"]}
     if not selected & restorable.keys():
         messages.error(request, "Aucune ligne de consommation n’a été sélectionnée.")
@@ -478,6 +483,78 @@ def brew_rollback_stock(request, pk):
         brew.stock_consumed_at = None
         brew.save(update_fields=["stock_consumed_items", "stock_consumed_at"])
     messages.success(request, "Les lignes sélectionnées ont été restaurées dans le stock.")
+    return redirect("recipes:brew_detail", pk=brew.pk)
+
+
+@require_POST
+def brew_consume_capsules(request, pk):
+    brew = get_object_or_404(Brew, pk=pk)
+    if brew.capsules_consumed_at:
+        messages.error(request, "Les capsules de ce brassin ont déjà été consommées.")
+        return redirect("recipes:brew_detail", pk=brew.pk)
+    if not brew.bottled_bottle_count or not brew.capsule_catalog:
+        messages.error(request, "Indiquez le nombre de bouteilles et le type de capsules avant de consommer le stock.")
+        return redirect("recipes:brew_detail", pk=brew.pk)
+    if brew.capsule_catalog.kind != IngredientCatalog.Kind.CONSUMABLE:
+        messages.error(request, "La fiche sélectionnée n’est pas un consommable.")
+        return redirect("recipes:brew_detail", pk=brew.pk)
+
+    with transaction.atomic():
+        capsules = IngredientCatalog.objects.select_for_update().get(pk=brew.capsule_catalog_id)
+        if capsules.quantity_available < brew.bottled_bottle_count:
+            messages.error(
+                request,
+                f"Stock insuffisant : {capsules.quantity_available} capsule(s) disponible(s) pour "
+                f"{brew.bottled_bottle_count} nécessaire(s).",
+            )
+            return redirect("recipes:brew_detail", pk=brew.pk)
+        capsules.quantity_available -= brew.bottled_bottle_count
+        capsules.save(update_fields=["quantity_available"])
+        brew.capsules_consumed = brew.bottled_bottle_count
+        brew.capsules_consumed_at = timezone.now()
+        brew.save(update_fields=["capsules_consumed", "capsules_consumed_at"])
+    messages.success(request, f"{brew.capsules_consumed} capsule(s) consommée(s).")
+    return redirect("recipes:brew_detail", pk=brew.pk)
+
+
+@require_POST
+def brew_bottling_update(request, pk):
+    brew = get_object_or_404(Brew, pk=pk)
+    try:
+        bottle_count = int(request.POST.get("bottled_bottle_count", ""))
+    except (TypeError, ValueError):
+        bottle_count = 0
+    capsule_catalog = IngredientCatalog.objects.filter(
+        pk=request.POST.get("capsule_catalog"),
+        kind=IngredientCatalog.Kind.CONSUMABLE,
+    ).first()
+    if bottle_count <= 0 or capsule_catalog is None:
+        messages.error(request, "Indiquez un nombre de bouteilles positif et un consommable de capsules valide.")
+        return redirect("recipes:brew_detail", pk=brew.pk)
+    if brew.capsules_consumed_at:
+        messages.error(request, "La consommation des capsules a déjà été enregistrée.")
+        return redirect("recipes:brew_detail", pk=brew.pk)
+    brew.bottled_bottle_count = bottle_count
+    brew.capsule_catalog = capsule_catalog
+    brew.save(update_fields=["bottled_bottle_count", "capsule_catalog"])
+    messages.success(request, "Les informations de mise en bouteille ont été enregistrées.")
+    return redirect("recipes:brew_detail", pk=brew.pk)
+
+
+@require_POST
+def brew_rollback_capsules(request, pk):
+    brew = get_object_or_404(Brew, pk=pk)
+    if not brew.capsules_consumed_at or not brew.capsule_catalog_id or not brew.capsules_consumed:
+        messages.error(request, "Aucune consommation de capsules à annuler.")
+        return redirect("recipes:brew_detail", pk=brew.pk)
+    with transaction.atomic():
+        capsules = IngredientCatalog.objects.select_for_update().get(pk=brew.capsule_catalog_id)
+        capsules.quantity_available += brew.capsules_consumed
+        capsules.save(update_fields=["quantity_available"])
+        brew.capsules_consumed = 0
+        brew.capsules_consumed_at = None
+        brew.save(update_fields=["capsules_consumed", "capsules_consumed_at"])
+    messages.success(request, "La consommation des capsules a été annulée.")
     return redirect("recipes:brew_detail", pk=brew.pk)
 
 
@@ -653,6 +730,23 @@ def recipe_version_delete(request, pk, version_pk):
 
 
 def catalog_list(request):
+    query = request.GET.get("q", "").strip()
+    alerts_only = request.GET.get("alerts") == "1"
+    planned_needs = planned_stock_needs()
+    catalog_items = list(IngredientCatalog.objects.all())
+    stock_alerts = []
+    for item in catalog_items:
+        planned_need = planned_needs.get(item.pk, {"required": 0, "unit": "", "brews": []})
+        item.planned_required = planned_need["required"]
+        item.planned_deficit = max(item.planned_required - item.quantity_available, 0)
+        item.stock_alert = item.quantity_available <= 0 or item.planned_deficit > 0
+        item.planned_brews = planned_need["brews"]
+        if item.stock_alert:
+            stock_alerts.append(item)
+    if query:
+        catalog_items = [item for item in catalog_items if query.casefold() in item.name.casefold()]
+    if alerts_only:
+        catalog_items = [item for item in catalog_items if item.stock_alert]
     return render(
         request,
         "recipes/catalog.html",
@@ -660,13 +754,16 @@ def catalog_list(request):
             "malt_form": CatalogMaltForm(),
             "hop_form": CatalogHopForm(),
             "yeast_form": CatalogYeastForm(),
-            "malts": IngredientCatalog.objects.filter(kind=IngredientCatalog.Kind.MALT),
-            "hops": IngredientCatalog.objects.filter(kind=IngredientCatalog.Kind.HOP),
-            "yeasts": IngredientCatalog.objects.filter(kind=IngredientCatalog.Kind.YEAST),
-            "others": IngredientCatalog.objects.filter(kind=IngredientCatalog.Kind.OTHER),
+            "malts": [item for item in catalog_items if item.kind == IngredientCatalog.Kind.MALT],
+            "hops": [item for item in catalog_items if item.kind == IngredientCatalog.Kind.HOP],
+            "yeasts": [item for item in catalog_items if item.kind == IngredientCatalog.Kind.YEAST],
+            "others": [item for item in catalog_items if item.kind == IngredientCatalog.Kind.OTHER],
             "other_form": CatalogOtherForm(),
-            "consumables": IngredientCatalog.objects.filter(kind=IngredientCatalog.Kind.CONSUMABLE),
+            "consumables": [item for item in catalog_items if item.kind == IngredientCatalog.Kind.CONSUMABLE],
             "consumable_form": CatalogConsumableForm(),
+            "catalog_query": query,
+            "alerts_only": alerts_only,
+            "stock_alerts": stock_alerts,
         },
     )
 
@@ -909,7 +1006,7 @@ def recipe_detail(request, pk, edit_forms=None):
             "water_equipment": {
                 "diameter_cm": float(equipment.diameter_cm),
                 "height_cm": float(equipment.height_cm),
-                "evaporation_l_min": float(equipment.evaporation_l_min),
+                "evaporation_l_h": float(equipment.evaporation_l_h),
                 "grain_absorption_l_kg": float(equipment.grain_absorption_l_kg),
                 "dead_space_l": float(equipment.dead_space_l),
             },

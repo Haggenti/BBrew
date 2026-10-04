@@ -9,7 +9,7 @@
       {% csrf_token %}<label class="small text-secondary" for="{{ category_form.category.id_for_label }}">Style BJCP</label>{{ category_form.category }}<button class="btn btn-sm btn-outline-secondary" type="submit">Enregistrer</button>
     </form>
   </div>
-  <div class="d-flex flex-wrap gap-2 mt-3"><a class="btn btn-outline-secondary btn-sm" href="{% url 'recipes:history' recipe.pk %}"><i class="bi bi-clock-history me-1" aria-hidden="true"></i>Versions</a><a class="btn btn-outline-secondary btn-sm" href="{% url 'recipes:export' recipe.pk %}">Exporter BeerXML</a></div>
+  <div class="d-flex flex-wrap gap-2 mt-3"><a class="btn btn-outline-secondary btn-sm" href="{% url 'recipes:history' recipe.pk %}"><i class="bi bi-clock-history me-1" aria-hidden="true"></i>Versions</a><a class="btn btn-outline-secondary btn-sm" href="{% url 'recipes:export' recipe.pk %}">Exporter BeerXML</a><a class="btn btn-primary btn-sm" href="{% url 'recipes:brew_create' %}?recipe={{ recipe.pk }}"><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>Créer un brassin à partir de cette recette</a></div>
 </div>
 <section class="card card-body mb-4">
   <h2 class="h5"><i class="bi bi-sticky me-2" aria-hidden="true"></i>Notes</h2>
@@ -489,7 +489,7 @@
   const waterEquipment = {
     diameter: {{ water_equipment.diameter_cm|unlocalize }},
     height: {{ water_equipment.height_cm|unlocalize }},
-    evaporationLPerHour: {{ water_equipment.evaporation_l_min|unlocalize }},
+    evaporationLPerHour: {{ water_equipment.evaporation_l_h|unlocalize }},
     absorption: {{ water_equipment.grain_absorption_l_kg|unlocalize }},
     deadSpace: {{ water_equipment.dead_space_l|unlocalize }}
   };

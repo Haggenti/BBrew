@@ -5,7 +5,8 @@ from . import views
 app_name = "recipes"
 
 urlpatterns = [
-    path("", views.recipe_list, name="list"),
+    path("", views.dashboard, name="dashboard"),
+    path("recettes/", views.recipe_list, name="list"),
     path("brassins/", views.brew_list, name="brews"),
     path("brassins/ajouter/", views.brew_create, name="brew_create"),
     path("brassins/<int:pk>/", views.brew_detail, name="brew_detail"),
@@ -13,6 +14,9 @@ urlpatterns = [
     path("brassins/<int:pk>/supprimer/", views.brew_delete, name="brew_delete"),
     path("brassins/<int:pk>/consommer-stock/", views.brew_consume_stock, name="brew_consume_stock"),
     path("brassins/<int:pk>/annuler-consommation-stock/", views.brew_rollback_stock, name="brew_rollback_stock"),
+    path("brassins/<int:pk>/consommer-capsules/", views.brew_consume_capsules, name="brew_consume_capsules"),
+    path("brassins/<int:pk>/annuler-consommation-capsules/", views.brew_rollback_capsules, name="brew_rollback_capsules"),
+    path("brassins/<int:pk>/mise-en-bouteille/", views.brew_bottling_update, name="brew_bottling_update"),
     path("brassins/<int:pk>/stock-manquant-courses/", views.brew_missing_stock_to_shopping, name="brew_missing_stock_to_shopping"),
     path("parametres/", views.equipment_settings, name="equipment_settings"),
     path("courses/", views.shopping_list, name="shopping_list"),
