@@ -1302,6 +1302,41 @@ class RecipeWorkflowTests(TestCase):
         self.assertEqual(catalog.quantity_available, 5000)
         self.assertIsNone(brew.stock_consumed_at)
 
+    def test_brew_stock_consumption_rejects_insufficient_stock(self):
+        catalog = IngredientCatalog.objects.create(
+            name="Pale malt",
+            kind=IngredientCatalog.Kind.MALT,
+            quantity_available=1000,
+        )
+        recipe = Recipe.objects.create(name="Brassin stock insuffisant")
+        Ingredient.objects.create(
+            recipe=recipe,
+            catalog=catalog,
+            name="Pale malt",
+            kind=Ingredient.Kind.MALT,
+            amount_g=2500,
+        )
+        self.client.post(f"/recettes/{recipe.pk}/versions/ajouter/", {"reason": "Version de brassage"})
+        self.client.post(
+            "/brassins/ajouter/",
+            {"recipe": recipe.pk, "status": "planned", "planned_date": ""},
+        )
+        brew = Brew.objects.get()
+
+        response = self.client.post(
+            f"/brassins/{brew.pk}/consommer-stock/",
+            {"stock_item": f"{catalog.pk}:{Ingredient.Kind.MALT}"},
+            follow=True,
+        )
+
+        self.assertRedirects(response, f"/brassins/{brew.pk}/")
+        catalog.refresh_from_db()
+        brew.refresh_from_db()
+        self.assertEqual(catalog.quantity_available, 1000)
+        self.assertEqual(brew.stock_consumed_items, [])
+        self.assertIsNone(brew.stock_consumed_at)
+        self.assertContains(response, "Stock insuffisant")
+
     def test_global_boil_time_can_be_updated(self):
         recipe = Recipe.objects.create(name="Boil test", boil_time_min=60)
         response = self.client.post(

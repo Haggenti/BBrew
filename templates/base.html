@@ -30,9 +30,11 @@
       <a class="sidebar-link{% if request.resolver_match.url_name == 'equipment_settings' %} active{% endif %}" href="{% url 'recipes:equipment_settings' %}" title="Paramètres"><i class="bi bi-gear" aria-hidden="true"></i><span class="sidebar-label">Paramètres</span></a>
     </nav>
   </aside>
-  <main class="container pb-5 app-main" id="main-content">
-    {% for message in messages %}<div class="alert alert-success">{{ message }}</div>{% endfor %}
-    {% block content %}{% endblock %}
+  <main class="app-main" id="main-content">
+    <div class="app-content">
+      {% for message in messages %}<div class="alert alert-success">{{ message }}</div>{% endfor %}
+      {% block content %}{% endblock %}
+    </div>
   </main>
   <style>
     :root { --sidebar-width: 15rem; --sidebar-collapsed-width: 4.75rem; }
@@ -46,16 +48,18 @@
     .sidebar-link { align-items: center; border-radius: .65rem; color: #adb5bd; display: flex; gap: .8rem; padding: .75rem .8rem; text-decoration: none; transition: background-color .15s ease, color .15s ease; white-space: nowrap; }
     .sidebar-link i { font-size: 1.1rem; min-width: 1.25rem; text-align: center; }
     .sidebar-link:hover, .sidebar-link.active { background: rgba(255, 255, 255, .12); color: #fff; }
-    .app-main { margin-left: var(--sidebar-width); max-width: calc(100% - var(--sidebar-width)); padding-top: 1.5rem; transition: margin-left .2s ease, max-width .2s ease; }
+    .app-main { margin-left: var(--sidebar-width); min-height: 100vh; padding: 1.5rem; transition: margin-left .2s ease; }
+    .app-content { margin-left: auto; margin-right: auto; max-width: 87.5rem; }
+    .app-content:has(.table-responsive), .app-content:has(.shopping-layout) { max-width: none; }
     body.sidebar-collapsed .app-sidebar { width: var(--sidebar-collapsed-width); }
-    body.sidebar-collapsed .app-main { margin-left: var(--sidebar-collapsed-width); max-width: calc(100% - var(--sidebar-collapsed-width)); }
+    body.sidebar-collapsed .app-main { margin-left: var(--sidebar-collapsed-width); }
     body.sidebar-collapsed .sidebar-label { display: none; }
     body.sidebar-collapsed .sidebar-header { justify-content: center; }
     body.sidebar-collapsed .sidebar-toggle i { transform: rotate(180deg); }
     body.sidebar-collapsed .sidebar-link { justify-content: center; padding-left: .75rem; padding-right: .75rem; }
     @media (max-width: 767.98px) {
       .app-sidebar { width: var(--sidebar-collapsed-width); }
-      .app-main { margin-left: var(--sidebar-collapsed-width); max-width: calc(100% - var(--sidebar-collapsed-width)); }
+      .app-main { margin-left: var(--sidebar-collapsed-width); padding: 1rem .75rem; }
       .sidebar-label { display: none; }
       .sidebar-header { justify-content: center; }
       .sidebar-link { justify-content: center; padding-left: .75rem; padding-right: .75rem; }

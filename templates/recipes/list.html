@@ -1,10 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Recettes · BBrew{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-  <div><h1 class="h2 mb-1">Recettes</h1></div>
-  <a class="btn btn-primary" href="{% url 'recipes:create' %}">Ajouter une recette</a>
-  <a class="btn btn-outline-secondary" href="{% url 'recipes:import' %}">Importer BeerXML</a>
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+  <div><h1 class="h2 mb-1">Recettes</h1><p class="small text-secondary mb-0">Créez, importez et gérez vos recettes de bière.</p></div>
+  <div class="btn-toolbar gap-2" role="toolbar" aria-label="Actions des recettes">
+    <div class="btn-group" role="group">
+      <a class="btn btn-primary" href="{% url 'recipes:create' %}"><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>Ajouter</a>
+      <a class="btn btn-outline-primary" href="{% url 'recipes:import' %}"><i class="bi bi-upload me-1" aria-hidden="true"></i>Importer</a>
+    </div>
+  </div>
 </div>
 {% if recipes %}
 <div class="row g-3">{% for recipe in recipes %}
@@ -17,11 +21,10 @@
       <span class="text-secondary">Couleur {% if recipe.estimated_ebc_value is not None %}{{ recipe.estimated_ebc_value }} EBC{% else %}—{% endif %}</span>
     </div>
     <div class="mt-3 d-flex gap-2"><span class="badge text-bg-light">DI {% if recipe.estimated_og_value is not None %}{{ recipe.estimated_og_value }}{% else %}—{% endif %}</span><span class="badge text-bg-light">ABV {% if recipe.estimated_abv_value is not None %}~{{ recipe.estimated_abv_value }}{% else %}—{% endif %}%</span></div>
-    <div class="mt-3 d-flex gap-2">
-      <a class="btn btn-outline-primary btn-sm" href="{% url 'recipes:detail' recipe.pk %}">Ouvrir</a>
-      <form method="post" action="{% url 'recipes:delete' recipe.pk %}" onsubmit="return confirm('Supprimer cette recette et ses ingrédients ?');">
+    <div class="mt-3">
+      <form class="d-inline" method="post" action="{% url 'recipes:delete' recipe.pk %}" onsubmit="return confirm('Supprimer cette recette et ses ingrédients ?');">
         {% csrf_token %}
-        <button class="btn btn-outline-danger btn-sm" type="submit" aria-label="Supprimer {{ recipe.name }}" title="Supprimer"><i class="bi bi-dash-lg" aria-hidden="true"></i></button>
+        <button class="btn btn-outline-danger btn-sm" type="submit" aria-label="Supprimer {{ recipe.name }}" title="Supprimer"><i class="bi bi-trash me-1" aria-hidden="true"></i>Supprimer</button>
       </form>
     </div>
   </div></article></div>

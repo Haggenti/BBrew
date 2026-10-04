@@ -459,9 +459,27 @@ def brew_consume_stock(request, pk):
     consumable = {item["key"]: item for item in requirements if item["catalog"] and not item["consumed"]}
     with transaction.atomic():
         consumed_items = set(brew.stock_consumed_items or [])
+        locked_items = {}
         for key in selected & consumable.keys():
             requirement = consumable[key]
             item = IngredientCatalog.objects.select_for_update().get(pk=requirement["catalog_id"])
+            locked_items[key] = item
+            if item.quantity_available < requirement["required"]:
+                messages.error(
+                    request,
+                    f"Stock insuffisant pour « {item.name} » : "
+                    f"{item.quantity_available} disponible(s), {requirement['required']} nécessaire(s).",
+                )
+        insufficient = [
+            key for key in selected & consumable.keys()
+            if locked_items[key].quantity_available < consumable[key]["required"]
+        ]
+        if insufficient:
+            return redirect("recipes:brew_detail", pk=brew.pk)
+
+        for key in selected & consumable.keys():
+            requirement = consumable[key]
+            item = locked_items[key]
             item.quantity_available -= requirement["required"]
             item.save(update_fields=["quantity_available"])
             consumed_items.add(key)
