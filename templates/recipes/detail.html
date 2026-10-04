@@ -11,6 +11,12 @@
   </div>
   <div class="d-flex flex-wrap gap-2 mt-3"><a class="btn btn-outline-secondary btn-sm" href="{% url 'recipes:history' recipe.pk %}"><i class="bi bi-clock-history me-1" aria-hidden="true"></i>Versions</a><a class="btn btn-outline-secondary btn-sm" href="{% url 'recipes:export' recipe.pk %}">Exporter BeerXML</a></div>
 </div>
+<section class="card card-body mb-4">
+  <h2 class="h5"><i class="bi bi-sticky me-2" aria-hidden="true"></i>Notes</h2>
+  <form method="post" action="{% url 'recipes:notes_update' recipe.pk %}">
+    {% csrf_token %}{{ notes_form.notes }}<button class="btn btn-outline-primary mt-3" type="submit">Enregistrer les notes</button>
+  </form>
+</section>
 <div class="row g-3 mb-4 align-items-stretch">
   {% if recipe.category and style_indicators %}<div class="col-lg-5"><section class="card card-body h-100 border-info-subtle"><div class="d-flex justify-content-between align-items-center mb-3"><h2 class="h5 mb-0">Profil de la bière</h2><span class="badge text-bg-info">{{ recipe.category.code }} — {{ recipe.category.name }}</span></div>{% for indicator in style_indicators %}<div class="mb-3"><div class="d-flex justify-content-between small"><span class="fw-semibold">{{ indicator.label }}</span><span class="{% if indicator.ok %}text-success{% else %}text-warning{% endif %}">{{ indicator.value|floatformat:3 }}{{ indicator.unit }} · {{ indicator.status }}</span></div><div class="progress mt-1" role="progressbar" aria-label="{{ indicator.label }}" aria-valuemin="{{ indicator.minimum|unlocalize }}" aria-valuemax="{{ indicator.maximum|unlocalize }}" aria-valuenow="{{ indicator.value|unlocalize }}"><div class="progress-bar {% if indicator.ok %}bg-info{% else %}bg-warning{% endif %}" style="width: {{ indicator.position|unlocalize }}%"></div></div><div class="d-flex justify-content-between text-secondary" style="font-size: .75rem"><span>{{ indicator.minimum }}{{ indicator.unit }}</span><span>{{ indicator.maximum }}{{ indicator.unit }}</span></div></div>{% endfor %}</section></div>{% endif %}
   <div class="{% if recipe.category and style_indicators %}col-lg-7{% else %}col-12{% endif %}"><section class="card card-body h-100"><div class="d-flex justify-content-between align-items-center gap-3 mb-3 flex-wrap"><h2 class="h5 mb-0">Caractéristiques</h2><form method="post" action="{% url 'recipes:boil_settings' recipe.pk %}" class="d-flex align-items-center gap-2">{% csrf_token %}<label class="small text-secondary mb-0" for="boil-time">Ébullition</label><input id="boil-time" class="form-control form-control-sm" style="width: 75px" type="number" name="boil_time_min" min="1" max="240" value="{{ recipe.boil_time_min }}"><span class="small text-secondary">min</span><button class="btn btn-sm btn-outline-primary" type="submit">Enregistrer</button></form></div><div class="row g-0">
@@ -136,7 +142,7 @@
     <div class="row g-4 align-items-start">
       <div class="col-lg-7">
         <div class="table-responsive"><table class="table table-sm align-middle mb-0"><thead><tr><th>#</th><th>Palier</th><th>Température</th><th>Durée</th><th></th></tr></thead><tbody>
-          {% for step in mash_steps %}<tr><td>{{ step.position }}</td><td>{{ step.name }}</td><td>{{ step.temperature_c }} °C</td><td>{{ step.duration_min }} min</td><td class="text-nowrap"><a class="btn btn-sm btn-outline-secondary" href="{% url 'recipes:mash_edit' step.pk %}" aria-label="Modifier" title="Modifier"><i class="bi bi-pencil" aria-hidden="true"></i></a> <form class="d-inline" method="post" action="{% url 'recipes:mash_delete' step.pk %}" onsubmit="return confirm('Supprimer {{ step.name }} ?');">{% csrf_token %}<button class="btn btn-sm btn-outline-danger" type="submit" aria-label="Supprimer {{ step.name }}" title="Supprimer">−</button></form></td></tr>{% endfor %}
+          {% for step in mash_steps %}<tr><td>{{ step.position }}</td><td>{{ step.name }}</td><td><span data-mash-temperature="{{ step.pk }}">{{ step.temperature_c }}</span> °C</td><td><span data-mash-duration="{{ step.pk }}">{{ step.duration_min }}</span> min</td><td class="text-nowrap"><a class="btn btn-sm btn-outline-secondary" href="{% url 'recipes:mash_edit' step.pk %}" aria-label="Modifier" title="Modifier"><i class="bi bi-pencil" aria-hidden="true"></i></a> <form class="d-inline" method="post" action="{% url 'recipes:mash_delete' step.pk %}" onsubmit="return confirm('Supprimer {{ step.name }} ?');">{% csrf_token %}<button class="btn btn-sm btn-outline-danger" type="submit" aria-label="Supprimer {{ step.name }}" title="Supprimer">−</button></form></td></tr>{% endfor %}
         </tbody></table></div>
       </div>
       <div class="col-lg-5">
@@ -149,6 +155,11 @@
             </div>
           </div>
           <div style="height: 220px"><canvas id="mash-profile-chart" aria-label="Profil de température des paliers" role="img"></canvas></div>
+          <form class="mt-2 text-end" method="post" action="{% url 'recipes:mash_profile_update' recipe.pk %}">
+            {% csrf_token %}
+            {% for step in mash_steps %}<input type="hidden" name="temperature_{{ step.pk }}" value="{{ step.temperature_c }}" data-mash-temperature-input="{{ step.pk }}"><input type="hidden" name="duration_{{ step.pk }}" value="{{ step.duration_min }}" data-mash-duration-input="{{ step.pk }}">{% endfor %}
+            <button class="btn btn-sm btn-primary" type="submit"><i class="bi bi-save me-1" aria-hidden="true"></i>Enregistrer les températures</button>
+          </form>
         </div>
       </div>
     </div>
@@ -202,7 +213,9 @@
           pointRadius: 2,
           pointHoverRadius: 4,
           fill: true,
-          tension: 0
+          tension: 0,
+          pointHitRadius: 12,
+          pointHoverRadius: 6
         }]
       },
       options: {
@@ -233,6 +246,52 @@
     document.getElementById("mash-zones-toggle").addEventListener("change", (event) => {
       chart.options.plugins.mashZones.display = event.target.checked;
       chart.update();
+    });
+    let draggedStepId = null;
+    const clampTemperature = (value) => Math.min(100, Math.max(35, Math.round(value * 2) / 2));
+    const canvasPosition = (event) => {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: (event.clientX - rect.left) * (canvas.width / rect.width),
+        y: (event.clientY - rect.top) * (canvas.height / rect.height),
+      };
+    };
+    const updateDraggedPoint = (event) => {
+      if (!draggedStepId) return;
+      const position = canvasPosition(event);
+      const temperature = clampTemperature(chart.scales.y.getValueForPixel(position.y));
+      chart.data.datasets[0].data.forEach((point) => {
+        if (String(point.step_id) === String(draggedStepId)) point.y = temperature;
+      });
+      const input = document.querySelector(`[data-mash-temperature-input="${draggedStepId}"]`);
+      const display = document.querySelector(`[data-mash-temperature="${draggedStepId}"]`);
+      if (input) input.value = temperature;
+      if (display) display.textContent = temperature.toLocaleString("fr-FR", { maximumFractionDigits: 1 });
+      chart.update("none");
+    };
+    canvas.addEventListener("pointerdown", (event) => {
+      const position = canvasPosition(event);
+      const meta = chart.getDatasetMeta(0);
+      let nearest = null;
+      let nearestDistance = Infinity;
+      meta.data.forEach((element, index) => {
+        const distance = Math.hypot(element.x - position.x, element.y - position.y);
+        if (distance < nearestDistance) {
+          nearest = index;
+          nearestDistance = distance;
+        }
+      });
+      if (nearest === null || nearestDistance > 24) return;
+      draggedStepId = chart.data.datasets[0].data[nearest].step_id;
+      canvas.setPointerCapture(event.pointerId);
+    });
+    canvas.addEventListener("pointermove", updateDraggedPoint);
+    canvas.addEventListener("pointerup", (event) => {
+      draggedStepId = null;
+      canvas.releasePointerCapture(event.pointerId);
+    });
+    canvas.addEventListener("pointercancel", () => {
+      draggedStepId = null;
     });
   })();
 </script>
@@ -348,12 +407,6 @@
     </div>
     <p class="small text-secondary mt-2 mb-0">Estimation basée sur le CO₂ résiduel lié à la température maximale de fermentation. Mesure toujours la densité finale avant l’embouteillage.</p>
   </div>
-</section>
-<section class="card card-body mt-4">
-  <h2 class="h5"><i class="bi bi-sticky me-2" aria-hidden="true"></i>Notes</h2>
-  <form method="post" action="{% url 'recipes:notes_update' recipe.pk %}">
-    {% csrf_token %}{{ notes_form.notes }}<button class="btn btn-outline-primary mt-3" type="submit">Enregistrer les notes</button>
-  </form>
 </section>
 {{ catalog_data|json_script:"catalog-data" }}
 <script>

@@ -55,6 +55,7 @@ urlpatterns = [
     path("ingredients/<int:pk>/modifier/", views.ingredient_edit, name="ingredient_edit"),
     path("ingredients/<int:pk>/supprimer/", views.ingredient_delete, name="ingredient_delete"),
     path("paliers/<int:pk>/modifier/", views.mash_edit, name="mash_edit"),
+    path("recettes/<int:pk>/brassage/profil/", views.mash_profile_update, name="mash_profile_update"),
     path("paliers/<int:pk>/supprimer/", views.mash_delete, name="mash_delete"),
     path("fermentation/<int:pk>/modifier/", views.fermentation_edit, name="fermentation_edit"),
     path("fermentation/<int:pk>/supprimer/", views.fermentation_delete, name="fermentation_delete"),

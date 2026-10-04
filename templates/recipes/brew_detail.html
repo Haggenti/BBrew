@@ -36,8 +36,6 @@
           <dd class="col-sm-6">{{ brew.planned_date|date:"d/m/Y"|default:"—" }}</dd>
           <dt class="col-sm-6 text-secondary">Date de mise en bouteille</dt>
           <dd class="col-sm-6">{{ brew.completed_date|date:"d/m/Y"|default:"—" }}</dd>
-          <dt class="col-sm-6 text-secondary">Volume réel</dt>
-          <dd class="col-sm-6">{% if brew.actual_batch_size_l %}{{ brew.actual_batch_size_l }} L{% else %}—{% endif %}</dd>
         </dl>
       </div>
     </section>

@@ -212,25 +212,29 @@ def shopping_item_receive(request, pk):
         if kind not in IngredientCatalog.Kind.values:
             messages.error(request, "Sélectionnez un type valide pour la nouvelle fiche de stock.")
             return redirect("recipes:shopping_list")
-        catalog = IngredientCatalog.objects.create(
-            name=item.name.strip(),
-            kind=kind,
-            quantity_available=0,
-        )
-        created_catalog = True
     elif catalog is None and catalog_id:
         catalog = IngredientCatalog.objects.filter(pk=catalog_id).first()
     if catalog is None:
         catalog = IngredientCatalog.objects.filter(name__iexact=item.name.strip()).first()
 
-    if catalog is None:
+    if catalog is None and catalog_id != "new":
         messages.error(request, f"Aucune fiche de stock ne correspond à « {item.name} ».")
         return redirect("recipes:shopping_list")
-    catalog.quantity_available += quantity
-    catalog.save(update_fields=["quantity_available"])
-    item.catalog = catalog
+
+    with transaction.atomic():
+        if catalog_id == "new":
+            catalog = IngredientCatalog.objects.create(
+                name=item.name.strip(),
+                kind=kind,
+                quantity_available=0,
+            )
+            created_catalog = True
+        else:
+            catalog = IngredientCatalog.objects.select_for_update().get(pk=catalog.pk)
+        catalog.quantity_available += quantity
+        catalog.save(update_fields=["quantity_available"])
+        item.delete()
     suffix = " (nouvelle fiche créée)" if created_catalog else ""
-    item.delete()
     messages.success(request, f"{quantity} unité(s) de « {item.name} » ajoutée(s) au stock{suffix}.")
     return redirect("recipes:shopping_list")
 
@@ -803,13 +807,27 @@ def recipe_detail(request, pk, edit_forms=None):
     mash_chart_points = []
     mash_elapsed = 0
     if mash_steps:
-        mash_chart_points.append({"x": 0, "y": float(mash_steps[0].temperature_c)})
+        mash_chart_points.append(
+            {"x": 0, "y": float(mash_steps[0].temperature_c), "step_id": mash_steps[0].pk, "step_index": 0}
+        )
         for index, step in enumerate(mash_steps):
             mash_elapsed += step.duration_min
-            mash_chart_points.append({"x": mash_elapsed, "y": float(step.temperature_c)})
+            mash_chart_points.append(
+                {
+                    "x": mash_elapsed,
+                    "y": float(step.temperature_c),
+                    "step_id": step.pk,
+                    "step_index": index,
+                }
+            )
             if index + 1 < len(mash_steps):
                 mash_chart_points.append(
-                    {"x": mash_elapsed, "y": float(mash_steps[index + 1].temperature_c)}
+                    {
+                        "x": mash_elapsed,
+                        "y": float(mash_steps[index + 1].temperature_c),
+                        "step_id": mash_steps[index + 1].pk,
+                        "step_index": index + 1,
+                    }
                 )
 
     def inline_form(form, form_id):
@@ -986,6 +1004,32 @@ def mash_edit(request, pk):
         messages.success(request, f"Le palier « {step.name} » a été modifié.")
         return redirect("recipes:mash", pk=step.recipe_id)
     return render(request, "recipes/mash_form.html", {"form": form, "step": step})
+
+
+@require_POST
+def mash_profile_update(request, pk):
+    recipe = get_object_or_404(Recipe, pk=pk)
+    steps = {str(step.pk): step for step in recipe.mash_steps.all()}
+    updated = 0
+    for step_id, step in steps.items():
+        raw_temperature = request.POST.get(f"temperature_{step_id}")
+        raw_duration = request.POST.get(f"duration_{step_id}")
+        try:
+            temperature = Decimal(raw_temperature)
+            duration = int(raw_duration)
+        except (TypeError, ValueError, ArithmeticError):
+            messages.error(request, "Une température de palier est invalide.")
+            return redirect("recipes:detail", pk=recipe.pk)
+        if not 35 <= temperature <= 100 or duration < 1:
+            messages.error(request, "Les températures doivent être comprises entre 35 et 100 °C et les durées doivent être positives.")
+            return redirect("recipes:detail", pk=recipe.pk)
+        step.temperature_c = temperature
+        step.duration_min = duration
+        step.save(update_fields=["temperature_c", "duration_min"])
+        updated += 1
+    if updated:
+        messages.success(request, "Les températures des paliers ont été enregistrées.")
+    return redirect("recipes:detail", pk=recipe.pk)
 
 
 @require_POST

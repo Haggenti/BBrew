@@ -1,5 +1,6 @@
 from decimal import Decimal
 import json
+from unittest.mock import patch
 
 from django.test import TestCase
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -783,6 +784,25 @@ class RecipeWorkflowTests(TestCase):
         self.assertEqual(catalog.quantity_available, 5000)
         self.assertFalse(ShoppingItem.objects.filter(pk=item.pk).exists())
 
+    def test_shopping_item_receive_rolls_back_stock_when_deletion_fails(self):
+        catalog = IngredientCatalog.objects.create(
+            name="Malt Pilsen",
+            kind=IngredientCatalog.Kind.MALT,
+            quantity_available=1000,
+        )
+        item = ShoppingItem.objects.create(name="Malt Pilsen", is_completed=True)
+
+        with patch("recipes.views.ShoppingItem.delete", side_effect=RuntimeError):
+            with self.assertRaises(RuntimeError):
+                self.client.post(
+                    f"/courses/{item.pk}/receptionner/",
+                    {"catalog_id": catalog.pk, "quantity": "4000"},
+                )
+
+        catalog.refresh_from_db()
+        self.assertEqual(catalog.quantity_available, 1000)
+        self.assertTrue(ShoppingItem.objects.filter(pk=item.pk).exists())
+
     def test_shopping_item_can_create_missing_catalog_when_received(self):
         item = ShoppingItem.objects.create(name="Houblon Nelson", planned_quantity=100, unit="g")
         item.is_completed = True
@@ -1151,3 +1171,26 @@ class RecipeWorkflowTests(TestCase):
         response = self.client.post(f"/paliers/{step.pk}/supprimer/")
         self.assertRedirects(response, f"/recettes/{recipe.pk}/brassage/")
         self.assertFalse(MashStep.objects.filter(pk=step.pk).exists())
+
+    def test_mash_profile_updates_step_temperatures(self):
+        recipe = Recipe.objects.create(name="Profil interactif")
+        first = MashStep.objects.create(recipe=recipe, position=1, name="Palier 1", temperature_c=63, duration_min=30)
+        second = MashStep.objects.create(recipe=recipe, position=2, name="Palier 2", temperature_c=68, duration_min=30)
+
+        response = self.client.post(
+            f"/recettes/{recipe.pk}/brassage/profil/",
+            {
+                f"temperature_{first.pk}": "64.5",
+                f"duration_{first.pk}": "40",
+                f"temperature_{second.pk}": "70",
+                f"duration_{second.pk}": "25",
+            },
+        )
+
+        self.assertRedirects(response, f"/recettes/{recipe.pk}/")
+        first.refresh_from_db()
+        second.refresh_from_db()
+        self.assertEqual(first.temperature_c, 64.5)
+        self.assertEqual(second.temperature_c, 70)
+        self.assertEqual(first.duration_min, 40)
+        self.assertEqual(second.duration_min, 25)
