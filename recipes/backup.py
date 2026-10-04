@@ -1,6 +1,7 @@
 import json
 
 from django.core import serializers
+from django.db import transaction
 from django.utils import timezone
 
 from .models import (
@@ -63,10 +64,11 @@ def restore_backup(data):
     for record in data["records"]:
         records_by_model.setdefault(record["model"].lower(), []).append(record)
 
-    for model in BACKUP_MODELS[::-1]:
-        model.objects.all().delete()
+    with transaction.atomic():
+        for model in BACKUP_MODELS[::-1]:
+            model.objects.all().delete()
 
-    for model in BACKUP_MODELS:
-        model_records = records_by_model.get(model._meta.label_lower, [])
-        for obj in serializers.deserialize("json", json.dumps(model_records)):
-            obj.save()
+        for model in BACKUP_MODELS:
+            model_records = records_by_model.get(model._meta.label_lower, [])
+            for obj in serializers.deserialize("json", json.dumps(model_records)):
+                obj.save()

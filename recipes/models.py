@@ -139,7 +139,7 @@ class EquipmentSettings(models.Model):
 
 class ShoppingItem(models.Model):
     name = models.CharField("article", max_length=160)
-    is_completed = models.BooleanField("acheté", default=False)
+    is_ordered = models.BooleanField("commandé", default=False)
     source_brews = models.ManyToManyField(
         "Brew",
         verbose_name="brassins à l'origine",
@@ -160,7 +160,7 @@ class ShoppingItem(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ["is_completed", "-created_at", "-id"]
+        ordering = ["is_ordered", "-created_at", "-id"]
         verbose_name = "article de la liste de courses"
         verbose_name_plural = "articles de la liste de courses"
 

@@ -72,7 +72,10 @@ class StyledModelForm(forms.ModelForm):
         return self.cleaned_data.get("cost_total") or Decimal("0")
 
     def clean_quantity_available(self):
-        return self.cleaned_data.get("quantity_available") or 0
+        quantity = self.cleaned_data.get("quantity_available")
+        if quantity is not None and quantity < 0:
+            raise forms.ValidationError("La quantité disponible ne peut pas être négative.")
+        return quantity or 0
 
 
 class RecipeForm(StyledModelForm):
@@ -207,6 +210,13 @@ class BrewForm(StyledModelForm):
 
     def clean(self):
         cleaned_data = super().clean()
+        brew_date = cleaned_data.get("planned_date")
+        bottling_date = cleaned_data.get("completed_date")
+        if brew_date and bottling_date and bottling_date < brew_date:
+            self.add_error(
+                "completed_date",
+                "La date de mise en bouteille ne peut pas être antérieure à la date du brassage.",
+            )
         equipment = self.equipment_settings or EquipmentSettings.objects.first()
         if equipment is None:
             return cleaned_data
@@ -651,6 +661,18 @@ class MashStepForm(StyledModelForm):
             "temperature_c": forms.NumberInput(attrs={"step": "0.5", "min": "35", "max": "100", "placeholder": "65"}),
             "duration_min": forms.NumberInput(attrs={"min": "1", "placeholder": "60"}),
         }
+
+    def clean_temperature_c(self):
+        temperature = self.cleaned_data["temperature_c"]
+        if not 35 <= temperature <= 100:
+            raise forms.ValidationError("La température doit être comprise entre 35 et 100 °C.")
+        return temperature
+
+    def clean_duration_min(self):
+        duration = self.cleaned_data["duration_min"]
+        if duration < 1:
+            raise forms.ValidationError("La durée doit être positive.")
+        return duration
 
 
 def _catalog_form_init(form_class, kind):

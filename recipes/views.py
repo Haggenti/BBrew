@@ -137,9 +137,9 @@ def shopping_list(request):
     status = request.GET.get("status", "all")
     items_query = ShoppingItem.objects.select_related("catalog").prefetch_related("source_brews")
     if status == "todo":
-        items_query = items_query.filter(is_completed=False)
+        items_query = items_query.filter(is_ordered=False)
     elif status == "ordered":
-        items_query = items_query.filter(is_completed=True)
+        items_query = items_query.filter(is_ordered=True)
     else:
         status = "all"
     items = list(items_query)
@@ -177,8 +177,8 @@ def shopping_item_create(request):
 @require_POST
 def shopping_item_toggle(request, pk):
     item = get_object_or_404(ShoppingItem, pk=pk)
-    item.is_completed = not item.is_completed
-    item.save(update_fields=["is_completed"])
+    item.is_ordered = not item.is_ordered
+    item.save(update_fields=["is_ordered"])
     return redirect("recipes:shopping_list")
 
 
@@ -193,7 +193,7 @@ def shopping_item_delete(request, pk):
 @require_POST
 def shopping_item_receive(request, pk):
     item = get_object_or_404(ShoppingItem, pk=pk)
-    if not item.is_completed:
+    if not item.is_ordered:
         messages.error(request, f"« {item.name} » doit d’abord être marqué comme commandé.")
         return redirect("recipes:shopping_list")
     try:
@@ -251,7 +251,7 @@ def shopping_list_clear(request):
 
 @require_POST
 def shopping_list_clear_received(request):
-    deleted_count, _ = ShoppingItem.objects.filter(is_completed=True).delete()
+    deleted_count, _ = ShoppingItem.objects.filter(is_ordered=True).delete()
     if deleted_count:
         messages.success(request, "Les articles reçus ont été supprimés de la liste de courses.")
     else:

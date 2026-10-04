@@ -19,7 +19,7 @@ from .calculations import (
     plato_from_gravity,
     tinseth_ibu,
 )
-from .forms import ADDITION_CHOICES, MALT_ADDITION_CHOICES, CatalogOtherForm, CatalogYeastForm, HopForm, MaltForm, OtherForm, YeastForm
+from .forms import ADDITION_CHOICES, MALT_ADDITION_CHOICES, BrewForm, CatalogOtherForm, CatalogYeastForm, HopForm, MaltForm, MashStepForm, OtherForm, YeastForm
 from .beerxml import import_recipe
 from .models import BeerCategory, Brew, EquipmentSettings, FermentationStep, Ingredient, IngredientCatalog, MashStep, Recipe, RecipeVersion, ShoppingItem
 
@@ -141,6 +141,22 @@ class CalculationTests(TestCase):
 
 
 class RecipeWorkflowTests(TestCase):
+    def test_brew_form_rejects_bottling_before_brew_date(self):
+        form = BrewForm(
+            data={
+                "planned_date": "2026-10-10",
+                "completed_date": "2026-10-09",
+            }
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("completed_date", form.errors)
+
+    def test_mash_step_form_rejects_temperature_outside_brewing_range(self):
+        form = MashStepForm(data={"name": "Empâtage", "temperature_c": "101", "duration_min": "60"})
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("temperature_c", form.errors)
     def test_recipe_category_shows_style_indicators(self):
         category = BeerCategory.objects.get(code="21A")
         category.name = "IPA"
@@ -730,12 +746,12 @@ class RecipeWorkflowTests(TestCase):
         response = self.client.post("/courses/ajouter/", {"name": "Capsules rouges"})
         self.assertRedirects(response, "/courses/")
         item = ShoppingItem.objects.get()
-        self.assertFalse(item.is_completed)
+        self.assertFalse(item.is_ordered)
 
         response = self.client.post(f"/courses/{item.pk}/cocher/")
         self.assertRedirects(response, "/courses/")
         item.refresh_from_db()
-        self.assertTrue(item.is_completed)
+        self.assertTrue(item.is_ordered)
 
         response = self.client.post(f"/courses/{item.pk}/supprimer/")
         self.assertRedirects(response, "/courses/")
@@ -745,7 +761,7 @@ class RecipeWorkflowTests(TestCase):
         IngredientCatalog.objects.create(name="Pilsen", kind=IngredientCatalog.Kind.MALT)
         IngredientCatalog.objects.create(name="Cascade", kind=IngredientCatalog.Kind.HOP)
         IngredientCatalog.objects.create(name="US-05", kind=IngredientCatalog.Kind.YEAST)
-        item = ShoppingItem.objects.create(name="Pilsen", is_completed=True)
+        item = ShoppingItem.objects.create(name="Pilsen", is_ordered=True)
 
         response = self.client.get("/courses/")
 
@@ -771,8 +787,8 @@ class RecipeWorkflowTests(TestCase):
             quantity_available=1000,
         )
         item = ShoppingItem.objects.create(name="Malt Pilsen", planned_quantity=5000, unit="g")
-        item.is_completed = True
-        item.save(update_fields=["is_completed"])
+        item.is_ordered = True
+        item.save(update_fields=["is_ordered"])
 
         response = self.client.post(
             f"/courses/{item.pk}/receptionner/",
@@ -790,7 +806,7 @@ class RecipeWorkflowTests(TestCase):
             kind=IngredientCatalog.Kind.MALT,
             quantity_available=1000,
         )
-        item = ShoppingItem.objects.create(name="Malt Pilsen", is_completed=True)
+        item = ShoppingItem.objects.create(name="Malt Pilsen", is_ordered=True)
 
         with patch("recipes.views.ShoppingItem.delete", side_effect=RuntimeError):
             with self.assertRaises(RuntimeError):
@@ -805,8 +821,8 @@ class RecipeWorkflowTests(TestCase):
 
     def test_shopping_item_can_create_missing_catalog_when_received(self):
         item = ShoppingItem.objects.create(name="Houblon Nelson", planned_quantity=100, unit="g")
-        item.is_completed = True
-        item.save(update_fields=["is_completed"])
+        item.is_ordered = True
+        item.save(update_fields=["is_ordered"])
 
         response = self.client.post(
             f"/courses/{item.pk}/receptionner/",
@@ -838,8 +854,8 @@ class RecipeWorkflowTests(TestCase):
         self.assertTrue(ShoppingItem.objects.filter(pk=item.pk).exists())
 
     def test_received_shopping_items_can_be_cleared(self):
-        ShoppingItem.objects.create(name="Reçu", is_completed=True)
-        ShoppingItem.objects.create(name="À acheter", is_completed=False)
+        ShoppingItem.objects.create(name="Reçu", is_ordered=True)
+        ShoppingItem.objects.create(name="À acheter", is_ordered=False)
 
         response = self.client.post("/courses/vider-recus/")
 
