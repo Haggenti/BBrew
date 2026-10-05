@@ -11,13 +11,14 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
-COPY --chmod=755 docker/entrypoint.sh /usr/local/bin/bbrew-entrypoint
-
-RUN mkdir -p /data \
-    && DJANGO_DEBUG=0 python manage.py collectstatic --noinput
+COPY docker/entrypoint.sh /usr/local/bin/bbrew-entrypoint
 
 RUN groupadd --system --gid 10001 bbrew \
-    && useradd --system --uid 10001 --gid bbrew --home-dir /app --no-create-home bbrew
+    && useradd --system --uid 10001 --gid bbrew --home-dir /app --no-create-home bbrew \
+    && chmod 755 /usr/local/bin/bbrew-entrypoint \
+    && mkdir -p /data \
+    && chown bbrew:bbrew /data \
+    && DJANGO_DEBUG=0 python manage.py collectstatic --noinput
 
 USER 10001:10001
 

@@ -6,14 +6,21 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     init: true
-    env_file:
-      - .env
     environment:
       BBREW_DATA_DIR: /data
       DJANGO_DEBUG: "0"
+      DJANGO_SECRET_KEY: "REPLACE_WITH_A_RANDOM_SECRET_BEFORE_FIRST_START"
+      DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1,odroid-hc4,192.168.1.XX"
+      DJANGO_CSRF_TRUSTED_ORIGINS: "http://odroid-hc4:8000,http://192.168.1.XX:8000"
+      DJANGO_SECURE_COOKIES: "0"
+      DJANGO_SECURE_PROXY_SSL_HEADER: "0"
     ports:
-      - "${BBREW_PORT:-8000}:8000"
+      - "8000:8000"
     volumes:
-      - "${BBREW_HOST_DATA_DIR:?Set BBREW_HOST_DATA_DIR in .env}:/data"
+      - bbrew_data:/data
     security_opt:
       - no-new-privileges:true
+
+volumes:
+  bbrew_data:
+    name: bbrew_data

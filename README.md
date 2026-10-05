@@ -64,35 +64,32 @@ collectés dans l'image.
 ### Première installation
 
 1. Sur le NAS, vérifiez que Docker Engine est installé et que `docker compose version`
-   fonctionne. Clonez ou copiez le projet dans un dossier de travail.
-2. Choisissez un dossier de données sur un disque local persistant (évitez un partage
-   réseau pour SQLite), puis créez-le et attribuez-le à l'utilisateur du conteneur :
+   fonctionne, puis clonez le dépôt :
 
    ```sh
-   sudo mkdir -p /mnt/dietpi_userdata/bbrew-data
-   sudo chown -R 10001:10001 /mnt/dietpi_userdata/bbrew-data
+   git clone https://github.com/Haggenti/BBrew.git
+   cd BBrew
    ```
 
-3. Si vous avez déjà utilisé BBrew, arrêtez l'ancienne instance et copiez son
-   `db.sqlite3` dans ce dossier avant le premier démarrage. Gardez également une
-   copie de sauvegarde. Une base existante sera migrée automatiquement au lancement.
-4. Créez le fichier `.env` à partir de `.env.example`. Définissez une longue clé
-   aléatoire avec Python, par exemple :
+2. Générez une clé secrète et modifiez les valeurs de personnalisation directement
+   dans `docker-compose.yml`. Vous pouvez générer la clé sur le NAS ou sur un autre
+   ordinateur :
 
    ```sh
-   python3 -c 'import secrets; print(secrets.token_urlsafe(50))'
+   openssl rand -hex 50
    ```
 
-   Remplacez `DJANGO_SECRET_KEY`, le nom/IP réel du NAS dans `DJANGO_ALLOWED_HOSTS`
-   et `DJANGO_CSRF_TRUSTED_ORIGINS`, ainsi que `BBREW_HOST_DATA_DIR`. Gardez `.env`
-   privé : il contient le secret de l'application.
-5. Construisez et démarrez BBrew :
+   Remplacez `DJANGO_SECRET_KEY`, puis renseignez le nom/IP du NAS dans
+   `DJANGO_ALLOWED_HOSTS` et `DJANGO_CSRF_TRUSTED_ORIGINS`. Le volume nommé
+   `bbrew_data` conserve la base même si le conteneur est reconstruit ou supprimé.
+   Vous pouvez également modifier le port publié (`8000:8000`).
+3. Depuis le dossier `BBrew`, construisez et démarrez l'application :
 
    ```sh
-   docker compose up -d --build
-   docker compose logs -f bbrew
+   docker compose up
    ```
 
+   Compose construit l'image, crée le stockage persistant et lance les migrations.
    L'application est disponible sur `http://<adresse-du-nas>:8000/`. Connectez-vous
    avec `brewer` / `brewer` uniquement sur un réseau de confiance, puis changez
    immédiatement le mot de passe depuis le menu **Mot de passe**.
@@ -100,19 +97,19 @@ collectés dans l'image.
 ### Accès et opérations courantes
 
 - Ne transférez pas le port 8000 directement depuis Internet. Pour un accès extérieur,
-  privilégiez un VPN. Si vous utilisez un reverse proxy HTTPS, activez
-  `DJANGO_SECURE_COOKIES=1` et `DJANGO_SECURE_PROXY_SSL_HEADER=1`, indiquez l'origine
+  privilégiez un VPN. Si vous utilisez un reverse proxy HTTPS, réglez
+  `DJANGO_SECURE_COOKIES` et `DJANGO_SECURE_PROXY_SSL_HEADER` à `1`, indiquez l'origine
   `https://...` dans `DJANGO_CSRF_TRUSTED_ORIGINS` et empêchez les accès directs qui
   contourneraient le proxy.
 - Gardez une seule instance BBrew active : SQLite ne convient pas à plusieurs
   réplicas applicatifs concurrents.
-- Sauvegardez le dossier de données (en particulier `db.sqlite3`) vers un autre
-  emplacement. Arrêtez le service ou faites une sauvegarde cohérente avant de
-  copier directement le fichier SQLite.
+- Le volume nommé `bbrew_data` est géré par Docker. Sauvegardez régulièrement les
+  données via la page **Paramètres** de BBrew et conservez les sauvegardes hors du NAS.
 - Pour mettre à jour : sauvegardez les données, mettez le code à jour, puis lancez
-  `docker compose up -d --build`. Les migrations sont exécutées au démarrage.
-- Pour arrêter : `docker compose down`. Ne supprimez pas le dossier de données lors
-  de la suppression ou de la reconstruction du conteneur.
+  `git pull` puis `docker compose up --build`. Les migrations sont exécutées au
+  démarrage.
+- Pour arrêter : `docker compose down`. Ne lancez pas `docker compose down -v` sauf
+  si vous voulez aussi supprimer les données persistantes.
 
 ## Configuration
 
