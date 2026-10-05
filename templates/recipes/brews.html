@@ -48,7 +48,8 @@
             {% for day in week.days %}
             <td class="brew-calendar-day{% if not day.in_month %} text-bg-light{% endif %}">
               <div class="small {% if day.date == calendar_today %}fw-bold text-primary{% else %}text-secondary{% endif %}">{{ day.number }}</div>
-              {% if day.brews %}<div class="d-flex justify-content-center flex-wrap gap-1 mt-1">{% for brew in day.brews %}<a href="{% url 'recipes:brew_detail' brew.pk %}" class="brew-calendar-dot status-{{ brew.status }}{% if brew.stock_status == 'ok' %} stock-ok{% elif brew.stock_status == 'shopping' %} stock-shopping{% elif brew.stock_status == 'insufficient' %} stock-insufficient{% endif %}" aria-label="{{ brew.recipe_name }}" title="{{ brew.recipe_name }} — {{ brew.get_status_display }}{% if brew.stock_status == 'ok' %} — stock OK{% elif brew.stock_status == 'shopping' %} — stock manquant, prévu dans les courses{% elif brew.stock_status == 'insufficient' %} — stock insuffisant{% endif %}"></a>{% endfor %}</div>{% endif %}
+              <div class="brew-calendar-events d-flex justify-content-center align-items-center flex-wrap gap-1 mt-1">{% for brew in day.brews %}{% if not brew.completed_date %}<a href="{% url 'recipes:brew_detail' brew.pk %}" class="brew-calendar-dot status-{{ brew.status }}{% if brew.stock_status == 'ok' %} stock-ok{% elif brew.stock_status == 'shopping' %} stock-shopping{% elif brew.stock_status == 'insufficient' %} stock-insufficient{% endif %}" aria-label="Brassin n°{{ brew.pk }} — {{ brew.recipe_name }} — {{ brew.get_status_display }}{% if brew.stock_status == 'ok' %} — stock OK{% elif brew.stock_status == 'shopping' %} — stock manquant, prévu dans les courses{% elif brew.stock_status == 'insufficient' %} — stock insuffisant{% endif %}" title="Brassin n°{{ brew.pk }} — {{ brew.recipe_name }} — {{ brew.get_status_display }}{% if brew.stock_status == 'ok' %} — stock OK{% elif brew.stock_status == 'shopping' %} — stock manquant, prévu dans les courses{% elif brew.stock_status == 'insufficient' %} — stock insuffisant{% endif %}"></a>{% endif %}{% endfor %}{% for brew in day.bottlings %}<a href="{% url 'recipes:brew_detail' brew.pk %}" class="brew-calendar-bottling" aria-label="Embouteillage du brassin n°{{ brew.pk }} — {{ brew.recipe_name }}" title="Embouteillage — Brassin n°{{ brew.pk }} — {{ brew.recipe_name }}"></a>{% endfor %}</div>
+              {% if day.brew_spans %}<div class="brew-calendar-spans" style="--span-lanes: {{ calendar_span_lanes }}">{% for span in day.brew_spans %}<div class="brew-calendar-span status-{{ span.brew.status }}{% if span.starts %} span-start{% endif %}{% if span.ends %} span-end{% endif %}" style="--span-lane: {{ span.lane }}" title="{% if span.ends %}Embouteillage — {% endif %}Brassin n°{{ span.brew.pk }} — {{ span.brew.recipe_name }} — {{ span.brew.planned_date|date:'d/m/Y' }} au {{ span.brew.completed_date|date:'d/m/Y' }}"></div>{% endfor %}</div>{% endif %}
             </td>
             {% endfor %}
           </tr>
@@ -58,6 +59,7 @@
     </div>
     <div class="d-flex flex-wrap gap-3 small text-secondary mt-3" aria-label="Légende des statuts">
       {% for status_value, status_label in calendar_statuses %}<span><span class="brew-calendar-dot status-{{ status_value }} d-inline-block me-1"></span>{{ status_label }}</span>{% endfor %}
+      <span><span class="brew-calendar-bottling d-inline-block me-1"></span>Embouteillage</span>
     </div>
   </div>
 </section>
@@ -88,6 +90,26 @@
   .brew-calendar-dot.stock-ok { outline: 2px solid var(--bs-success); outline-offset: 1px; }
   .brew-calendar-dot.stock-shopping { outline: 2px solid var(--bs-warning); outline-offset: 1px; }
   .brew-calendar-dot.stock-insufficient { outline: 2px solid var(--bs-danger); outline-offset: 1px; }
+  .brew-calendar-bottling { background: var(--bs-primary); border-radius: 50%; display: inline-block; height: .65rem; width: .65rem; }
+  .brew-calendar-bottling:hover { background: var(--bs-primary-text-emphasis); }
+  .brew-calendar-events { height: 1.1rem; }
+  .brew-calendar-spans { height: calc(var(--span-lanes) * .55rem); margin: 0 -.5rem; position: relative; }
+  .brew-calendar-span { height: .55rem; left: 0; position: absolute; right: 0; top: calc(var(--span-lane) * .55rem); }
+  .brew-calendar-span::before { background: var(--span-color); content: ""; height: 4px; left: 0; position: absolute; right: 0; top: 50%; transform: translateY(-50%); }
+  .brew-calendar-span.status-planned { --span-color: #9ec5fe; }
+  .brew-calendar-span.status-brewing { --span-color: #ffe69c; }
+  .brew-calendar-span.status-fermenting { --span-color: #9eeaf9; }
+  .brew-calendar-span.status-conditioning { --span-color: #d5b8ef; }
+  .brew-calendar-span.status-completed { --span-color: #a3cfbb; }
+  .brew-calendar-span.status-cancelled { --span-color: #f1aeb5; }
+  .brew-calendar-span.span-start::before { left: 50%; }
+  .brew-calendar-span.span-end::before { right: 50%; }
+  .brew-calendar-span.span-start.span-end::before { display: none; }
+  .brew-calendar-span.span-start::after,
+  .brew-calendar-span.span-end::after { background: var(--span-color); border: 1px solid #fff; border-radius: 50%; content: ""; height: .55rem; position: absolute; top: 0; width: .55rem; }
+  .brew-calendar-span.span-start::after { left: calc(50% - .275rem); }
+  .brew-calendar-span.span-end::after { right: calc(50% - .275rem); }
+  .brew-calendar-span.span-start.span-end::after { left: calc(50% - .275rem); }
   @media (max-width: 575.98px) {
     .calendar-header { align-items: stretch !important; flex-direction: column; }
     .calendar-controls { justify-content: space-between !important; }
@@ -104,7 +126,7 @@
       <tbody>
         {% for brew in brews %}
         <tr>
-          <td><a class="fw-semibold text-decoration-none" href="{% url 'recipes:brew_detail' brew.pk %}">{{ brew.recipe_name }}</a></td>
+            <td><span class="badge text-bg-light me-1">N° {{ brew.pk }}</span><a class="fw-semibold text-decoration-none" href="{% url 'recipes:brew_detail' brew.pk %}">{{ brew.recipe_name }}</a></td>
           <td><form class="d-inline" method="post" action="{% url 'recipes:brew_status_cycle' brew.pk %}">{% csrf_token %}<button class="badge brew-status-badge status-{{ brew.status }}" type="submit" title="Cliquer pour passer à l’étape suivante" aria-label="Statut {{ brew.get_status_display }}. Cliquer pour passer à l’étape suivante">{{ brew.get_status_display }} <i class="bi bi-arrow-repeat ms-1" aria-hidden="true"></i></button></form>{% if brew.stock_status == "ok" %}<span class="ms-2 text-success" title="Stock suffisant" aria-label="Stock suffisant"><i class="bi bi-check-circle-fill" aria-hidden="true"></i></span>{% elif brew.stock_status == "shopping" %}<span class="ms-2 text-warning" title="Stock manquant, prévu dans la liste de courses" aria-label="Stock manquant, prévu dans la liste de courses"><i class="bi bi-cart-check-fill" aria-hidden="true"></i></span>{% elif brew.stock_status == "insufficient" %}{% if brew.stock_missing_items %}<button class="btn btn-link btn-sm p-0 ms-2 text-danger align-baseline" type="button" data-bs-toggle="modal" data-bs-target="#missing-stock-{{ brew.pk }}" title="Voir le stock manquant" aria-label="Voir le stock manquant"><i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i></button>{% else %}<span class="ms-2 text-danger" title="Stock insuffisant" aria-label="Stock insuffisant"><i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i></span>{% endif %}{% endif %}</td>
           <td>{{ brew.planned_date|date:"d/m/Y"|default:"—" }}</td>
           <td>{{ brew.recipe_version_label|default:"—" }}</td>

@@ -36,7 +36,8 @@ deactivate
 ## Utilisation
 
 - **Recettes** : créer une recette, gérer ses ingrédients, ses paliers,
-  ses phases de fermentation et ses versions. Les ingrédients d'une recette
+  ses phases de fermentation, ses versions et son profil de dégustation
+  interactif. Les ingrédients d'une recette
   sont sélectionnés parmi les fiches du stock ; l'import crée automatiquement
   les fiches manquantes.
 - **Stock** : gérer les malts, houblons, levures, ingrédients divers et
@@ -44,8 +45,9 @@ deactivate
 - **Coûts** : activer la gestion dans les paramètres puis renseigner le coût
   estimé de la quantité utilisée pour chaque ingrédient d’une recette. Les coûts
   inconnus restent vides et sont exclus du total, indiqué comme partiel.
-- **Brassins** : sélectionner la version d'une recette, saisir les mesures
-  réelles et suivre la consommation du stock.
+- **Brassins** : chaque brassin reçoit une référence auto-incrémentée.
+  Le calendrier indique les brassages et les embouteillages, avec un accès
+  à la fiche correspondante.
 - **Courses** : ajouter les articles manquants, les marquer comme commandés,
   puis les intégrer au stock avec la quantité réellement reçue.
 - **BeerXML** : utiliser les actions d'import et d'export depuis les fiches

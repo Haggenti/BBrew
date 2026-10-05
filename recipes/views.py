@@ -16,7 +16,7 @@ from decimal import Decimal
 from decimal import ROUND_CEILING, ROUND_FLOOR
 from django.utils import timezone
 
-from .forms import BackupUploadForm, BeerCategoryForm, BeerXMLUploadForm, BoilSettingsForm, BrewForm, CatalogConsumableForm, CatalogHopForm, CatalogMaltForm, CatalogOtherForm, CatalogYeastForm, CatalogForm, EquipmentSettingsForm, FermentationStepForm, HopForm, IngredientCostForm, MaltForm, MashGraphSettingsForm, MashStepForm, OtherForm, RecipeCategoryForm, RecipeEfficiencyForm, RecipeForm, RecipeNameForm, RecipeNotesForm, ScaleForm, ShoppingItemForm, YeastForm
+from .forms import BackupUploadForm, BeerCategoryForm, BeerXMLUploadForm, BoilSettingsForm, BrewForm, CatalogConsumableForm, CatalogHopForm, CatalogMaltForm, CatalogOtherForm, CatalogYeastForm, CatalogForm, EquipmentSettingsForm, FermentationStepForm, HopForm, IngredientCostForm, MaltForm, MashGraphSettingsForm, MashStepForm, OtherForm, RecipeCategoryForm, RecipeEfficiencyForm, RecipeForm, RecipeNameForm, RecipeNotesForm, RecipeTastingForm, ScaleForm, ShoppingItemForm, YeastForm
 from .models import BeerCategory, Brew, EquipmentSettings, FermentationStep, Ingredient, IngredientCatalog, MashStep, Recipe, RecipeVersion, ShoppingItem
 from .signals import save_version, suspend_versioning
 from .versioning import describe_version_change
@@ -126,14 +126,61 @@ def brew_list(request):
         "janvier", "février", "mars", "avril", "mai", "juin",
         "juillet", "août", "septembre", "octobre", "novembre", "décembre",
     )
-    calendar_days = {brew.planned_date: [] for brew in brews if brew.planned_date}
+    calendar_days = {}
+    bottling_days = {}
     for brew in brews:
         if brew.planned_date:
-            calendar_days[brew.planned_date].append(brew)
-    calendar_weeks = []
-    for week in calendar.Calendar(firstweekday=0).monthdatescalendar(
+            calendar_days.setdefault(brew.planned_date, []).append(brew)
+        if brew.completed_date:
+            bottling_days.setdefault(brew.completed_date, []).append(brew)
+    month_weeks = calendar.Calendar(firstweekday=0).monthdatescalendar(
         calendar_date.year, calendar_date.month
-    ):
+    )
+    calendar_start = month_weeks[0][0]
+    calendar_end = month_weeks[-1][-1]
+    span_entries = sorted(
+        (
+            brew for brew in brews
+            if brew.planned_date
+            and brew.completed_date
+            and brew.planned_date <= calendar_end
+            and brew.completed_date >= calendar_start
+        ),
+        key=lambda brew: (brew.planned_date, brew.completed_date, brew.pk),
+    )
+    lane_end_dates = []
+    span_lanes = {}
+    for brew in span_entries:
+        lane = next(
+            (
+                lane_index
+                for lane_index, lane_end in enumerate(lane_end_dates)
+                if lane_end < brew.planned_date
+            ),
+            len(lane_end_dates),
+        )
+        if lane == len(lane_end_dates):
+            lane_end_dates.append(brew.completed_date)
+        else:
+            lane_end_dates[lane] = brew.completed_date
+        span_lanes[brew.pk] = lane
+    calendar_span_lanes = max(1, len(lane_end_dates))
+    calendar_weeks = []
+    for week in month_weeks:
+        spans_by_day = {}
+        for brew in span_entries:
+            for day in week:
+                if brew.planned_date <= day <= brew.completed_date:
+                    spans_by_day.setdefault(day, []).append(
+                        {
+                            "brew": brew,
+                            "lane": span_lanes[brew.pk],
+                            "starts": day == brew.planned_date,
+                            "ends": day == brew.completed_date,
+                            "continues_before": day == week[0] and brew.planned_date < day,
+                            "continues_after": day == week[-1] and brew.completed_date > day,
+                        }
+                    )
         calendar_weeks.append(
             {
                 "number": week[0].isocalendar().week,
@@ -143,6 +190,11 @@ def brew_list(request):
                         "date": day,
                         "in_month": day.month == calendar_date.month,
                         "brews": calendar_days.get(day, []),
+                        "bottlings": [
+                            brew for brew in bottling_days.get(day, [])
+                            if not brew.planned_date or not brew.completed_date
+                        ],
+                        "brew_spans": spans_by_day.get(day, []),
                     }
                     for day in week
                 ],
@@ -156,6 +208,7 @@ def brew_list(request):
             "calendar_month": f"{month_names[calendar_date.month - 1]} {calendar_date.year}",
             "calendar_weekdays": ("Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"),
             "calendar_weeks": calendar_weeks,
+            "calendar_span_lanes": calendar_span_lanes,
             "calendar_days": calendar_days,
             "calendar_today": today,
             "calendar_date": calendar_date,
@@ -597,9 +650,28 @@ def brew_bottling_update(request, pk):
     if brew.capsules_consumed_at:
         messages.error(request, "La consommation des capsules a déjà été enregistrée.")
         return redirect("recipes:brew_detail", pk=brew.pk)
+    update_fields = ["bottled_bottle_count", "capsule_catalog"]
+    if "completed_date" in request.POST:
+        raw_completed_date = request.POST.get("completed_date", "").strip()
+        if raw_completed_date:
+            try:
+                completed_date = date.fromisoformat(raw_completed_date)
+            except ValueError:
+                messages.error(request, "La date de mise en bouteille est invalide.")
+                return redirect("recipes:brew_detail", pk=brew.pk)
+            if brew.planned_date and completed_date < brew.planned_date:
+                messages.error(
+                    request,
+                    "La date de mise en bouteille ne peut pas être antérieure à la date du brassage.",
+                )
+                return redirect("recipes:brew_detail", pk=brew.pk)
+        else:
+            completed_date = None
+        brew.completed_date = completed_date
+        update_fields.append("completed_date")
     brew.bottled_bottle_count = bottle_count
     brew.capsule_catalog = capsule_catalog
-    brew.save(update_fields=["bottled_bottle_count", "capsule_catalog"])
+    brew.save(update_fields=update_fields)
     messages.success(request, "Les informations de mise en bouteille ont été enregistrées.")
     return redirect("recipes:brew_detail", pk=brew.pk)
 
@@ -1193,6 +1265,7 @@ def recipe_detail(request, pk, edit_forms=None):
         boil_events.append(
             {"type": "cooling_hop", "temperature": temperature, "rows": list(grouped_rows)}
         )
+    tasting_form = RecipeTastingForm(instance=recipe)
     inventory_by_kind = []
     for kind, label in IngredientCatalog.Kind.choices:
         if kind == IngredientCatalog.Kind.CONSUMABLE:
@@ -1210,6 +1283,23 @@ def recipe_detail(request, pk, edit_forms=None):
         {
             "recipe": recipe,
             "name_form": RecipeNameForm(instance=recipe),
+            "tasting_form": tasting_form,
+            "tasting_axes": [
+                {
+                    "name": field_name,
+                    "label": label,
+                    "value": getattr(recipe, field_name),
+                    "field": tasting_form[field_name],
+                }
+                for field_name, label in (
+                    ("tasting_malt", "Malté / douceur"),
+                    ("tasting_bitterness", "Amertume perçue"),
+                    ("tasting_hops", "Arômes de houblon"),
+                    ("tasting_body", "Corps"),
+                    ("tasting_alcohol", "Chaleur de l’alcool"),
+                    ("tasting_acidity", "Acidité"),
+                )
+            ],
             "category_form": category_form,
             "efficiency_form": RecipeEfficiencyForm(instance=recipe),
             "notes_form": RecipeNotesForm(instance=recipe),
@@ -1553,6 +1643,18 @@ def recipe_category_update(request, pk):
     if request.method == "POST" and form.is_valid():
         form.save()
         messages.success(request, "La catégorie BJCP de la recette a été mise à jour.")
+    return redirect("recipes:detail", pk=recipe.pk)
+
+
+@require_POST
+def recipe_tasting_update(request, pk):
+    recipe = get_object_or_404(Recipe, pk=pk)
+    form = RecipeTastingForm(request.POST, instance=recipe)
+    if form.is_valid():
+        form.save()
+        messages.success(request, "Le profil de dégustation a été mis à jour.")
+    else:
+        messages.error(request, "Le profil de dégustation contient une note invalide.")
     return redirect("recipes:detail", pk=recipe.pk)
 
 

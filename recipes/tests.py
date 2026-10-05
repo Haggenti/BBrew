@@ -1,4 +1,5 @@
 from decimal import Decimal
+from datetime import date
 import json
 from unittest.mock import patch
 
@@ -268,6 +269,58 @@ class RecipeWorkflowTests(TestCase):
             {"month_number": "3", "year": "2027"},
         )
         self.assertEqual(selected_response.context["calendar_month"], "mars 2027")
+
+    def test_brew_number_and_bottling_date_are_shown_in_calendar(self):
+        brew = Brew.objects.create(
+            recipe_name="Brassin test",
+            planned_date=date(2026, 10, 10),
+            completed_date=date(2026, 10, 25),
+        )
+        later_brew = Brew.objects.create(recipe_name="Brassin suivant")
+        self.assertGreater(later_brew.pk, brew.pk)
+
+        response = self.client.get("/brassins/", {"month": "2026-10"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, f"N° {brew.pk}")
+        self.assertContains(response, f"Brassin n°{brew.pk} — Brassin test")
+        self.assertContains(
+            response,
+            f"Embouteillage — Brassin n°{brew.pk} — Brassin test",
+        )
+        self.assertContains(response, "brew-calendar-span")
+        self.assertContains(response, "span-end")
+        self.assertContains(response, 'class="brew-calendar-bottling d-inline-block me-1"')
+        self.assertNotContains(response, "<svg")
+        self.assertEqual(
+            response.context["calendar_days"][date(2026, 10, 10)],
+            [brew],
+        )
+        bottling_day = next(
+            day
+            for week in response.context["calendar_weeks"]
+            for day in week["days"]
+            if day["date"] == date(2026, 10, 25)
+        )
+        self.assertEqual(bottling_day["bottlings"], [])
+        self.assertEqual(len(bottling_day["brew_spans"]), 1)
+        self.assertTrue(bottling_day["brew_spans"][0]["ends"])
+        brewing_day = next(
+            day
+            for week in response.context["calendar_weeks"]
+            for day in week["days"]
+            if day["date"] == date(2026, 10, 10)
+        )
+        self.assertTrue(brewing_day["brew_spans"][0]["starts"])
+        middle_day = next(
+            day
+            for week in response.context["calendar_weeks"]
+            for day in week["days"]
+            if day["date"] == date(2026, 10, 18)
+        )
+        self.assertEqual(middle_day["brew_spans"][0]["brew"], brew)
+        self.assertFalse(middle_day["brew_spans"][0]["starts"])
+        self.assertFalse(middle_day["brew_spans"][0]["ends"])
 
     def test_catalog_groups_stock_deficits_by_planned_brew(self):
         malt = IngredientCatalog.objects.create(
@@ -584,6 +637,7 @@ class RecipeWorkflowTests(TestCase):
         self.assertLess(bottling_position, comparison_row_position)
         self.assertLess(comparison_row_position, analysis_position)
         self.assertLess(analysis_position, comparison_position)
+        self.assertContains(response, f"Brassin n°{brew.pk} · créé le")
         self.assertContains(response, 'data-bs-target="#bottling-modal"')
         self.assertContains(response, 'id="bottling-modal"')
         self.assertContains(response, f'action="/brassins/{brew.pk}/mise-en-bouteille/"')
@@ -783,6 +837,52 @@ class RecipeWorkflowTests(TestCase):
         self.assertIsNotNone(response.context["estimated_ebc_color"])
         self.assertIsNotNone(response.context["estimated_og"])
         self.assertIsNotNone(response.context["estimated_ibu"])
+        self.assertContains(response, "tasting-profile-chart")
+        self.assertContains(response, 'data-bs-target="#tasting-profile-modal"')
+        self.assertContains(response, 'id="tasting-profile-modal"')
+        self.assertContains(response, "Non noté")
+        self.assertContains(response, "Cliquez ou faites glisser sur un axe")
+        self.assertNotContains(response, 'data-tasting-range')
+
+    def test_recipe_tasting_profile_saves_optional_scores_and_notes(self):
+        recipe = Recipe.objects.create(name="Dégustation")
+        version_count = recipe.versions.count()
+
+        response = self.client.post(
+            f"/recettes/{recipe.pk}/degustation/",
+            {
+                "tasting_malt": "4",
+                "tasting_bitterness": "2",
+                "tasting_hops": "5",
+                "tasting_body": "",
+                "tasting_alcohol": "1",
+                "tasting_acidity": "",
+                "tasting_notes": "Notes d’agrumes et finale sèche.",
+            },
+        )
+
+        self.assertRedirects(response, f"/recettes/{recipe.pk}/")
+        recipe.refresh_from_db()
+        self.assertEqual(recipe.tasting_malt, 4)
+        self.assertEqual(recipe.tasting_bitterness, 2)
+        self.assertEqual(recipe.tasting_hops, 5)
+        self.assertIsNone(recipe.tasting_body)
+        self.assertEqual(recipe.tasting_alcohol, 1)
+        self.assertIsNone(recipe.tasting_acidity)
+        self.assertEqual(recipe.tasting_notes, "Notes d’agrumes et finale sèche.")
+        self.assertEqual(recipe.versions.count(), version_count)
+
+    def test_recipe_tasting_profile_rejects_scores_above_five(self):
+        recipe = Recipe.objects.create(name="Note invalide")
+
+        response = self.client.post(
+            f"/recettes/{recipe.pk}/degustation/",
+            {"tasting_malt": "6"},
+        )
+
+        self.assertRedirects(response, f"/recettes/{recipe.pk}/")
+        recipe.refresh_from_db()
+        self.assertIsNone(recipe.tasting_malt)
 
     def test_recipe_detail_marks_ingredients_missing_from_stock(self):
         recipe = Recipe.objects.create(name="Ingrédient non référencé")
@@ -1115,7 +1215,12 @@ class RecipeWorkflowTests(TestCase):
             kind=IngredientCatalog.Kind.MALT,
             quantity_available=5000,
         )
-        recipe = Recipe.objects.create(name="Sauvegarde Ale")
+        recipe = Recipe.objects.create(
+            name="Sauvegarde Ale",
+            tasting_malt=3,
+            tasting_hops=5,
+            tasting_notes="Notes d’agrumes.",
+        )
         Ingredient.objects.create(
             recipe=recipe,
             catalog=catalog,
@@ -1138,6 +1243,9 @@ class RecipeWorkflowTests(TestCase):
         self.assertRedirects(restore_response, "/recettes/")
         restored = Recipe.objects.get()
         self.assertEqual(restored.name, "Sauvegarde Ale")
+        self.assertEqual(restored.tasting_malt, 3)
+        self.assertEqual(restored.tasting_hops, 5)
+        self.assertEqual(restored.tasting_notes, "Notes d’agrumes.")
         self.assertEqual(restored.ingredients.get().catalog.name, "Pale malt")
         self.assertFalse(Recipe.objects.filter(name="Données à remplacer").exists())
 
@@ -1173,9 +1281,15 @@ class RecipeWorkflowTests(TestCase):
 
         response = self.client.post(
             f"/brassins/{brew.pk}/mise-en-bouteille/",
-            {"bottled_bottle_count": "10", "capsule_catalog": capsules.pk},
+            {
+                "bottled_bottle_count": "10",
+                "capsule_catalog": capsules.pk,
+                "completed_date": "2026-10-20",
+            },
         )
         self.assertRedirects(response, f"/brassins/{brew.pk}/")
+        brew.refresh_from_db()
+        self.assertEqual(brew.completed_date, date(2026, 10, 20))
 
         response = self.client.post(f"/brassins/{brew.pk}/consommer-capsules/")
 

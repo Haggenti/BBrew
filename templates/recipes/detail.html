@@ -21,6 +21,9 @@
   .profile-value-label { position: absolute; bottom: calc(100% + .3rem); color: var(--bs-body-color); font-size: .75rem; line-height: 1; white-space: nowrap; transform: translateX(-50%); }
   .profile-value-label.align-start { transform: none; }
   .profile-value-label.align-end { transform: translateX(-100%); }
+  .tasting-range { min-width: 0; }
+  .tasting-chart-wrap { position: relative; height: 17rem; }
+  .tasting-chart-wrap canvas { touch-action: none; }
   .inline-setting-display { cursor: pointer; }
   .inline-setting-display:hover { text-decoration: underline; text-decoration-style: dotted; }
   .inline-setting-edit { display: none; }
@@ -212,8 +215,53 @@
     <div class="col-sm-6 border-top p-3"><div class="inline-setting" data-inline-setting><small class="text-secondary d-block">Volume de la recette</small><strong class="inline-setting-display fs-4 d-block" data-inline-setting-display title="Double-cliquez pour modifier">{{ recipe.batch_size_l|floatformat:"-2" }} L</strong><form class="inline-setting-edit mt-2" method="post" action="{% url 'recipes:scale' recipe.pk %}">{% csrf_token %}<input type="hidden" name="action" value="volume_only"><div class="input-group input-group-sm"><input class="form-control" type="number" name="batch_size_l" min="1" max="1000" step="0.5" value="{{ recipe.batch_size_l|unlocalize }}" aria-label="Volume de la recette en litres" required><span class="input-group-text">L</span><button class="btn btn-primary" type="submit" aria-label="Enregistrer le volume"><i class="bi bi-check-lg" aria-hidden="true"></i></button><button class="btn btn-outline-secondary" type="button" data-inline-setting-cancel aria-label="Annuler la modification"><i class="bi bi-x-lg" aria-hidden="true"></i></button></div></form></div></div>
     {% if cost_tracking_enabled %}<div class="col-12 border-top p-3"><small class="text-secondary d-block">Coût estimé des ingrédients</small><strong class="fs-4">{% if estimated_recipe_cost is not None %}{{ estimated_recipe_cost|floatformat:2 }} €{% else %}À renseigner{% endif %}</strong>{% if estimated_cost_per_liter is not None %}<span class="text-secondary ms-2">· {{ estimated_cost_per_liter|floatformat:2 }} €/L</span>{% endif %}{% if ingredient_count %}<small class="d-block text-secondary">{% if known_cost_count == ingredient_count %}Estimation complète{% else %}Estimation partielle : {{ known_cost_count }} coût{{ known_cost_count|pluralize }} renseigné{{ known_cost_count|pluralize }} sur {{ ingredient_count }} ingrédient{{ ingredient_count|pluralize }}{% endif %}</small>{% endif %}</div>{% endif %}
   </div></section></div>
+  <div class="col-12">
+    <section class="card card-body border-primary-subtle py-2">
+      <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap">
+        <div><h2 class="h6 mb-0">Profil de dégustation</h2><span class="small text-secondary">Notes personnelles · indépendantes des estimations de la recette</span></div>
+        <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="modal" data-bs-target="#tasting-profile-modal"><i class="bi bi-diagram-3 me-1" aria-hidden="true"></i>Ouvrir le diagramme</button>
+      </div>
+    </section>
+  </div>
 </div>
-</div>
+<div class="modal fade" id="tasting-profile-modal" tabindex="-1" aria-labelledby="tasting-profile-title" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <form method="post" action="{% url 'recipes:tasting_update' recipe.pk %}" id="tasting-profile-form">
+        {% csrf_token %}
+        <div class="modal-header">
+          <div><h2 class="modal-title h5" id="tasting-profile-title">Profil de dégustation</h2><p class="small text-secondary mb-0">Notez vos perceptions de 0 (absent) à 5 (intense).</p></div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-3 align-items-center">
+            <div class="col-md-7">
+              <div class="tasting-chart-wrap"><canvas id="tasting-profile-chart" role="img" aria-label="Diagramme radar interactif du profil de dégustation."></canvas></div>
+              <div class="small text-secondary text-center">Cliquez ou faites glisser sur un axe pour définir sa note de 0 à 5.</div>
+            </div>
+            <div class="col-md-5">
+              {% for axis in tasting_axes %}
+                <div class="d-flex justify-content-between align-items-center border-bottom py-2">
+                  {{ axis.field.as_hidden }}
+                  <span class="small fw-semibold">{{ axis.label }}</span>
+                  <output class="small text-secondary" id="value-{{ axis.name }}" data-tasting-value="{{ axis.name }}" aria-live="polite">{% if axis.value != None %}{{ axis.value }}/5{% else %}Non noté{% endif %}</output>
+                </div>
+              {% endfor %}
+            </div>
+            <div class="col-12">
+              <label class="form-label small fw-semibold" for="{{ tasting_form.tasting_notes.id_for_label }}">Notes de dégustation</label>
+              {{ tasting_form.tasting_notes }}
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer justify-content-between">
+          <button class="btn btn-sm btn-outline-secondary" type="button" data-clear-tasting-profile>Effacer les notes et les scores</button>
+          <div><button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">Annuler</button>
+          <button class="btn btn-primary" type="submit"><i class="bi bi-check-lg me-1" aria-hidden="true"></i>Enregistrer</button></div>
+        </div>
+      </form>
+    </div>
+  </div>
 </div>
 <div class="row g-4">
   <div class="col-12">
@@ -445,6 +493,7 @@
     const mashZonesPlugin = {
       id: "mashZones",
       beforeDraw(chart) {
+        if (chart.canvas.id !== "mash-profile-chart") return;
         if (chart.options.plugins.mashZones.display === false) return;
         const { ctx, chartArea, scales } = chart;
         const zones = zoneDefinitions.filter((zone) => document.getElementById(`mash-zone-${zone.id}`)?.checked);
@@ -1113,5 +1162,121 @@
       form.submit();
     });
   }
+</script>
+<script>
+  (() => {
+    const canvas = document.getElementById("tasting-profile-chart");
+    const form = document.getElementById("tasting-profile-form");
+    if (!canvas || !form) return;
+
+    const axisNames = ["tasting_malt", "tasting_bitterness", "tasting_hops", "tasting_body", "tasting_alcohol", "tasting_acidity"];
+    const labels = ["Malté / douceur", "Amertume", "Arômes de houblon", "Corps", "Chaleur alcool", "Acidité"];
+    const fields = axisNames.map((name) => form.elements.namedItem(name));
+    const outputs = axisNames.map((name) => document.getElementById(`value-${name}`));
+    let chart = null;
+    const initializeChart = () => {
+      if (chart || typeof Chart === "undefined") return;
+      chart = new Chart(canvas, {
+        type: "radar",
+        data: {
+          labels,
+          datasets: [{
+            data: fields.map((field) => field.value === "" ? null : Number(field.value)),
+            backgroundColor: "rgba(13, 202, 240, .18)",
+            borderColor: "rgb(13, 202, 240)",
+            borderWidth: 2,
+            pointBackgroundColor: "rgb(13, 202, 240)",
+            pointBorderColor: "#fff",
+            pointRadius: 5,
+            pointHoverRadius: 7,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: false,
+          scales: {
+            r: {
+              min: 0,
+              max: 5,
+              ticks: { stepSize: 1, backdropColor: "transparent" },
+              pointLabels: { font: { size: 11 } },
+            },
+          },
+          plugins: { legend: { display: false } },
+        },
+      });
+    };
+
+    const modal = document.getElementById("tasting-profile-modal");
+    modal.addEventListener("shown.bs.modal", () => {
+      initializeChart();
+      chart?.resize();
+    });
+
+    const refreshChart = () => {
+      if (!chart) return;
+      chart.data.datasets[0].data = fields.map((field) => field.value === "" ? null : Number(field.value));
+      chart.update("none");
+    };
+
+    const updateChart = () => {
+      initializeChart();
+      refreshChart();
+    };
+
+    let draggedAxis = null;
+    const axisAt = (event) => {
+      if (!chart) return null;
+      const rect = canvas.getBoundingClientRect();
+      const x = (event.clientX - rect.left) * chart.width / rect.width;
+      const y = (event.clientY - rect.top) * chart.height / rect.height;
+      const scale = chart.scales.r;
+      const dx = x - scale.xCenter;
+      const dy = y - scale.yCenter;
+      const distance = Math.hypot(dx, dy);
+      if (distance > scale.drawingArea + 18) return null;
+      const angle = (Math.atan2(dy, dx) + Math.PI / 2 + 2 * Math.PI) % (2 * Math.PI);
+      return Math.round(angle / (2 * Math.PI / labels.length)) % labels.length;
+    };
+    const setDraggedValue = (event) => {
+      if (!chart) return;
+      if (draggedAxis === null) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = (event.clientX - rect.left) * chart.width / rect.width;
+      const y = (event.clientY - rect.top) * chart.height / rect.height;
+      const scale = chart.scales.r;
+      const distance = Math.hypot(x - scale.xCenter, y - scale.yCenter);
+      const value = Math.max(0, Math.min(5, Math.round(distance / scale.drawingArea * 5)));
+      fields[draggedAxis].value = String(value);
+      outputs[draggedAxis].value = `${value}/5`;
+      outputs[draggedAxis].textContent = `${value}/5`;
+      refreshChart();
+    };
+
+    canvas.addEventListener("pointerdown", (event) => {
+      if (!chart) return;
+      draggedAxis = axisAt(event);
+      if (draggedAxis !== null) {
+        canvas.setPointerCapture(event.pointerId);
+        setDraggedValue(event);
+        event.preventDefault();
+      }
+    });
+    canvas.addEventListener("pointermove", setDraggedValue);
+    const finishDrag = () => { draggedAxis = null; };
+    canvas.addEventListener("pointerup", finishDrag);
+    canvas.addEventListener("pointercancel", finishDrag);
+
+    form.querySelector("[data-clear-tasting-profile]").addEventListener("click", () => {
+      fields.forEach((field, index) => {
+        field.value = "";
+        outputs[index].value = "Non noté";
+        outputs[index].textContent = "Non noté";
+      });
+      form.elements.namedItem("tasting_notes").value = "";
+      updateChart();
+    });
+  })();
 </script>
 {% endblock %}

@@ -6,6 +6,8 @@ def default_mash_zones():
 
 
 class Recipe(models.Model):
+    TASTING_SCORE_CHOICES = [(score, str(score)) for score in range(6)]
+
     name = models.CharField("nom", max_length=120)
     category = models.ForeignKey(
         "BeerCategory",
@@ -29,6 +31,13 @@ class Recipe(models.Model):
     mash_temperature_grid = models.PositiveIntegerField("quadrillage température (°C)", default=5)
     mash_zones = models.JSONField("zones brassicoles affichées", default=default_mash_zones)
     notes = models.TextField("notes", blank=True)
+    tasting_malt = models.PositiveSmallIntegerField("malté / douceur", choices=TASTING_SCORE_CHOICES, null=True, blank=True)
+    tasting_bitterness = models.PositiveSmallIntegerField("amertume perçue", choices=TASTING_SCORE_CHOICES, null=True, blank=True)
+    tasting_hops = models.PositiveSmallIntegerField("arômes de houblon", choices=TASTING_SCORE_CHOICES, null=True, blank=True)
+    tasting_body = models.PositiveSmallIntegerField("corps", choices=TASTING_SCORE_CHOICES, null=True, blank=True)
+    tasting_alcohol = models.PositiveSmallIntegerField("chaleur de l’alcool", choices=TASTING_SCORE_CHOICES, null=True, blank=True)
+    tasting_acidity = models.PositiveSmallIntegerField("acidité", choices=TASTING_SCORE_CHOICES, null=True, blank=True)
+    tasting_notes = models.TextField("notes de dégustation", blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     current_version = models.ForeignKey(
         "RecipeVersion",
@@ -46,6 +55,17 @@ class Recipe(models.Model):
             models.CheckConstraint(
                 condition=models.Q(efficiency__gte=1) & models.Q(efficiency__lte=100),
                 name="recipe_efficiency_between_1_100",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    (models.Q(tasting_malt__isnull=True) | models.Q(tasting_malt__lte=5))
+                    & (models.Q(tasting_bitterness__isnull=True) | models.Q(tasting_bitterness__lte=5))
+                    & (models.Q(tasting_hops__isnull=True) | models.Q(tasting_hops__lte=5))
+                    & (models.Q(tasting_body__isnull=True) | models.Q(tasting_body__lte=5))
+                    & (models.Q(tasting_alcohol__isnull=True) | models.Q(tasting_alcohol__lte=5))
+                    & (models.Q(tasting_acidity__isnull=True) | models.Q(tasting_acidity__lte=5))
+                ),
+                name="recipe_tasting_scores_max_5",
             ),
         ]
 

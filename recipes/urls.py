@@ -55,6 +55,7 @@ urlpatterns = [
     path("recettes/<int:pk>/efficacite/", views.recipe_efficiency_update, name="efficiency_update"),
     path("recettes/<int:pk>/nom/", views.recipe_name_update, name="name_update"),
     path("recettes/<int:pk>/categorie/", views.recipe_category_update, name="category_update"),
+    path("recettes/<int:pk>/degustation/", views.recipe_tasting_update, name="tasting_update"),
     path("recettes/<int:pk>/notes/", views.recipe_notes_update, name="notes_update"),
     path("recettes/<int:pk>/scale/", views.recipe_scale, name="scale"),
     path("recettes/<int:pk>/supprimer/", views.recipe_delete, name="delete"),

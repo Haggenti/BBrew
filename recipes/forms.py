@@ -441,6 +441,25 @@ class ScaleForm(forms.Form):
     )
 
 
+class RecipeTastingForm(StyledModelForm):
+    class Meta:
+        model = Recipe
+        fields = [
+            "tasting_malt",
+            "tasting_bitterness",
+            "tasting_hops",
+            "tasting_body",
+            "tasting_alcohol",
+            "tasting_acidity",
+            "tasting_notes",
+        ]
+        widgets = {
+            "tasting_notes": forms.Textarea(
+                attrs={"rows": 2, "placeholder": "Arômes, équilibre, longueur en bouche…"}
+            ),
+        }
+
+
 class IngredientForm(StyledModelForm):
     class Meta:
         model = Ingredient
