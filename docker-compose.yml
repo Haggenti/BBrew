@@ -1,0 +1,19 @@
+services:
+  bbrew:
+    image: bbrew:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    init: true
+    env_file:
+      - .env
+    environment:
+      BBREW_DATA_DIR: /data
+      DJANGO_DEBUG: "0"
+    ports:
+      - "${BBREW_PORT:-8000}:8000"
+    volumes:
+      - "${BBREW_HOST_DATA_DIR:?Set BBREW_HOST_DATA_DIR in .env}:/data"
+    security_opt:
+      - no-new-privileges:true
