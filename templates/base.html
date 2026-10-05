@@ -49,7 +49,7 @@
   </main>
   <style>
     :root { --sidebar-width: 15rem; --sidebar-collapsed-width: 4.75rem; }
-    .app-sidebar { background: #212529; bottom: 0; color: #fff; display: flex; flex-direction: column; left: 0; padding: 1rem .75rem; position: fixed; top: 0; transition: width .2s ease; width: var(--sidebar-width); z-index: 1030; }
+    .app-sidebar { background: #0055aa; bottom: 0; color: #fff; display: flex; flex-direction: column; left: 0; padding: 1rem .75rem; position: fixed; top: 0; transition: width .2s ease; width: var(--sidebar-width); z-index: 1030; }
     .sidebar-header { align-items: center; display: flex; gap: .5rem; justify-content: space-between; margin-bottom: 2rem; }
     .sidebar-brand { align-items: center; color: #fff; display: flex; font-size: 1.25rem; font-weight: 600; gap: .65rem; overflow: hidden; text-decoration: none; white-space: nowrap; }
     .sidebar-brand-logo { display: block; height: 3rem; max-width: 8rem; object-fit: contain; width: 6.2rem; }
@@ -65,7 +65,7 @@
     body.sidebar-collapsed .app-sidebar { width: var(--sidebar-collapsed-width); }
     body.sidebar-collapsed .app-main { margin-left: var(--sidebar-collapsed-width); }
     body.sidebar-collapsed .sidebar-label { display: none; }
-    body.sidebar-collapsed .sidebar-brand-logo { height: 2.75rem; width: 2.75rem; }
+    body.sidebar-collapsed .sidebar-brand { display: none; }
     body.sidebar-collapsed .sidebar-header { justify-content: center; }
     body.sidebar-collapsed .sidebar-toggle i { transform: rotate(180deg); }
     body.sidebar-collapsed .sidebar-link { justify-content: center; padding-left: .75rem; padding-right: .75rem; }
@@ -73,7 +73,7 @@
       .app-sidebar { width: var(--sidebar-collapsed-width); }
       .app-main { margin-left: var(--sidebar-collapsed-width); padding: 1rem .75rem; }
       .sidebar-label { display: none; }
-      .sidebar-brand-logo { height: 2.75rem; width: 2.75rem; }
+      .sidebar-brand { display: none; }
       .sidebar-header { justify-content: center; }
       .sidebar-link { justify-content: center; padding-left: .75rem; padding-right: .75rem; }
     }

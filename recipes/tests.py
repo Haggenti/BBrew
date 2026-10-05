@@ -235,6 +235,7 @@ class RecipeWorkflowTests(TestCase):
         response = self.client.get("/")
         self.assertContains(response, 'src="/static/recipes/bbs-logo-dashboard.svg"')
         self.assertContains(response, 'src="/static/recipes/bbs-logo-curseur.svg"')
+        self.assertContains(response, 'src="/static/recipes/boingball_10_80x80_64.gif"')
         self.assertEqual(response.context["dashboard"]["stock_alert_count"], 0)
 
         recipe = Recipe.objects.create(name="Brassin prévu")
@@ -852,6 +853,8 @@ class RecipeWorkflowTests(TestCase):
         self.assertContains(response, "tasting-profile-chart")
         self.assertContains(response, 'data-bs-target="#tasting-profile-modal"')
         self.assertContains(response, 'id="tasting-profile-modal"')
+        self.assertContains(response, "data-tasting-stars")
+        self.assertEqual(len(response.context["tasting_stars"]), 5)
         self.assertContains(response, "Non noté")
         self.assertContains(response, "Cliquez ou faites glisser sur un axe")
         self.assertNotContains(response, 'data-tasting-range')
@@ -869,6 +872,7 @@ class RecipeWorkflowTests(TestCase):
                 "tasting_body": "",
                 "tasting_alcohol": "1",
                 "tasting_acidity": "",
+                "tasting_rating": "4.5",
                 "tasting_notes": "Notes d’agrumes et finale sèche.",
             },
         )
@@ -881,6 +885,7 @@ class RecipeWorkflowTests(TestCase):
         self.assertIsNone(recipe.tasting_body)
         self.assertEqual(recipe.tasting_alcohol, 1)
         self.assertIsNone(recipe.tasting_acidity)
+        self.assertEqual(recipe.tasting_rating, Decimal("4.5"))
         self.assertEqual(recipe.tasting_notes, "Notes d’agrumes et finale sèche.")
         self.assertEqual(recipe.versions.count(), version_count)
 
@@ -895,6 +900,18 @@ class RecipeWorkflowTests(TestCase):
         self.assertRedirects(response, f"/recettes/{recipe.pk}/")
         recipe.refresh_from_db()
         self.assertIsNone(recipe.tasting_malt)
+
+    def test_recipe_tasting_rating_rejects_non_half_steps_and_out_of_range(self):
+        recipe = Recipe.objects.create(name="Note invalide")
+        for rating in ("4.2", "5.5", "-0.5"):
+            with self.subTest(rating=rating):
+                response = self.client.post(
+                    f"/recettes/{recipe.pk}/degustation/",
+                    {"tasting_rating": rating},
+                )
+                self.assertRedirects(response, f"/recettes/{recipe.pk}/")
+                recipe.refresh_from_db()
+                self.assertIsNone(recipe.tasting_rating)
 
     def test_recipe_detail_marks_ingredients_missing_from_stock(self):
         recipe = Recipe.objects.create(name="Ingrédient non référencé")

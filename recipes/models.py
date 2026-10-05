@@ -37,6 +37,7 @@ class Recipe(models.Model):
     tasting_body = models.PositiveSmallIntegerField("corps", choices=TASTING_SCORE_CHOICES, null=True, blank=True)
     tasting_alcohol = models.PositiveSmallIntegerField("chaleur de l’alcool", choices=TASTING_SCORE_CHOICES, null=True, blank=True)
     tasting_acidity = models.PositiveSmallIntegerField("acidité", choices=TASTING_SCORE_CHOICES, null=True, blank=True)
+    tasting_rating = models.DecimalField("note globale de dégustation", max_digits=2, decimal_places=1, null=True, blank=True)
     tasting_notes = models.TextField("notes de dégustation", blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     current_version = models.ForeignKey(
@@ -66,6 +67,13 @@ class Recipe(models.Model):
                     & (models.Q(tasting_acidity__isnull=True) | models.Q(tasting_acidity__lte=5))
                 ),
                 name="recipe_tasting_scores_max_5",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(tasting_rating__isnull=True)
+                    | (models.Q(tasting_rating__gte=0) & models.Q(tasting_rating__lte=5))
+                ),
+                name="recipe_tasting_rating_between_0_5",
             ),
         ]
 

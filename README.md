@@ -38,7 +38,7 @@ deactivate
 
 - **Recettes** : créer une recette, gérer ses ingrédients, ses paliers,
   ses phases de fermentation, ses versions et son profil de dégustation
-  interactif. Les ingrédients d'une recette
+  interactif avec une note globale par demi-étoile. Les ingrédients d'une recette
   sont sélectionnés parmi les fiches du stock ; l'import crée automatiquement
   les fiches manquantes.
 - **Stock** : gérer les malts, houblons, levures, ingrédients divers et

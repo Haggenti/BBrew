@@ -442,6 +442,15 @@ class ScaleForm(forms.Form):
 
 
 class RecipeTastingForm(StyledModelForm):
+    def clean_tasting_rating(self):
+        rating = self.cleaned_data.get("tasting_rating")
+        if rating is not None:
+            if not 0 <= rating <= 5:
+                raise forms.ValidationError("La note doit être comprise entre 0 et 5.")
+            if rating * 2 != (rating * 2).to_integral_value():
+                raise forms.ValidationError("La note doit avancer par demi-étoile.")
+        return rating
+
     class Meta:
         model = Recipe
         fields = [
@@ -451,9 +460,11 @@ class RecipeTastingForm(StyledModelForm):
             "tasting_body",
             "tasting_alcohol",
             "tasting_acidity",
+            "tasting_rating",
             "tasting_notes",
         ]
         widgets = {
+            "tasting_rating": forms.HiddenInput(),
             "tasting_notes": forms.Textarea(
                 attrs={"rows": 2, "placeholder": "Arômes, équilibre, longueur en bouche…"}
             ),

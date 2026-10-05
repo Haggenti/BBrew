@@ -1284,6 +1284,14 @@ def recipe_detail(request, pk, edit_forms=None):
             "recipe": recipe,
             "name_form": RecipeNameForm(instance=recipe),
             "tasting_form": tasting_form,
+            "tasting_stars": [
+                {
+                    "number": star_number,
+                    "left_value": Decimal(star_number) - Decimal("0.5"),
+                    "right_value": Decimal(star_number),
+                }
+                for star_number in range(1, 6)
+            ],
             "tasting_axes": [
                 {
                     "name": field_name,

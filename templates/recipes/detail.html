@@ -24,6 +24,14 @@
   .tasting-range { min-width: 0; }
   .tasting-chart-wrap { position: relative; height: 17rem; }
   .tasting-chart-wrap canvas { touch-action: none; }
+  .tasting-rating { display: flex; align-items: center; gap: .75rem; }
+  .tasting-stars { display: inline-flex; }
+  .tasting-star-button { background: none; border: 0; color: var(--bs-secondary-color); cursor: pointer; height: 2rem; overflow: hidden; padding: 0; position: relative; width: 1.1rem; }
+  .tasting-star-button i { font-size: 1.75rem; left: 0; line-height: 1; position: absolute; top: .1rem; width: 2.2rem; }
+  .tasting-star-button.half-right i { left: -1.1rem; }
+  .tasting-star-button .bi-star-fill { color: #ffc107; display: none; }
+  .tasting-star-button.is-selected .bi-star-fill { display: block; }
+  .tasting-star-button:focus-visible { outline: 2px solid var(--bs-primary); outline-offset: 1px; z-index: 1; }
   .inline-setting-display { cursor: pointer; }
   .inline-setting-display:hover { text-decoration: underline; text-decoration-style: dotted; }
   .inline-setting-edit { display: none; }
@@ -237,6 +245,21 @@
         </div>
         <div class="modal-body">
           <div class="row g-3 align-items-center">
+            <div class="col-12">
+              <div class="tasting-rating">
+                <span class="small fw-semibold">Note globale</span>
+                <div class="tasting-stars" data-tasting-stars>
+                  {% for star in tasting_stars %}
+                    <span class="d-inline-flex">
+                      <button class="tasting-star-button half-left" type="button" data-rating-value="{{ star.left_value|unlocalize }}" title="{{ star.left_value }}/5" aria-label="Noter {{ star.left_value }} sur 5"><i class="bi bi-star" aria-hidden="true"></i><i class="bi bi-star-fill" aria-hidden="true"></i></button>
+                      <button class="tasting-star-button half-right" type="button" data-rating-value="{{ star.right_value|unlocalize }}" title="{{ star.right_value }}/5" aria-label="Noter {{ star.right_value }} sur 5"><i class="bi bi-star" aria-hidden="true"></i><i class="bi bi-star-fill" aria-hidden="true"></i></button>
+                    </span>
+                  {% endfor %}
+                </div>
+                {{ tasting_form.tasting_rating }}
+                <output class="small text-secondary" id="tasting-rating-value" aria-live="polite">{% if recipe.tasting_rating != None %}{{ recipe.tasting_rating|floatformat:"-1" }}/5{% else %}Non notée{% endif %}</output>
+              </div>
+            </div>
             <div class="col-md-7">
               <div class="tasting-chart-wrap"><canvas id="tasting-profile-chart" role="img" aria-label="Diagramme radar interactif du profil de dégustation."></canvas></div>
               <div class="small text-secondary text-center">Cliquez ou faites glisser sur un axe pour définir sa note de 0 à 5.</div>
@@ -1175,6 +1198,9 @@
     const labels = ["Malté / douceur", "Amertume", "Arômes de houblon", "Corps", "Chaleur alcool", "Acidité"];
     const fields = axisNames.map((name) => form.elements.namedItem(name));
     const outputs = axisNames.map((name) => document.getElementById(`value-${name}`));
+    const ratingField = form.elements.namedItem("tasting_rating");
+    const ratingOutput = document.getElementById("tasting-rating-value");
+    const ratingButtons = [...form.querySelectorAll("[data-rating-value]")];
     let chart = null;
     const initializeChart = () => {
       if (chart || typeof Chart === "undefined") return;
@@ -1227,6 +1253,25 @@
       refreshChart();
     };
 
+    const renderRating = (rating, preview = false) => {
+      ratingButtons.forEach((button) => {
+        button.classList.toggle("is-selected", rating !== "" && Number(button.dataset.ratingValue) <= Number(rating));
+        button.classList.toggle("is-preview", preview && rating !== "" && Number(button.dataset.ratingValue) <= Number(rating));
+      });
+    };
+    const savedRating = ratingField.value;
+    renderRating(savedRating);
+    ratingButtons.forEach((button) => {
+      button.addEventListener("mouseenter", () => renderRating(button.dataset.ratingValue, true));
+      button.addEventListener("click", () => {
+        ratingField.value = button.dataset.ratingValue;
+        ratingOutput.value = `${button.dataset.ratingValue}/5`;
+        ratingOutput.textContent = `${button.dataset.ratingValue}/5`;
+        renderRating(ratingField.value);
+      });
+    });
+    form.querySelector("[data-tasting-stars]").addEventListener("mouseleave", () => renderRating(ratingField.value));
+
     let draggedAxis = null;
     const axisAt = (event) => {
       if (!chart) return null;
@@ -1277,6 +1322,10 @@
         outputs[index].textContent = "Non noté";
       });
       form.elements.namedItem("tasting_notes").value = "";
+      ratingField.value = "";
+      ratingOutput.value = "Non notée";
+      ratingOutput.textContent = "Non notée";
+      renderRating("");
       updateChart();
     });
   })();
