@@ -8,7 +8,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends gosu \
+    && apt-get clean \
+    && pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 COPY docker/entrypoint.sh /usr/local/bin/bbrew-entrypoint
@@ -17,10 +20,7 @@ RUN groupadd --system --gid 10001 bbrew \
     && useradd --system --uid 10001 --gid bbrew --home-dir /app --no-create-home bbrew \
     && chmod 755 /usr/local/bin/bbrew-entrypoint \
     && mkdir -p /data \
-    && chown bbrew:bbrew /data \
     && DJANGO_DEBUG=0 python manage.py collectstatic --noinput
-
-USER 10001:10001
 
 EXPOSE 8000
 

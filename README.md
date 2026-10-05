@@ -80,8 +80,9 @@ collectés dans l'image.
    ```
 
    Remplacez `DJANGO_SECRET_KEY`, puis renseignez le nom/IP du NAS dans
-   `DJANGO_ALLOWED_HOSTS` et `DJANGO_CSRF_TRUSTED_ORIGINS`. Le volume nommé
-   `bbrew_data` conserve la base même si le conteneur est reconstruit ou supprimé.
+   `DJANGO_ALLOWED_HOSTS` et `DJANGO_CSRF_TRUSTED_ORIGINS`. La base est écrite dans
+   le répertoire `./data` à côté du fichier Compose, hors du conteneur. Docker le
+   crée automatiquement et le conteneur règle ses permissions au démarrage.
    Vous pouvez également modifier le port publié (`8000:8000`).
 3. Depuis le dossier `BBrew`, construisez et démarrez l'application :
 
@@ -103,13 +104,15 @@ collectés dans l'image.
   contourneraient le proxy.
 - Gardez une seule instance BBrew active : SQLite ne convient pas à plusieurs
   réplicas applicatifs concurrents.
-- Le volume nommé `bbrew_data` est géré par Docker. Sauvegardez régulièrement les
-  données via la page **Paramètres** de BBrew et conservez les sauvegardes hors du NAS.
+- Le répertoire `data/` contient la base SQLite directement sur le NAS, hors du
+  conteneur. Il est exclu de Git ; sauvegardez-le régulièrement, ainsi que les
+  sauvegardes générées dans BBrew, vers un autre emplacement.
 - Pour mettre à jour : sauvegardez les données, mettez le code à jour, puis lancez
   `git pull` puis `docker compose up --build`. Les migrations sont exécutées au
   démarrage.
-- Pour arrêter : `docker compose down`. Ne lancez pas `docker compose down -v` sauf
-  si vous voulez aussi supprimer les données persistantes.
+- Pour arrêter : `docker compose down`. Ce répertoire reste en place lors de la
+  suppression ou de la reconstruction du conteneur ; sauvegardez-le avant toute
+  opération de nettoyage manuelle.
 
 ## Configuration
 

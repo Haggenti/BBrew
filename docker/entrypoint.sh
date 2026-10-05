@@ -1,5 +1,7 @@
 #!/bin/sh
 set -eu
 
-python manage.py migrate --noinput
-exec "$@"
+mkdir -p "$BBREW_DATA_DIR"
+chown -R bbrew:bbrew "$BBREW_DATA_DIR"
+gosu bbrew python manage.py migrate --noinput
+exec gosu bbrew "$@"

@@ -17,10 +17,6 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - bbrew_data:/data
+      - ./data:/data
     security_opt:
       - no-new-privileges:true
-
-volumes:
-  bbrew_data:
-    name: bbrew_data
