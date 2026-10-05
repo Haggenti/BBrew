@@ -2,8 +2,10 @@ from decimal import Decimal
 import json
 from unittest.mock import patch
 
+from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.utils import translation
 from django.utils import timezone
 
 from .calculations import (
@@ -24,6 +26,53 @@ from .calculations import (
 from .forms import ADDITION_CHOICES, MALT_ADDITION_CHOICES, BrewForm, CatalogForm, CatalogOtherForm, CatalogYeastForm, HopForm, MaltForm, MashStepForm, OtherForm, YeastForm
 from .beerxml import import_recipe
 from .models import BeerCategory, Brew, EquipmentSettings, FermentationStep, Ingredient, IngredientCatalog, MashStep, Recipe, RecipeVersion, ShoppingItem
+from .templatetags.recipe_formatting import compact_number
+
+
+class RecipeFormattingTests(TestCase):
+    def test_compact_number_trims_zeros_and_keeps_french_decimal_separator(self):
+        with translation.override("fr-fr"):
+            self.assertEqual(compact_number(1.010), "1,01")
+            self.assertEqual(compact_number(31.100), "31,1")
+            self.assertEqual(compact_number(19.100), "19,1")
+            self.assertEqual(compact_number(18), "18")
+            self.assertEqual(compact_number(4.200), "4,2")
+
+
+class AuthenticationTests(TestCase):
+    def test_anonymous_users_are_redirected_to_login(self):
+        response = self.client.get("/")
+
+        self.assertRedirects(response, "/accounts/login/?next=/")
+
+    def test_default_credentials_can_log_in_and_log_out(self):
+        response = self.client.post(
+            "/accounts/login/",
+            {"username": "brewer", "password": "brewer"},
+        )
+
+        self.assertRedirects(response, "/")
+        self.assertTrue(response.wsgi_request.user.is_authenticated)
+
+        response = self.client.post("/accounts/logout/")
+        self.assertRedirects(response, "/accounts/login/")
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+    def test_user_can_change_default_password(self):
+        self.assertTrue(self.client.login(username="brewer", password="brewer"))
+
+        response = self.client.post(
+            "/accounts/password_change/",
+            {
+                "old_password": "brewer",
+                "new_password1": "new-secure-password-2026",
+                "new_password2": "new-secure-password-2026",
+            },
+        )
+
+        self.assertRedirects(response, "/accounts/password_change/done/")
+        user = get_user_model().objects.get(username="brewer")
+        self.assertTrue(user.check_password("new-secure-password-2026"))
 
 
 class CalculationTests(TestCase):
@@ -159,6 +208,13 @@ class CalculationTests(TestCase):
 
 
 class RecipeWorkflowTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="workflow-test",
+            password="test-password",
+        )
+        self.client.force_login(self.user)
+
     def test_dashboard_alerts_only_planned_brew_stock_deficits(self):
         catalog = IngredientCatalog.objects.create(
             name="Pale malt",
@@ -306,7 +362,18 @@ class RecipeWorkflowTests(TestCase):
         self.assertContains(response, "Styles compatibles avec la recette")
         indicators = response.context["style_indicators"]
         self.assertTrue(0 < indicators[0]["position"] < 100)
-        self.assertContains(response, f'width: {indicators[0]["position"]}%')
+        self.assertLess(indicators[0]["scale_minimum"], indicators[0]["minimum"])
+        self.assertGreater(indicators[0]["scale_maximum"], indicators[0]["maximum"])
+        self.assertGreater(indicators[0]["style_start"], 0)
+        self.assertLess(indicators[0]["style_start"] + indicators[0]["style_width"], 100)
+        self.assertLessEqual(indicators[0]["scale_minimum"], indicators[0]["value"])
+        self.assertGreaterEqual(indicators[0]["scale_maximum"], indicators[0]["value"])
+        self.assertContains(response, 'class="profile-style-range"')
+        self.assertContains(response, 'class="profile-value-cursor')
+        self.assertContains(response, 'class="profile-value-label')
+        self.assertNotContains(response, "dans la fourchette")
+        self.assertNotContains(response, "au-dessus")
+        self.assertNotContains(response, "en dessous")
 
     def test_recipe_without_category_gets_default_18a_profile(self):
         recipe = Recipe.objects.create(name="Sans profil")
@@ -605,6 +672,33 @@ class RecipeWorkflowTests(TestCase):
         self.assertRedirects(response, f"/recettes/{recipe.pk}/")
         ingredient = Ingredient.objects.get(recipe=recipe)
         self.assertEqual(ingredient.kind, Ingredient.Kind.HOP)
+
+    def test_other_ingredient_can_be_added_at_a_specific_boil_time(self):
+        recipe = Recipe.objects.create(name="Épices à l’ébullition")
+        catalog = IngredientCatalog.objects.create(name="Coriandre", kind=IngredientCatalog.Kind.OTHER)
+
+        response = self.client.post(
+            f"/recettes/{recipe.pk}/ingredients/ajouter/",
+            {
+                "kind": "other",
+                "catalog": catalog.pk,
+                "amount_g": "5",
+                "addition": "Ébullition",
+                "boil_minutes": "15",
+            },
+        )
+
+        self.assertRedirects(response, f"/recettes/{recipe.pk}/")
+        ingredient = Ingredient.objects.get(recipe=recipe)
+        self.assertEqual(ingredient.boil_minutes, 15)
+        timeline_response = self.client.get(f"/recettes/{recipe.pk}/")
+        additions = [
+            event for event in timeline_response.context["boil_events"]
+            if event["type"] == "addition"
+        ]
+        self.assertEqual(additions[-1]["rows"][0]["ingredient"], ingredient)
+        self.assertContains(timeline_response, "Coriandre")
+        self.assertContains(timeline_response, "15 min")
 
     def test_ingredient_create_rejects_catalog_of_wrong_kind(self):
         recipe = Recipe.objects.create(name="Validation")
@@ -1439,19 +1533,35 @@ class RecipeWorkflowTests(TestCase):
             amount_g=15,
             boil_minutes=60,
         )
+        spice = Ingredient.objects.create(
+            recipe=recipe,
+            name="Coriandre",
+            kind=Ingredient.Kind.OTHER,
+            amount_g=5,
+            addition="Ébullition",
+            boil_minutes=60,
+        )
 
         response = self.client.get(f"/recettes/{recipe.pk}/")
 
         events = response.context["boil_events"]
+        self.assertContains(response, ".boil-event { position: relative; z-index: 1; display: flex; flex: 0 1 10rem;")
+        self.assertContains(response, ".boil-event-start, .boil-event-cool { background: rgba(220, 53, 69, .06); }")
+        self.assertContains(response, 'class="boil-event boil-event-start"')
+        self.assertContains(response, 'class="boil-event boil-event-timer"')
         self.assertEqual(
             [event["type"] for event in events],
-            ["start", "hop", "hop", "timer", "hop", "timer", "cool"],
+            ["start", "addition", "timer", "addition", "timer", "cool"],
         )
-        self.assertEqual(events[3]["minutes"], 55)
-        self.assertEqual(events[5]["minutes"], 5)
-        self.assertEqual(events[1]["row"]["ingredient"], early_hop)
-        self.assertEqual(events[2]["row"]["ingredient"], same_time_hop)
-        self.assertEqual(events[4]["row"]["ingredient"], late_hop)
+        self.assertEqual(events[2]["minutes"], 55)
+        self.assertEqual(events[4]["minutes"], 5)
+        self.assertEqual(
+            [row["ingredient"] for row in events[1]["rows"]],
+            [early_hop, same_time_hop, spice],
+        )
+        self.assertEqual(events[3]["rows"][0]["ingredient"], late_hop)
+        self.assertContains(response, 'class="boil-event boil-event-hop"')
+        self.assertContains(response, "Second early hop")
 
     def test_cooling_hops_are_ordered_from_highest_to_lowest_temperature(self):
         recipe = Recipe.objects.create(name="Cooling hop order")
@@ -1471,6 +1581,14 @@ class RecipeWorkflowTests(TestCase):
             addition="Refroidissement",
             addition_temperature_c=80,
         )
+        same_temperature_hop = Ingredient.objects.create(
+            recipe=recipe,
+            name="Another hot hop",
+            kind=Ingredient.Kind.HOP,
+            amount_g=5,
+            addition="Refroidissement",
+            addition_temperature_c=80,
+        )
 
         response = self.client.get(f"/recettes/{recipe.pk}/")
 
@@ -1478,10 +1596,14 @@ class RecipeWorkflowTests(TestCase):
             event for event in response.context["boil_events"]
             if event["type"] == "cooling_hop"
         ]
+        self.assertEqual(len(cooling_events), 2)
+        self.assertEqual(cooling_events[0]["temperature"], 80)
         self.assertEqual(
-            [event["row"]["ingredient"] for event in cooling_events],
-            [hot_hop, cold_hop],
+            [row["ingredient"] for row in cooling_events[0]["rows"]],
+            [hot_hop, same_temperature_hop],
         )
+        self.assertEqual(cooling_events[1]["rows"][0]["ingredient"], cold_hop)
+        self.assertContains(response, "Another hot hop")
 
     def test_recipe_name_and_notes_can_be_updated(self):
         recipe = Recipe.objects.create(name="Ancien nom")
@@ -1542,6 +1664,8 @@ class RecipeWorkflowTests(TestCase):
         self.assertEqual(HopForm().fields["addition"].label, "Ajout")
         self.assertEqual(OtherForm().fields["addition"].label, "Ajout")
         self.assertEqual(OtherForm().fields["amount_g"].label, "Quantité")
+        self.assertEqual(OtherForm().fields["boil_minutes"].label, "Minutes avant fin d’ébullition")
+        self.assertIn("boil_minutes", OtherForm().fields)
         self.assertNotIn("manufacturer", OtherForm().fields)
         self.assertEqual(CatalogYeastForm().fields["manufacturer"].label, "Laboratoire")
         self.assertNotIn("manufacturer", CatalogOtherForm().fields)

@@ -23,6 +23,10 @@ python manage.py runserver
 L'application est ensuite disponible à l'adresse
 <http://127.0.0.1:8000/>.
 
+À la première installation, connectez-vous avec `brewer` / `brewer`, puis
+utilisez le lien **Mot de passe** du menu pour remplacer le mot de passe
+initial.
+
 Pour quitter l'environnement virtuel :
 
 ```fish

@@ -464,10 +464,10 @@ class CatalogIngredientForm(StyledModelForm):
     def order_add_fields(self, field_names):
         self.order_fields(field_names)
 
-    def limit_edit_fields(self):
+    def limit_edit_fields(self, editable_fields=("amount_g",)):
         if self.instance and self.instance.pk:
             for field_name in list(self.fields):
-                if field_name != "amount_g":
+                if field_name not in editable_fields:
                     del self.fields[field_name]
 
     def clean(self):
@@ -602,9 +602,10 @@ class OtherForm(CatalogIngredientForm):
 
     class Meta:
         model = Ingredient
-        fields = ["amount_g", "catalog", "addition", "notes"]
+        fields = ["amount_g", "catalog", "addition", "boil_minutes", "notes"]
         widgets = {
             "amount_g": forms.NumberInput(attrs={"step": "0.1", "min": "0", "placeholder": "10"}),
+            "boil_minutes": forms.NumberInput(attrs={"min": "0", "step": "1"}),
             "notes": forms.TextInput(attrs={"placeholder": "Ex. ajouter avec les écorces fraîches"}),
         }
 
@@ -617,8 +618,9 @@ class OtherForm(CatalogIngredientForm):
             required=False,
             widget=forms.Select(attrs={"class": "form-select"}),
         )
-        self.order_add_fields(["name", "amount_g", "addition", "notes", "catalog"])
-        self.limit_edit_fields()
+        self.fields["boil_minutes"].label = "Minutes avant fin d’ébullition"
+        self.order_add_fields(["name", "amount_g", "addition", "boil_minutes", "notes", "catalog"])
+        self.limit_edit_fields(("amount_g", "addition", "boil_minutes"))
 
 
 class CatalogForm(StyledModelForm):

@@ -1,10 +1,15 @@
 from django.contrib import admin
+from django.contrib.auth.decorators import login_not_required
 from django.contrib.staticfiles.urls import staticfiles_urlpatterns
 from django.urls import include, path
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("accounts/", include("django.contrib.auth.urls")),
     path("", include("recipes.urls")),
 ]
 
-urlpatterns += staticfiles_urlpatterns()
+static_patterns = staticfiles_urlpatterns()
+for pattern in static_patterns:
+    pattern.callback = login_not_required(pattern.callback)
+urlpatterns += static_patterns

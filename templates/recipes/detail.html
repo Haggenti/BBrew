@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load l10n static %}
+{% load l10n recipe_formatting static %}
 {% block title %}{{ recipe.name }} · BBrew{% endblock %}
 {% block content %}
 <style>
@@ -14,6 +14,13 @@
   .beer-glass-preview.ebc-preview { width: 6rem; height: 8rem; flex: 0 0 auto; }
   .ingredient-stock-preview { min-height: 1.25rem; }
   .style-selector { width: min(30rem, 100%); }
+  .profile-range { position: relative; height: .65rem; margin: 1.6rem 0 .5rem; border-radius: 999px; background: var(--bs-secondary-bg); }
+  .profile-style-range { position: absolute; top: 0; height: 100%; background: var(--bs-info); border-radius: inherit; }
+  .profile-value-cursor { position: absolute; top: -.2rem; width: 3px; height: 1.05rem; border: 1px solid #fff; border-radius: 2px; background: var(--bs-dark); transform: translateX(-50%); z-index: 1; }
+  .profile-value-cursor.out-of-range { background: var(--bs-warning-text-emphasis); }
+  .profile-value-label { position: absolute; bottom: calc(100% + .3rem); color: var(--bs-body-color); font-size: .75rem; line-height: 1; white-space: nowrap; transform: translateX(-50%); }
+  .profile-value-label.align-start { transform: none; }
+  .profile-value-label.align-end { transform: translateX(-100%); }
   .inline-setting-display { cursor: pointer; }
   .inline-setting-display:hover { text-decoration: underline; text-decoration-style: dotted; }
   .inline-setting-edit { display: none; }
@@ -112,6 +119,7 @@
         <div class="mb-3 form-check inventory-field inventory-field-yeast"><input class="form-check-input" type="checkbox" name="for_bottling" value="on" id="inventory-bottling"><label class="form-check-label" for="inventory-bottling">Ajoutée à l’embouteillage</label></div>
         <div class="inventory-field inventory-field-other">
           <div class="mb-3"><label class="form-label" for="inventory-other-addition">Ajout</label><select class="form-select" name="addition" id="inventory-other-addition"><option value="">—</option><option value="Ébullition">Ébullition</option><option value="Refroidissement">Refroidissement</option><option value="Fermentation">Fermentation</option></select></div>
+          <div class="mb-3 inventory-other-boil-field"><label class="form-label" for="inventory-other-boil-minutes">Minutes avant la fin d’ébullition</label><input class="form-control" type="number" min="0" step="1" name="boil_minutes" id="inventory-other-boil-minutes" value="60"></div>
           <div class="mb-3"><label class="form-label" for="inventory-notes">Notes</label><input class="form-control" type="text" name="notes" id="inventory-notes"></div>
         </div>
       </div>
@@ -159,7 +167,37 @@
   </div>
 </div>
 <div class="row g-3 mb-4 align-items-stretch">
-  {% if recipe.category %}<div class="col-lg-4"><section class="card card-body h-100 border-info-subtle"><div class="d-flex justify-content-between align-items-center mb-3"><h2 class="h5 mb-0">Profil</h2><span class="badge text-bg-info">{{ recipe.category.code }} — {{ recipe.category.name }}</span></div>{% for indicator in style_indicators %}<div class="mb-3"><div class="d-flex justify-content-between small"><span class="fw-semibold">{{ indicator.label }}</span><span class="{% if indicator.ok %}text-success{% else %}text-warning{% endif %}">{{ indicator.value|floatformat:3 }}{{ indicator.unit }} · {{ indicator.status }}</span></div><div class="progress mt-1" role="progressbar" aria-label="{{ indicator.label }}" aria-valuemin="{{ indicator.minimum|unlocalize }}" aria-valuemax="{{ indicator.maximum|unlocalize }}" aria-valuenow="{{ indicator.value|unlocalize }}"><div class="progress-bar {% if indicator.ok %}bg-info{% else %}bg-warning{% endif %}" style="width: {{ indicator.position|unlocalize }}%"></div></div><div class="d-flex justify-content-between text-secondary" style="font-size: .75rem"><span>{{ indicator.minimum }}{{ indicator.unit }}</span><span>{{ indicator.maximum }}{{ indicator.unit }}</span></div></div>{% endfor %}<div class="text-center mt-2"><div class="beer-glass-preview ebc-preview mx-auto" style="--beer-color: {% if estimated_ebc_color %}{{ estimated_ebc_color }}{% else %}transparent{% endif %}" role="img" aria-label="{% if estimated_ebc is not None %}Couleur estimée de la bière : {{ estimated_ebc }} EBC{% else %}Couleur de la bière non disponible{% endif %}" title="Couleur estimée de la bière"><span></span><img src="{% static 'recipes/mousse.svg' %}" alt="" aria-hidden="true"><img src="{% static 'recipes/verre.png' %}" alt="" aria-hidden="true"><img src="{% static 'recipes/reflets_verre.png' %}" alt="" aria-hidden="true"></div></div></section></div>{% endif %}
+  {% if recipe.category %}
+    <div class="col-lg-4">
+      <section class="card card-body h-100 border-info-subtle">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h2 class="h5 mb-0">Profil</h2>
+          <span class="badge text-bg-info">{{ recipe.category.code }} — {{ recipe.category.name }}</span>
+        </div>
+        {% for indicator in style_indicators %}
+          <div class="mb-3">
+            <div class="d-flex justify-content-between small">
+              <span class="fw-semibold">{{ indicator.label }}</span>
+            </div>
+            <div class="profile-range" role="img" aria-label="{{ indicator.label }} : {{ indicator.value|compact_number }}{{ indicator.unit }}, plage du style {{ indicator.minimum|compact_number }} à {{ indicator.maximum|compact_number }}{{ indicator.unit }}" title="Plage totale : {{ indicator.scale_minimum|compact_number }} à {{ indicator.scale_maximum|compact_number }}{{ indicator.unit }} · Plage du style : {{ indicator.minimum|compact_number }} à {{ indicator.maximum|compact_number }}{{ indicator.unit }}">
+              <span class="profile-style-range" style="left: {{ indicator.style_start|unlocalize }}%; width: {{ indicator.style_width|unlocalize }}%"></span>
+              <span class="profile-value-label{% if indicator.position <= 10 %} align-start{% elif indicator.position >= 90 %} align-end{% endif %} {% if indicator.ok %}text-success{% else %}text-warning{% endif %}" style="left: {{ indicator.position|unlocalize }}%">{{ indicator.value|compact_number }}</span>
+              <span class="profile-value-cursor{% if not indicator.ok %} out-of-range{% endif %}" style="left: {{ indicator.position|unlocalize }}%"></span>
+            </div>
+            <div class="d-flex justify-content-between text-secondary" style="font-size: .75rem">
+              <span>{{ indicator.scale_minimum|compact_number }}{{ indicator.unit }}</span>
+              <span>{{ indicator.scale_maximum|compact_number }}{{ indicator.unit }}</span>
+            </div>
+          </div>
+        {% endfor %}
+        <div class="text-center mt-2">
+          <div class="beer-glass-preview ebc-preview mx-auto" style="--beer-color: {% if estimated_ebc_color %}{{ estimated_ebc_color }}{% else %}transparent{% endif %}" role="img" aria-label="{% if estimated_ebc is not None %}Couleur estimée de la bière : {{ estimated_ebc }} EBC{% else %}Couleur de la bière non disponible{% endif %}" title="Couleur estimée de la bière">
+            <span></span><img src="{% static 'recipes/mousse.svg' %}" alt="" aria-hidden="true"><img src="{% static 'recipes/verre.png' %}" alt="" aria-hidden="true"><img src="{% static 'recipes/reflets_verre.png' %}" alt="" aria-hidden="true">
+          </div>
+        </div>
+      </section>
+    </div>
+  {% endif %}
   <div class="{% if recipe.category %}col-lg-8{% else %}col-12{% endif %}"><div class="row g-3 align-items-stretch"><div class="col-12"><section class="card card-body"><div class="d-flex justify-content-between align-items-start gap-3 mb-3 flex-wrap"><h2 class="h5 mb-0">Caractéristiques</h2><div></div></div><div class="row g-0">
     <div class="col-sm-6 border-bottom border-end-sm p-3"><small class="text-secondary d-block">DI estimée</small><strong class="fs-4">{% if estimated_og %}{{ estimated_og }} <small>/ {{ estimated_plato }} °P</small>{% else %}—{% endif %}</strong></div>
     <div class="col-sm-6 border-bottom p-3"><small class="text-secondary d-block">DF estimée</small><strong class="fs-4">{% if estimated_final_gravity is not None %}{{ estimated_final_gravity }} <small>/ {{ estimated_final_plato }} °P</small>{% else %}—{% endif %}</strong></div>
@@ -219,6 +257,14 @@
             });
           })();
         </script>
+        <script>
+          document.addEventListener("change", (event) => {
+            const addition = event.target;
+            if (!(addition instanceof HTMLSelectElement) || !addition.matches('[data-other-ingredient-row] [name="addition"]')) return;
+            const duration = addition.closest("[data-other-ingredient-row]").querySelector(".other-boil-duration-field");
+            duration?.classList.toggle("other-boil-hidden", addition.value !== "Ébullition");
+          });
+        </script>
       </div>
     </section>
   </div>
@@ -234,7 +280,31 @@
 <section class="card border-secondary-subtle mt-4" data-drop-zone="other">
   <div class="card-header bg-secondary-subtle d-flex justify-content-between align-items-center"><h2 class="h5 mb-0"><i class="bi bi-stars me-2" aria-hidden="true"></i>Divers</h2><div class="d-flex align-items-center gap-2"><span class="badge text-bg-secondary">{{ other_rows|length }}</span><button class="btn btn-sm btn-secondary" type="button" data-bs-toggle="offcanvas" data-bs-target="#recipe-inventory" data-inventory-kind="other" aria-controls="recipe-inventory" aria-label="Ajouter un ingrédient divers depuis le stock" title="Ajouter depuis le stock"><i class="bi bi-plus-lg" aria-hidden="true"></i></button></div></div>
   <div class="card-body">
-    {% if other_rows %}<div class="table-responsive mb-3"><table class="table table-sm align-middle mb-0" data-sortable-table data-sort-types="number,text,text,text,text"><thead><tr><th>Quantité</th><th>Nom</th><th>Type</th><th>Ajout</th><th>Notes</th><th></th></tr></thead><tbody>{% for row in other_rows %}<tr data-inline-row="edit-other-{{ row.ingredient.pk }}"><td><span class="ingredient-display">{{ row.ingredient.amount_g|floatformat:"1" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.amount_g }}</span></td><td><span class="ingredient-display">{% if not row.ingredient.catalog %}<span class="text-danger fw-bold me-1" title="Ingrédient absent du stock" aria-label="Ingrédient absent du stock">!</span>{% endif %}{{ row.ingredient.name }}</span><span class="ingredient-edit d-none">{{ row.edit_form.name }}</span></td><td><span class="ingredient-display">{{ row.ingredient.form|default:"—" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.form }}</span></td><td><span class="ingredient-display">{{ row.ingredient.addition|default:"—" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.addition }}</span></td><td><span class="ingredient-display">{{ row.ingredient.notes|default:"—" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.notes }}</span></td><td class="text-nowrap"><span class="ingredient-display"><button class="btn btn-sm btn-outline-secondary" type="button" data-inline-edit="edit-other-{{ row.ingredient.pk }}" aria-label="Modifier {{ row.ingredient.name }}" title="Modifier"><i class="bi bi-pencil" aria-hidden="true"></i></button></span><span class="ingredient-edit d-none"><button class="btn btn-sm btn-outline-primary" type="submit" form="edit-other-{{ row.ingredient.pk }}" aria-label="Enregistrer" title="Enregistrer"><i class="bi bi-check-lg" aria-hidden="true"></i></button> <button class="btn btn-sm btn-outline-secondary" type="button" data-inline-cancel="edit-other-{{ row.ingredient.pk }}" aria-label="Annuler" title="Annuler"><i class="bi bi-x-lg" aria-hidden="true"></i></button></span><form class="d-inline ingredient-display" method="post" action="{% url 'recipes:ingredient_delete' row.ingredient.pk %}" onsubmit="return confirm('Supprimer cet ingrédient ?');">{% csrf_token %}<button class="btn btn-sm btn-outline-danger" type="submit" aria-label="Supprimer {{ row.ingredient.name }}" title="Supprimer"><i class="bi bi-dash-lg" aria-hidden="true"></i></button></form></td></tr><form id="edit-other-{{ row.ingredient.pk }}" method="post" action="{% url 'recipes:ingredient_edit' row.ingredient.pk %}">{% csrf_token %}</form>{% endfor %}</tbody></table></div>{% else %}<p class="small text-secondary">Aucun ingrédient divers ajouté.</p>{% endif %}
+    {% if other_rows %}
+      <div class="table-responsive mb-3">
+        <table class="table table-sm align-middle mb-0" data-sortable-table data-sort-types="number,text,text,text,number,text">
+          <thead><tr><th>Quantité</th><th>Nom</th><th>Type</th><th>Ajout</th><th>Temps (min)</th><th>Notes</th><th></th></tr></thead>
+          <tbody>
+            {% for row in other_rows %}
+              <tr data-inline-row="edit-other-{{ row.ingredient.pk }}" data-other-ingredient-row>
+                <td><span class="ingredient-display">{{ row.ingredient.amount_g|floatformat:"1" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.amount_g }}</span></td>
+                <td><span class="ingredient-display">{% if not row.ingredient.catalog %}<span class="text-danger fw-bold me-1" title="Ingrédient absent du stock" aria-label="Ingrédient absent du stock">!</span>{% endif %}{{ row.ingredient.name }}</span><span class="ingredient-edit d-none">{{ row.edit_form.name }}</span></td>
+                <td><span class="ingredient-display">{{ row.ingredient.form|default:"—" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.form }}</span></td>
+                <td><span class="ingredient-display">{{ row.ingredient.addition|default:"—" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.addition }}</span></td>
+                <td><span class="ingredient-display">{% if row.ingredient.addition == "Ébullition" %}{{ row.ingredient.boil_minutes }}{% else %}—{% endif %}</span><span class="ingredient-edit d-none other-boil-duration-field{% if row.ingredient.addition != 'Ébullition' %} other-boil-hidden{% endif %}">{{ row.edit_form.boil_minutes }}</span></td>
+                <td><span class="ingredient-display">{{ row.ingredient.notes|default:"—" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.notes }}</span></td>
+                <td class="text-nowrap">
+                  <span class="ingredient-display"><button class="btn btn-sm btn-outline-secondary" type="button" data-inline-edit="edit-other-{{ row.ingredient.pk }}" aria-label="Modifier {{ row.ingredient.name }}" title="Modifier"><i class="bi bi-pencil" aria-hidden="true"></i></button></span>
+                  <span class="ingredient-edit d-none"><button class="btn btn-sm btn-outline-primary" type="submit" form="edit-other-{{ row.ingredient.pk }}" aria-label="Enregistrer" title="Enregistrer"><i class="bi bi-check-lg" aria-hidden="true"></i></button> <button class="btn btn-sm btn-outline-secondary" type="button" data-inline-cancel="edit-other-{{ row.ingredient.pk }}" aria-label="Annuler" title="Annuler"><i class="bi bi-x-lg" aria-hidden="true"></i></button></span>
+                  <form class="d-inline ingredient-display" method="post" action="{% url 'recipes:ingredient_delete' row.ingredient.pk %}" onsubmit="return confirm('Supprimer cet ingrédient ?');">{% csrf_token %}<button class="btn btn-sm btn-outline-danger" type="submit" aria-label="Supprimer {{ row.ingredient.name }}" title="Supprimer"><i class="bi bi-dash-lg" aria-hidden="true"></i></button></form>
+                </td>
+              </tr>
+              <form id="edit-other-{{ row.ingredient.pk }}" method="post" action="{% url 'recipes:ingredient_edit' row.ingredient.pk %}">{% csrf_token %}</form>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}<p class="small text-secondary">Aucun ingrédient divers ajouté.</p>{% endif %}
   </div>
 </section>
 <hr class="my-4">
@@ -560,40 +630,44 @@
   </div>
   <div class="card-body">
     <style>
-      .boil-timeline { position: relative; display: flex; max-width: 100%; margin: 0 auto; padding: .5rem .25rem .25rem; }
-      .boil-event { position: relative; z-index: 1; display: flex; flex: 1 1 0; flex-direction: column; align-items: center; gap: .5rem; min-width: 0; min-height: 6.25rem; padding: 0 .2rem; text-align: center; }
-      .boil-event:not(:last-child)::after { content: "→"; position: absolute; top: .4rem; right: -.35rem; color: var(--bs-secondary-color); font-size: 1.25rem; line-height: 1.75rem; }
+      .boil-timeline { position: relative; display: flex; justify-content: flex-start; gap: 1.25rem; max-width: 100%; margin: 0 auto; padding: .5rem .25rem .25rem; }
+      .boil-event { position: relative; z-index: 1; display: flex; flex: 0 1 10rem; flex-direction: column; align-items: center; gap: .5rem; min-width: 0; min-height: 6.25rem; padding: .75rem .5rem; border-radius: .75rem; text-align: center; }
+      .boil-event-start, .boil-event-cool { background: rgba(220, 53, 69, .06); }
+      .boil-event-timer { background: rgba(13, 202, 240, .08); }
+      .boil-event-hop, .boil-event-cooling-hop { background: rgba(25, 135, 84, .07); }
+      .boil-event:not(:last-child)::after { content: "→"; position: absolute; top: .4rem; right: -1.25rem; color: var(--bs-secondary-color); font-size: 1.25rem; line-height: 1.75rem; }
       .boil-event-icon { width: 1.75rem; height: 1.75rem; flex: 0 0 1.75rem; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; color: #fff; }
       .boil-event-icon.start, .boil-event-icon.cool { background: var(--bs-danger); }
       .boil-event-icon.timer { background: var(--bs-info); }
       .boil-event-icon.add { background: var(--bs-success); }
       .boil-event-text { max-width: 10rem; color: var(--bs-secondary-color); font-size: .875rem; overflow-wrap: anywhere; }
       .boil-event-text strong { color: var(--bs-body-color); }
+      .other-boil-hidden { display: none !important; }
     </style>
     <div class="boil-timeline">
       {% for event in boil_events %}
         {% if event.type == "start" %}
-          <div class="boil-event">
+          <div class="boil-event boil-event-start">
             <span class="boil-event-icon start"><i class="bi bi-play-fill" aria-hidden="true"></i></span>
             <span class="boil-event-text">Porter le moût à ébullition</span>
           </div>
         {% elif event.type == "timer" %}
-          <div class="boil-event">
+          <div class="boil-event boil-event-timer">
             <span class="boil-event-icon timer"><i class="bi bi-hourglass-split" aria-hidden="true"></i></span>
-            <span class="boil-event-text fst-italic">Minuteur <strong>{{ event.minutes }} min</strong></span>
+            <span class="boil-event-text fst-italic"><strong>{{ event.minutes }} min</strong></span>
           </div>
-        {% elif event.type == "hop" %}
-          <div class="boil-event">
+        {% elif event.type == "addition" %}
+          <div class="boil-event boil-event-hop">
             <span class="boil-event-icon add"><i class="bi bi-plus-lg" aria-hidden="true"></i></span>
-            <span class="boil-event-text">Ajouter : <strong>{{ event.row.ingredient.amount_g }} g de {{ event.row.ingredient.name }}</strong>{% if event.row.ingredient.addition %} <span class="small">({{ event.row.ingredient.addition }})</span>{% endif %}</span>
+            <span class="boil-event-text">{% for row in event.rows %}{% if not forloop.first %}<br>{% endif %}<strong>{{ row.ingredient.amount_g }} g de {{ row.ingredient.name }}</strong>{% endfor %}</span>
           </div>
         {% elif event.type == "cooling_hop" %}
-          <div class="boil-event">
+          <div class="boil-event boil-event-cooling-hop">
             <span class="boil-event-icon add"><i class="bi bi-plus-lg" aria-hidden="true"></i></span>
-            <span class="boil-event-text">À <strong>{{ event.row.ingredient.addition_temperature_c }} °C</strong>, ajouter : <strong>{{ event.row.ingredient.amount_g }} g de {{ event.row.ingredient.name }}</strong></span>
+            <span class="boil-event-text"><strong>{{ event.temperature }} °C</strong><br>{% for row in event.rows %}{% if not forloop.first %}<br>{% endif %}<strong>{{ row.ingredient.amount_g }} g de {{ row.ingredient.name }}</strong>{% endfor %}</span>
           </div>
         {% else %}
-          <div class="boil-event">
+          <div class="boil-event boil-event-cool">
             <span class="boil-event-icon cool"><i class="bi bi-snow" aria-hidden="true"></i></span>
             <span class="boil-event-text">Refroidir le moût</span>
           </div>
@@ -684,6 +758,12 @@
     const catalogInput = document.getElementById("inventory-catalog");
     const label = document.getElementById("inventory-catalog-label");
     const fields = [...modalElement.querySelectorAll(".inventory-field")];
+    const otherAddition = document.getElementById("inventory-other-addition");
+    const otherBoilField = modalElement.querySelector(".inventory-other-boil-field");
+    const updateOtherBoilField = () => {
+      otherBoilField.hidden = otherAddition.value !== "Ébullition";
+    };
+    otherAddition.addEventListener("change", updateOtherBoilField);
     const inventoryPanel = document.getElementById("recipe-inventory");
     const inventoryGroups = [...inventoryPanel.querySelectorAll("[data-inventory-kind]")];
     inventoryPanel.addEventListener("show.bs.offcanvas", (event) => {
@@ -704,6 +784,7 @@
         field.querySelectorAll("input, select, textarea").forEach((input) => { input.disabled = !active; });
       });
       form.reset();
+      updateOtherBoilField();
       kindInput.value = kind;
       catalogInput.value = catalogId;
       label.textContent = catalogName || "Fiche de stock sélectionnée";

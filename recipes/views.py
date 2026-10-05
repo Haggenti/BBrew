@@ -7,12 +7,13 @@ from django.shortcuts import get_object_or_404, redirect, render
 from xml.etree import ElementTree
 import json
 import calendar
+from itertools import groupby
 from datetime import date, timedelta
 
 from .calculations import average_mash_temperature, ebc_color_rgb, estimated_abv, estimated_color_ebc, estimated_efficiency, estimated_final_gravity, estimated_og, ibu_final_gravity_comment, ibu_final_gravity_ratio, plato_from_gravity, tinseth_ibu
 from .beerxml import export_recipe, import_recipe
 from decimal import Decimal
-from decimal import ROUND_CEILING
+from decimal import ROUND_CEILING, ROUND_FLOOR
 from django.utils import timezone
 
 from .forms import BackupUploadForm, BeerCategoryForm, BeerXMLUploadForm, BoilSettingsForm, BrewForm, CatalogConsumableForm, CatalogHopForm, CatalogMaltForm, CatalogOtherForm, CatalogYeastForm, CatalogForm, EquipmentSettingsForm, FermentationStepForm, HopForm, MaltForm, MashGraphSettingsForm, MashStepForm, OtherForm, RecipeCategoryForm, RecipeEfficiencyForm, RecipeForm, RecipeNameForm, RecipeNotesForm, ScaleForm, ShoppingItemForm, YeastForm
@@ -975,34 +976,56 @@ def recipe_detail(request, pk, edit_forms=None):
         ("Styles incompatibles", [(category.pk, str(category)) for category in incompatible_categories]),
     ]
 
-    def style_indicator(label, value, minimum, maximum, unit):
+    def style_indicator(label, value, minimum, maximum, unit, tick_size, absolute_minimum):
         if value is None or minimum is None or maximum is None:
             return None
         value = float(value)
         minimum = float(minimum)
         maximum = float(maximum)
-        span = maximum - minimum
-        position = 50 if span <= 0 else max(0, min(100, (value - minimum) / span * 100))
-        status = "dans la fourchette" if minimum <= value <= maximum else ("en dessous" if value < minimum else "au-dessus")
+        tick = Decimal(str(tick_size))
+        data_minimum = min(Decimal(str(value)), Decimal(str(minimum)))
+        data_maximum = max(Decimal(str(value)), Decimal(str(maximum)))
+        span = max(data_maximum - data_minimum, tick)
+        margin = max(span * Decimal("0.3"), tick * 2)
+        raw_minimum = (data_minimum - margin) / tick
+        raw_maximum = (data_maximum + margin) / tick
+        scale_minimum = float(
+            max(
+                Decimal(str(absolute_minimum)),
+                raw_minimum.to_integral_value(rounding=ROUND_FLOOR) * tick,
+            )
+        )
+        scale_maximum = float(raw_maximum.to_integral_value(rounding=ROUND_CEILING) * tick)
+        scale_span = scale_maximum - scale_minimum
+
+        def scale_position(point):
+            return max(0, min(100, (point - scale_minimum) / scale_span * 100))
+
+        value_position = scale_position(value)
+        style_start = scale_position(minimum)
+        style_end = scale_position(maximum)
         return {
             "label": label,
             "value": value,
             "minimum": minimum,
             "maximum": maximum,
+            "scale_minimum": scale_minimum,
+            "scale_maximum": scale_maximum,
+            "style_start": style_start,
+            "style_width": style_end - style_start,
             "unit": unit,
-            "position": position,
-            "status": status,
+            "position": value_position,
             "ok": minimum <= value <= maximum,
         }
 
     style_indicators = []
     if recipe.category:
         for indicator in (
-            style_indicator("DI", og, recipe.category.og_min, recipe.category.og_max, ""),
-            style_indicator("DF", final_gravity, recipe.category.fg_min, recipe.category.fg_max, ""),
-            style_indicator("Couleur", ebc, recipe.category.ebc_min, recipe.category.ebc_max, " EBC"),
-            style_indicator("Amertume", ibu, recipe.category.ibu_min, recipe.category.ibu_max, " IBU"),
-            style_indicator("Alcool", abv, recipe.category.abv_min, recipe.category.abv_max, " %"),
+            style_indicator("DI", og, recipe.category.og_min, recipe.category.og_max, "", 0.005, 0.9),
+            style_indicator("DF", final_gravity, recipe.category.fg_min, recipe.category.fg_max, "", 0.005, 0.9),
+            style_indicator("Couleur", ebc, recipe.category.ebc_min, recipe.category.ebc_max, " EBC", 5, 0),
+            style_indicator("Amertume", ibu, recipe.category.ibu_min, recipe.category.ibu_max, " IBU", 5, 0),
+            style_indicator("Alcool", abv, recipe.category.abv_min, recipe.category.abv_max, " %", 0.5, 0),
         ):
             if indicator:
                 style_indicators.append(indicator)
@@ -1074,6 +1097,15 @@ def recipe_detail(request, pk, edit_forms=None):
         row for row in hop_rows
         if row["ingredient"].addition in ("", "Ébullition")
     ]
+    boil_other_rows = [
+        {"ingredient": other}
+        for other in others
+        if other.addition == "Ébullition"
+    ]
+    boil_addition_rows = sorted(
+        [*boil_hop_rows, *boil_other_rows],
+        key=lambda row: (-row["ingredient"].boil_minutes, row["ingredient"].pk),
+    )
     cooling_hop_rows = [
         row for row in hop_rows
         if row["ingredient"].addition == "Refroidissement"
@@ -1085,22 +1117,30 @@ def recipe_detail(request, pk, edit_forms=None):
         )
     )
     boil_events = [{"type": "start"}]
-    if boil_hop_rows:
+    if boil_addition_rows:
         previous_remaining = recipe.boil_time_min
-        for row in boil_hop_rows:
-            remaining = row["ingredient"].boil_minutes
+        for remaining, grouped_rows in groupby(
+            boil_addition_rows,
+            key=lambda row: row["ingredient"].boil_minutes,
+        ):
+            rows = list(grouped_rows)
             wait_minutes = previous_remaining - remaining
             if wait_minutes > 0:
                 boil_events.append({"type": "timer", "minutes": wait_minutes})
-            boil_events.append({"type": "hop", "row": row})
+            boil_events.append({"type": "addition", "rows": rows})
             previous_remaining = remaining
         if previous_remaining > 0:
             boil_events.append({"type": "timer", "minutes": previous_remaining})
     else:
         boil_events.append({"type": "timer", "minutes": recipe.boil_time_min})
     boil_events.append({"type": "cool"})
-    for row in cooling_hop_rows:
-        boil_events.append({"type": "cooling_hop", "row": row})
+    for temperature, grouped_rows in groupby(
+        cooling_hop_rows,
+        key=lambda row: row["ingredient"].addition_temperature_c,
+    ):
+        boil_events.append(
+            {"type": "cooling_hop", "temperature": temperature, "rows": list(grouped_rows)}
+        )
     inventory_by_kind = []
     for kind, label in IngredientCatalog.Kind.choices:
         if kind == IngredientCatalog.Kind.CONSUMABLE:
