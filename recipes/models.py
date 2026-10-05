@@ -1,6 +1,10 @@
 from django.db import models
 
 
+def default_mash_zones():
+    return ["beta", "alpha"]
+
+
 class Recipe(models.Model):
     name = models.CharField("nom", max_length=120)
     category = models.ForeignKey(
@@ -15,7 +19,15 @@ class Recipe(models.Model):
     efficiency = models.DecimalField("rendement (%)", max_digits=5, decimal_places=2, default=75)
     target_og = models.DecimalField("densité initiale cible", max_digits=5, decimal_places=3, default=1.050)
     target_ibu = models.DecimalField("IBU cible", max_digits=6, decimal_places=1, default=25)
+    target_carbonation = models.DecimalField("carbonatation cible (vol. CO₂)", max_digits=4, decimal_places=2, default=2.40)
     boil_time_min = models.PositiveIntegerField("durée d'ébullition (min)", default=60)
+    mash_time_min = models.PositiveIntegerField("axe temps minimum (min)", default=0)
+    mash_time_max = models.PositiveIntegerField("axe temps maximum (min)", default=120)
+    mash_temperature_min = models.PositiveIntegerField("axe température minimum (°C)", default=45)
+    mash_temperature_max = models.PositiveIntegerField("axe température maximum (°C)", default=80)
+    mash_time_grid = models.PositiveIntegerField("quadrillage temps (min)", default=5)
+    mash_temperature_grid = models.PositiveIntegerField("quadrillage température (°C)", default=5)
+    mash_zones = models.JSONField("zones brassicoles affichées", default=default_mash_zones)
     notes = models.TextField("notes", blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     current_version = models.ForeignKey(

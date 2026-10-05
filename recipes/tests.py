@@ -301,7 +301,7 @@ class RecipeWorkflowTests(TestCase):
         )
         self.assertRedirects(response, f"/recettes/{recipe.pk}/")
         response = self.client.get(f"/recettes/{recipe.pk}/")
-        self.assertContains(response, "Profil de la bière")
+        self.assertContains(response, "Profil")
         self.assertContains(response, "IPA")
         self.assertContains(response, "Styles compatibles avec la recette")
         indicators = response.context["style_indicators"]
@@ -315,7 +315,7 @@ class RecipeWorkflowTests(TestCase):
 
         recipe.refresh_from_db()
         self.assertEqual(recipe.category.code, "18A")
-        self.assertContains(response, "Profil de la bière")
+        self.assertContains(response, "Profil")
         self.assertContains(response, "18A")
         self.assertEqual(response.context["style_indicators"], [])
 
@@ -547,14 +547,37 @@ class RecipeWorkflowTests(TestCase):
         self.assertNotContains(response, "recipe-chart-data")
         self.assertContains(response, "Carbonatation")
         self.assertContains(response, "carb-result")
-        self.assertContains(response, "Eau de brassage BIAB")
+        self.assertContains(response, "Eau de départ nécessaire")
         self.assertContains(response, "water-result")
-        self.assertContains(response, "water-preboil")
-        self.assertContains(response, "water-capacity-warning")
+        self.assertNotContains(response, "water-preboil")
+        self.assertNotContains(response, "water-capacity-warning")
         self.assertContains(response, "beer-glass-preview")
         self.assertIsNotNone(response.context["estimated_ebc_color"])
         self.assertIsNotNone(response.context["estimated_og"])
         self.assertIsNotNone(response.context["estimated_ibu"])
+
+    def test_recipe_detail_marks_ingredients_missing_from_stock(self):
+        recipe = Recipe.objects.create(name="Ingrédient non référencé")
+        catalog = IngredientCatalog.objects.create(name="Pale malt", kind=IngredientCatalog.Kind.MALT)
+        Ingredient.objects.create(
+            recipe=recipe,
+            catalog=catalog,
+            name="Pale malt",
+            kind=Ingredient.Kind.MALT,
+            amount_g=1000,
+        )
+        Ingredient.objects.create(
+            recipe=recipe,
+            name="Houblon local",
+            kind=Ingredient.Kind.HOP,
+            amount_g=25,
+        )
+
+        response = self.client.get(f"/recettes/{recipe.pk}/")
+
+        self.assertContains(response, 'title="Ingrédient absent du stock"')
+        self.assertContains(response, 'aria-label="Ingrédient absent du stock"')
+        self.assertContains(response, ">Houblon local</span>")
 
     def test_delete_recipe_removes_its_ingredients(self):
         recipe = Recipe.objects.create(name="À supprimer")
@@ -720,6 +743,50 @@ class RecipeWorkflowTests(TestCase):
         self.assertRedirects(response, "/catalogue/")
         self.assertFalse(IngredientCatalog.objects.filter(pk=item.pk).exists())
 
+    def test_catalog_name_change_is_propagated_to_recipe_ingredients(self):
+        item = IngredientCatalog.objects.create(
+            name="Cascade",
+            kind=IngredientCatalog.Kind.HOP,
+            alpha_acid=5,
+        )
+        recipe = Recipe.objects.create(name="IPA liée au catalogue")
+        ingredient = Ingredient.objects.create(
+            recipe=recipe,
+            catalog=item,
+            name="Cascade",
+            kind=Ingredient.Kind.HOP,
+            amount_g=50,
+        )
+        unrelated_ingredient = Ingredient.objects.create(
+            recipe=recipe,
+            name="Nom indépendant",
+            kind=Ingredient.Kind.HOP,
+            amount_g=25,
+        )
+
+        response = self.client.post(
+            f"/catalogue/{item.pk}/modifier/",
+            {
+                "name": "Cascade US",
+                "kind": "hop",
+                "manufacturer": "",
+                "form": "Pellets",
+                "color_ebc": "0",
+                "potential_yield": "37",
+                "alpha_acid": "6",
+                "attenuation": "78",
+            },
+        )
+
+        self.assertRedirects(response, "/catalogue/")
+        item.refresh_from_db()
+        self.assertEqual(item.name, "Cascade US")
+        self.assertEqual(Ingredient.objects.filter(catalog_id=item.pk).count(), 1)
+        ingredient.refresh_from_db()
+        self.assertEqual(ingredient.name, "Cascade US")
+        unrelated_ingredient.refresh_from_db()
+        self.assertEqual(unrelated_ingredient.name, "Nom indépendant")
+
     def test_beerxml_export_and_import(self):
         recipe = Recipe.objects.create(
             name="Export Ale",
@@ -727,6 +794,7 @@ class RecipeWorkflowTests(TestCase):
             efficiency=75,
             target_og=1.050,
             target_ibu=30,
+            target_carbonation=3.1,
         )
         Ingredient.objects.create(
             recipe=recipe,
@@ -765,6 +833,7 @@ class RecipeWorkflowTests(TestCase):
         imported = Recipe.objects.exclude(pk=recipe.pk).get()
         self.assertRedirects(import_response, f"/recettes/{imported.pk}/")
         self.assertEqual(imported.ingredients.count(), 2)
+        self.assertEqual(imported.target_carbonation, Decimal("3.10"))
         self.assertEqual(IngredientCatalog.objects.filter(name__in=["Pale malt", "Cascade"]).count(), 2)
         self.assertEqual(RecipeVersion.objects.filter(recipe=imported).count(), 1)
         self.assertIn("Import BeerXML", RecipeVersion.objects.get(recipe=imported).reason)
@@ -1449,6 +1518,10 @@ class RecipeWorkflowTests(TestCase):
             kind=Ingredient.Kind.MALT,
             amount_g=5000,
         )
+        detail_response = self.client.get(f"/recettes/{recipe.pk}/")
+        self.assertContains(detail_response, 'title="Double-cliquez pour modifier">20 L</strong>')
+        self.assertContains(detail_response, 'name="batch_size_l"')
+
         response = self.client.post(
             f"/recettes/{recipe.pk}/scale/",
             {"batch_size_l": "25", "action": "volume_only"},
@@ -1497,12 +1570,16 @@ class RecipeWorkflowTests(TestCase):
         step = MashStep.objects.get(recipe=recipe)
         self.assertEqual(step.position, 1)
         self.assertRedirects(response, f"/recettes/{recipe.pk}/brassage/")
+        detail_response = self.client.get(f"/recettes/{recipe.pk}/")
+        self.assertContains(detail_response, "Paliers de brassage BIAB")
+        self.assertContains(detail_response, "Palier principal")
+        self.assertNotContains(detail_response, f'href="/paliers/{step.pk}/modifier/"')
 
         response = self.client.post(
             f"/paliers/{step.pk}/modifier/",
             {"name": "Palier saccharification", "temperature_c": "67", "duration_min": "60"},
         )
-        self.assertRedirects(response, f"/recettes/{recipe.pk}/brassage/")
+        self.assertRedirects(response, f"/recettes/{recipe.pk}/")
         step.refresh_from_db()
         self.assertEqual(step.temperature_c, 67)
 
@@ -1532,3 +1609,63 @@ class RecipeWorkflowTests(TestCase):
         self.assertEqual(second.temperature_c, 70)
         self.assertEqual(first.duration_min, 40)
         self.assertEqual(second.duration_min, 25)
+
+    def test_mash_graph_update_can_add_edit_and_delete_steps(self):
+        recipe = Recipe.objects.create(name="Profil graphique")
+        first = MashStep.objects.create(recipe=recipe, position=1, name="Palier 1", temperature_c=63, duration_min=30)
+        second = MashStep.objects.create(recipe=recipe, position=2, name="Palier 2", temperature_c=68, duration_min=30)
+
+        response = self.client.post(
+            f"/recettes/{recipe.pk}/brassage/graphique/",
+            {
+                "step_id": [str(first.pk), "new-1"],
+                "step_name": ["Palier modifié", "Palier ajouté"],
+                "step_temperature": ["64", "72"],
+                "step_duration": ["40", "20"],
+            },
+        )
+
+        self.assertRedirects(response, f"/recettes/{recipe.pk}/")
+        first.refresh_from_db()
+        self.assertEqual(first.name, "Palier modifié")
+        self.assertEqual(first.temperature_c, 64)
+        self.assertEqual(first.duration_min, 40)
+        self.assertFalse(MashStep.objects.filter(pk=second.pk).exists())
+        self.assertEqual(MashStep.objects.filter(recipe=recipe).count(), 2)
+        self.assertEqual(
+            list(MashStep.objects.filter(recipe=recipe).order_by("position").values_list("name", flat=True)),
+            ["Palier modifié", "Palier ajouté"],
+        )
+
+    def test_mash_graph_settings_can_be_updated(self):
+        recipe = Recipe.objects.create(name="Réglages du profil")
+
+        response = self.client.post(
+            f"/recettes/{recipe.pk}/brassage/graphique-parametres/",
+            {
+                "mash_time_min": "0",
+                "mash_time_max": "240",
+                "mash_temperature_min": "50",
+                "mash_temperature_max": "75",
+                "mash_time_grid": "10",
+                "mash_temperature_grid": "2",
+            },
+        )
+
+        self.assertRedirects(response, f"/recettes/{recipe.pk}/")
+        recipe.refresh_from_db()
+        self.assertEqual(recipe.mash_time_max, 240)
+        self.assertEqual(recipe.mash_temperature_min, 50)
+        self.assertEqual(recipe.mash_time_grid, 10)
+
+    def test_mash_zone_selection_is_persisted(self):
+        recipe = Recipe.objects.create(name="Zones persistantes")
+
+        response = self.client.post(
+            f"/recettes/{recipe.pk}/brassage/zones/",
+            {"zones": ["protease", "mashout"]},
+        )
+
+        self.assertRedirects(response, f"/recettes/{recipe.pk}/")
+        recipe.refresh_from_db()
+        self.assertEqual(recipe.mash_zones, ["protease", "mashout"])

@@ -15,7 +15,7 @@ from decimal import Decimal
 from decimal import ROUND_CEILING
 from django.utils import timezone
 
-from .forms import BackupUploadForm, BeerCategoryForm, BeerXMLUploadForm, BoilSettingsForm, BrewForm, CatalogConsumableForm, CatalogHopForm, CatalogMaltForm, CatalogOtherForm, CatalogYeastForm, CatalogForm, EquipmentSettingsForm, FermentationStepForm, HopForm, MaltForm, MashStepForm, OtherForm, RecipeCategoryForm, RecipeEfficiencyForm, RecipeForm, RecipeNameForm, RecipeNotesForm, ScaleForm, ShoppingItemForm, YeastForm
+from .forms import BackupUploadForm, BeerCategoryForm, BeerXMLUploadForm, BoilSettingsForm, BrewForm, CatalogConsumableForm, CatalogHopForm, CatalogMaltForm, CatalogOtherForm, CatalogYeastForm, CatalogForm, EquipmentSettingsForm, FermentationStepForm, HopForm, MaltForm, MashGraphSettingsForm, MashStepForm, OtherForm, RecipeCategoryForm, RecipeEfficiencyForm, RecipeForm, RecipeNameForm, RecipeNotesForm, ScaleForm, ShoppingItemForm, YeastForm
 from .models import BeerCategory, Brew, EquipmentSettings, FermentationStep, Ingredient, IngredientCatalog, MashStep, Recipe, RecipeVersion, ShoppingItem
 from .signals import save_version, suspend_versioning
 from .versioning import describe_version_change
@@ -723,8 +723,27 @@ def recipe_restore(request, pk, version_pk):
     version = get_object_or_404(RecipeVersion, pk=version_pk, recipe=recipe)
     data = version.snapshot
     recipe_data = data["recipe"]
-    for field in ("name", "batch_size_l", "efficiency", "target_og", "target_ibu", "boil_time_min", "notes"):
+    for field in (
+        "name",
+        "batch_size_l",
+        "efficiency",
+        "target_og",
+        "target_ibu",
+        "boil_time_min",
+        "notes",
+    ):
         setattr(recipe, field, recipe_data[field])
+    recipe.target_carbonation = recipe_data.get("target_carbonation", Decimal("2.40"))
+    for field, default in (
+        ("mash_time_min", 0),
+        ("mash_time_max", 180),
+        ("mash_temperature_min", 45),
+        ("mash_temperature_max", 80),
+        ("mash_time_grid", 15),
+        ("mash_temperature_grid", 5),
+    ):
+        setattr(recipe, field, recipe_data.get(field, default))
+    recipe.mash_zones = recipe_data.get("mash_zones", ["beta", "alpha"])
     with suspend_versioning():
         recipe.save()
         recipe.ingredients.all().delete()
@@ -855,10 +874,20 @@ def catalog_create(request):
 
 def catalog_edit(request, pk):
     item = get_object_or_404(IngredientCatalog, pk=pk)
+    previous_name = item.name
     form = CatalogForm(request.POST or None, instance=item)
     if request.method == "POST" and form.is_valid():
-        form.save()
-        messages.success(request, f"{item.name} a été modifié dans le catalogue.")
+        with transaction.atomic():
+            item = form.save()
+            updated_ingredients = 0
+            if item.name != previous_name:
+                updated_ingredients = Ingredient.objects.filter(catalog_id=item.pk).update(name=item.name)
+        suffix = (
+            f" et propagé à {updated_ingredients} ingrédient(s) de recette"
+            if updated_ingredients
+            else ""
+        )
+        messages.success(request, f"{item.name} a été modifié dans le catalogue{suffix}.")
         return redirect("recipes:catalog")
     return render(request, "recipes/catalog_form.html", {"form": form, "item": item})
 
@@ -969,8 +998,8 @@ def recipe_detail(request, pk, edit_forms=None):
     style_indicators = []
     if recipe.category:
         for indicator in (
-            style_indicator("OG", og, recipe.category.og_min, recipe.category.og_max, ""),
-            style_indicator("FG", final_gravity, recipe.category.fg_min, recipe.category.fg_max, ""),
+            style_indicator("DI", og, recipe.category.og_min, recipe.category.og_max, ""),
+            style_indicator("DF", final_gravity, recipe.category.fg_min, recipe.category.fg_max, ""),
             style_indicator("Couleur", ebc, recipe.category.ebc_min, recipe.category.ebc_max, " EBC"),
             style_indicator("Amertume", ibu, recipe.category.ibu_min, recipe.category.ibu_max, " IBU"),
             style_indicator("Alcool", abv, recipe.category.abv_min, recipe.category.abv_max, " %"),
@@ -1003,6 +1032,15 @@ def recipe_detail(request, pk, edit_forms=None):
                         "step_index": index + 1,
                     }
                 )
+    mash_edit_points = [
+        {
+            "id": step.pk,
+            "name": step.name,
+            "temperature": float(step.temperature_c),
+            "duration": step.duration_min,
+        }
+        for step in mash_steps
+    ]
 
     def inline_form(form, form_id):
         for field in form.fields.values():
@@ -1091,6 +1129,7 @@ def recipe_detail(request, pk, edit_forms=None):
             "malt_rows": malt_rows,
             "malt_total_g": malt_total,
             "mash_chart_points": mash_chart_points,
+            "mash_edit_points": mash_edit_points,
             "water_equipment": {
                 "diameter_cm": float(equipment.diameter_cm),
                 "height_cm": float(equipment.height_cm),
@@ -1120,12 +1159,12 @@ def recipe_detail(request, pk, edit_forms=None):
                 }
                 for other in others
             ],
-            "mash_steps": recipe.mash_steps.all(),
+            "mash_steps": mash_steps,
             "mash_rows": [
                 {"step": step, "edit_form": MashStepForm(instance=step)}
                 for step in recipe.mash_steps.all()
             ],
-            "mash_form": MashStepForm(),
+            "mash_graph_settings_form": MashGraphSettingsForm(instance=recipe),
             "fermentation_steps": recipe.fermentation_steps.all(),
             "fermentation_rows": [
                 {"step": step, "edit_form": FermentationStepForm(instance=step)}
@@ -1155,6 +1194,7 @@ def recipe_detail(request, pk, edit_forms=None):
             "estimated_ebc_color": ebc_color_rgb(ebc) if ebc is not None else None,
             "estimated_abv": abv,
             "estimated_final_gravity": final_gravity,
+            "estimated_final_plato": plato_from_gravity(final_gravity) if final_gravity else None,
             "mash_temperature": average_mash_temperature(mash_steps),
             "has_mash_steps": bool(mash_steps),
             "ibu_df_ratio": ibu_df_ratio,
@@ -1191,7 +1231,7 @@ def mash_edit(request, pk):
     if request.method == "POST" and form.is_valid():
         form.save()
         messages.success(request, f"Le palier « {step.name} » a été modifié.")
-        return redirect("recipes:mash", pk=step.recipe_id)
+        return redirect("recipes:detail", pk=step.recipe_id)
     return render(request, "recipes/mash_form.html", {"form": form, "step": step})
 
 
@@ -1218,6 +1258,80 @@ def mash_profile_update(request, pk):
         updated += 1
     if updated:
         messages.success(request, "Les températures des paliers ont été enregistrées.")
+    return redirect("recipes:detail", pk=recipe.pk)
+
+
+@require_POST
+def mash_graph_update(request, pk):
+    recipe = get_object_or_404(Recipe, pk=pk)
+    step_ids = request.POST.getlist("step_id")
+    names = request.POST.getlist("step_name")
+    temperatures = request.POST.getlist("step_temperature")
+    durations = request.POST.getlist("step_duration")
+    if not step_ids or not (len(step_ids) == len(names) == len(temperatures) == len(durations)):
+        messages.error(request, "Les données des paliers sont incomplètes.")
+        return redirect("recipes:detail", pk=recipe.pk)
+
+    existing = {str(step.pk): step for step in recipe.mash_steps.all()}
+    parsed = []
+    seen_ids = set()
+    try:
+        for step_id, name, raw_temperature, raw_duration in zip(step_ids, names, temperatures, durations):
+            name = name.strip()
+            temperature = Decimal(raw_temperature)
+            duration = int(raw_duration)
+            if step_id.startswith("new-"):
+                step_id = ""
+            if not name or not 35 <= temperature <= 100 or duration < 1 or (step_id and step_id not in existing):
+                raise ValueError
+            if step_id and step_id in seen_ids:
+                raise ValueError
+            seen_ids.add(step_id)
+            parsed.append((step_id, name, temperature, duration))
+    except (TypeError, ValueError, ArithmeticError):
+        messages.error(request, "Chaque palier doit avoir un nom, une température entre 35 et 100 °C et une durée positive.")
+        return redirect("recipes:detail", pk=recipe.pk)
+
+    auto_names = all(
+        name.removeprefix("Palier").strip().isdigit()
+        for _, name, _, _ in parsed
+    )
+    with transaction.atomic():
+        kept_ids = [int(step_id) for step_id in step_ids if step_id in existing]
+        recipe.mash_steps.exclude(pk__in=kept_ids).delete()
+        for position, (step_id, name, temperature, duration) in enumerate(parsed, start=1):
+            step = existing.get(step_id) if step_id else MashStep(recipe=recipe)
+            step.name = f"Palier {position}" if auto_names else name
+            step.temperature_c = temperature
+            step.duration_min = duration
+            step.position = position
+            step.save()
+    messages.success(request, "Les paliers de brassage ont été enregistrés.")
+    return redirect("recipes:detail", pk=recipe.pk)
+
+
+@require_POST
+def mash_graph_settings_update(request, pk):
+    recipe = get_object_or_404(Recipe, pk=pk)
+    form = MashGraphSettingsForm(request.POST, instance=recipe)
+    if form.is_valid():
+        form.save()
+        messages.success(request, "Les réglages du graphique ont été enregistrés.")
+    else:
+        messages.error(request, "Les bornes et les graduations du graphique sont invalides.")
+    return redirect("recipes:detail", pk=recipe.pk)
+
+
+@require_POST
+def mash_zones_update(request, pk):
+    recipe = get_object_or_404(Recipe, pk=pk)
+    allowed_zones = {"protease", "beta", "alpha", "mashout"}
+    recipe.mash_zones = [
+        zone for zone in request.POST.getlist("zones")
+        if zone in allowed_zones
+    ]
+    recipe.save(update_fields=["mash_zones"])
+    messages.success(request, "Les zones brassicoles ont été enregistrées.")
     return redirect("recipes:detail", pk=recipe.pk)
 
 
@@ -1413,6 +1527,7 @@ def _finish_recipe_import(data, catalog_indexes, recipe=None, name=None):
             recipe.efficiency = data["efficiency"]
             recipe.target_og = data["target_og"]
             recipe.target_ibu = data["target_ibu"]
+            recipe.target_carbonation = data["target_carbonation"]
             recipe.boil_time_min = data["boil_time_min"]
             recipe.category = _category_for_imported_recipe(data)
             recipe.save()

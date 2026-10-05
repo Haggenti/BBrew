@@ -32,7 +32,11 @@
   </aside>
   <main class="app-main" id="main-content">
     <div class="app-content">
-      {% for message in messages %}<div class="alert alert-success">{{ message }}</div>{% endfor %}
+      {% for message in messages %}
+      <div class="alert {% if 'error' in message.tags %}alert-danger{% elif 'warning' in message.tags %}alert-warning{% elif 'info' in message.tags %}alert-info{% elif 'success' in message.tags %}alert-success{% else %}alert-secondary{% endif %}" role="alert">
+        {{ message }}
+      </div>
+      {% endfor %}
       {% block content %}{% endblock %}
     </div>
   </main>

@@ -1,24 +1,32 @@
 {% extends "base.html" %}
 {% block title %}{{ brew.recipe_name }} · Brassin{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-start mb-4">
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
   <div>
     <a href="{% url 'recipes:brews' %}" class="text-secondary text-decoration-none">← Brassins</a>
     <h1 class="h2 mt-2 mb-1">{{ brew.recipe_name }}</h1>
     <div class="small text-secondary">Brassin créé le {{ brew.created_at|date:"d/m/Y" }}</div>
   </div>
-  <div class="d-flex gap-2">
-    <a class="btn btn-outline-primary" href="{% url 'recipes:brew_edit' brew.pk %}"><i class="bi bi-pencil me-1" aria-hidden="true"></i>Modifier</a>
+  <div class="brew-actions d-flex flex-wrap justify-content-end gap-2">
+    <div class="btn-group" role="group" aria-label="Actions principales du brassin">
+      <a class="btn btn-outline-primary" href="{% url 'recipes:brew_edit' brew.pk %}"><i class="bi bi-pencil me-1" aria-hidden="true"></i>Modifier</a>
+    </div>
     {% if brew.stock_consumed_at %}
-    <span class="btn btn-outline-success disabled"><i class="bi bi-check-lg me-1" aria-hidden="true"></i>Stock consommé</span>
-    <button class="btn btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#rollback-stock-modal"><i class="bi bi-arrow-counterclockwise me-1" aria-hidden="true"></i>Annuler une consommation</button>
+    <div class="btn-group" role="group" aria-label="Gestion du stock">
+      <span class="btn btn-outline-success disabled"><i class="bi bi-check-lg me-1" aria-hidden="true"></i>Stock consommé</span>
+      <button class="btn btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#rollback-stock-modal"><i class="bi bi-arrow-counterclockwise me-1" aria-hidden="true"></i>Annuler la consommation</button>
+    </div>
     {% else %}
-    <button class="btn btn-outline-warning" type="button" data-bs-toggle="modal" data-bs-target="#consume-stock-modal"><i class="bi bi-box-arrow-down me-1" aria-hidden="true"></i>Consommer le stock</button>
+    <div class="btn-group" role="group" aria-label="Gestion du stock">
+      <button class="btn btn-outline-warning" type="button" data-bs-toggle="modal" data-bs-target="#consume-stock-modal"><i class="bi bi-box-arrow-down me-1" aria-hidden="true"></i>Consommer le stock</button>
+    </div>
     {% endif %}
-    <form method="post" action="{% url 'recipes:brew_delete' brew.pk %}" onsubmit="return confirm('Supprimer ce brassin ?');">
-      {% csrf_token %}
-      <button class="btn btn-outline-danger" type="submit"><i class="bi bi-trash me-1" aria-hidden="true"></i>Supprimer</button>
-    </form>
+    <div class="btn-group" role="group" aria-label="Actions dangereuses">
+      <form method="post" action="{% url 'recipes:brew_delete' brew.pk %}" onsubmit="return confirm('Supprimer ce brassin ?');">
+        {% csrf_token %}
+        <button class="btn btn-outline-danger" type="submit"><i class="bi bi-trash me-1" aria-hidden="true"></i>Supprimer</button>
+      </form>
+    </div>
   </div>
 </div>
 <div class="row g-3">
@@ -186,4 +194,10 @@
   </div>
 </div>
 {% endif %}
+<style>
+  .brew-actions .btn-group form { display: flex; }
+  @media (max-width: 767.98px) {
+    .brew-actions { justify-content: flex-start !important; width: 100%; }
+  }
+</style>
 {% endblock %}

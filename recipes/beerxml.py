@@ -71,6 +71,7 @@ def export_recipe(recipe) -> bytes:
         "EFFICIENCY": recipe.efficiency,
         "OG": recipe.target_og,
         "IBU": recipe.target_ibu,
+        "CARBONATION": recipe.target_carbonation,
         "BOIL_TIME": recipe.boil_time_min,
     }
     for name, value in values.items():
@@ -125,6 +126,7 @@ def import_recipe(payload: bytes) -> dict:
         "efficiency": float(_value(recipe_node, "EFFICIENCY", "75")),
         "target_og": float(_value(recipe_node, "OG", "1.050")),
         "target_ibu": float(_value(recipe_node, "IBU", "25")),
+        "target_carbonation": float(_first_value(recipe_node, ("CARBONATION", "TARGET_CARB", "CARBONATION_USED"), "2.4")),
         "boil_time_min": int(float(_value(recipe_node, "BOIL_TIME", "60"))),
         "ingredients": [],
         "mash_steps": [],

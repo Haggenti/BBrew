@@ -81,13 +81,14 @@ class StyledModelForm(forms.ModelForm):
 class RecipeForm(StyledModelForm):
     class Meta:
         model = Recipe
-        fields = ["name", "category", "batch_size_l", "efficiency", "target_og", "target_ibu", "boil_time_min", "notes"]
+        fields = ["name", "category", "batch_size_l", "efficiency", "target_og", "target_ibu", "target_carbonation", "boil_time_min", "notes"]
         widgets = {
             "name": forms.TextInput(attrs={"placeholder": "Ex. Pale Ale du dimanche"}),
             "batch_size_l": forms.NumberInput(attrs={"step": "0.1", "min": "1"}),
             "efficiency": forms.NumberInput(attrs={"step": "1", "min": "1", "max": "100"}),
             "target_og": forms.NumberInput(attrs={"step": "0.001", "min": "1"}),
             "target_ibu": forms.NumberInput(attrs={"step": "1", "min": "0"}),
+            "target_carbonation": forms.NumberInput(attrs={"step": "0.1", "min": "0", "max": "6"}),
             "boil_time_min": forms.NumberInput(attrs={"min": "1", "max": "240", "step": "1"}),
             "notes": forms.Textarea(attrs={"rows": 4, "placeholder": "Notes générales sur cette recette"}),
         }
@@ -95,10 +96,14 @@ class RecipeForm(StyledModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["boil_time_min"].required = False
+        self.fields["target_carbonation"].required = False
         self.fields["efficiency"].label = "Efficacité (%)"
 
     def clean_boil_time_min(self):
         return self.cleaned_data.get("boil_time_min") or 60
+
+    def clean_target_carbonation(self):
+        return self.cleaned_data.get("target_carbonation") or Decimal("2.40")
 
 
 class EquipmentSettingsForm(StyledModelForm):
@@ -357,6 +362,35 @@ class BoilSettingsForm(StyledModelForm):
         model = Recipe
         fields = ["boil_time_min"]
         widgets = {"boil_time_min": forms.NumberInput(attrs={"min": "1", "max": "240", "step": "1"})}
+
+
+class MashGraphSettingsForm(StyledModelForm):
+    class Meta:
+        model = Recipe
+        fields = [
+            "mash_time_min",
+            "mash_time_max",
+            "mash_temperature_min",
+            "mash_temperature_max",
+            "mash_time_grid",
+            "mash_temperature_grid",
+        ]
+        widgets = {
+            "mash_time_min": forms.NumberInput(attrs={"min": "0", "max": "1440", "step": "1"}),
+            "mash_time_max": forms.NumberInput(attrs={"min": "1", "max": "1440", "step": "1"}),
+            "mash_temperature_min": forms.NumberInput(attrs={"min": "0", "max": "120", "step": "1"}),
+            "mash_temperature_max": forms.NumberInput(attrs={"min": "1", "max": "120", "step": "1"}),
+            "mash_time_grid": forms.NumberInput(attrs={"min": "1", "max": "120", "step": "1"}),
+            "mash_temperature_grid": forms.NumberInput(attrs={"min": "1", "max": "30", "step": "1"}),
+        }
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if cleaned_data.get("mash_time_min", 0) >= cleaned_data.get("mash_time_max", 0):
+            self.add_error("mash_time_max", "La borne maximale doit être supérieure à la borne minimale.")
+        if cleaned_data.get("mash_temperature_min", 0) >= cleaned_data.get("mash_temperature_max", 0):
+            self.add_error("mash_temperature_max", "La borne maximale doit être supérieure à la borne minimale.")
+        return cleaned_data
 
 
 class RecipeEfficiencyForm(StyledModelForm):
