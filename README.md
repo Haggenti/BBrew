@@ -129,12 +129,14 @@ d'environnement :
 set -x DJANGO_SECRET_KEY "une-cle-secrete"
 set -x DJANGO_DEBUG 0
 set -x DJANGO_ALLOWED_HOSTS "localhost,127.0.0.1"
+set -x BBS_VERSION "1.0.0"
 ```
 
 En développement, les valeurs par défaut permettent de lancer l'application
 sans configuration supplémentaire. Pour une mise en production, définissez
 au minimum une clé secrète personnalisée, désactivez `DEBUG` et renseignez
-les hôtes autorisés.
+les hôtes autorisés. `BBS_VERSION` est facultative ; elle définit la version
+affichée dans la page « À propos » (par défaut : « Développement »).
 
 ## Tests
 

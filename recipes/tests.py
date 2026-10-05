@@ -46,6 +46,10 @@ class AuthenticationTests(TestCase):
         response = self.client.get("/")
 
         self.assertRedirects(response, "/accounts/login/?next=/")
+        self.assertRedirects(
+            self.client.get("/a-propos/"),
+            "/accounts/login/?next=/a-propos/",
+        )
 
     def test_login_page_displays_full_bbs_logo(self):
         response = self.client.get("/accounts/login/")
@@ -235,7 +239,7 @@ class RecipeWorkflowTests(TestCase):
         response = self.client.get("/")
         self.assertContains(response, 'src="/static/recipes/bbs-logo-dashboard.svg"')
         self.assertContains(response, 'src="/static/recipes/bbs-logo-curseur.svg"')
-        self.assertContains(response, 'src="/static/recipes/boingball_10_80x80_64.gif"')
+        self.assertNotContains(response, "boingball_10_80x80_64.gif")
         self.assertEqual(response.context["dashboard"]["stock_alert_count"], 0)
 
         recipe = Recipe.objects.create(name="Brassin prévu")
@@ -260,6 +264,20 @@ class RecipeWorkflowTests(TestCase):
         Brew.objects.update(status=Brew.Status.BREWING)
         response = self.client.get("/")
         self.assertEqual(response.context["dashboard"]["stock_alert_count"], 0)
+
+    def test_about_page_has_bbs_design_and_navigation_link(self):
+        response = self.client.get("/a-propos/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Brewing Brain System")
+        self.assertContains(response, "BBS des brasseurs")
+        self.assertContains(response, "CONNECT")
+        self.assertContains(response, 'href="/a-propos/"')
+        self.assertContains(response, "VERSION Développement")
+        self.assertContains(
+            response,
+            'href="https://github.com/Haggenti/BBrew"',
+        )
 
     def test_brew_calendar_navigation_allows_month_and_year_selection(self):
         response = self.client.get("/brassins/", {"month": "2026-10"})
@@ -855,6 +873,8 @@ class RecipeWorkflowTests(TestCase):
         self.assertContains(response, 'id="tasting-profile-modal"')
         self.assertContains(response, "data-tasting-stars")
         self.assertEqual(len(response.context["tasting_stars"]), 5)
+        notes_section = response.content.decode().split('action="/recettes/%s/notes/"' % recipe.pk, 1)[1]
+        self.assertIn('data-bs-target="#tasting-profile-modal"', notes_section.split("</form>", 1)[0])
         self.assertContains(response, "Non noté")
         self.assertContains(response, "Cliquez ou faites glisser sur un axe")
         self.assertNotContains(response, 'data-tasting-range')

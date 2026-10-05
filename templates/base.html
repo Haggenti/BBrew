@@ -30,6 +30,7 @@
       <a class="sidebar-link{% if request.resolver_match.url_name == 'equipment_settings' %} active{% endif %}" href="{% url 'recipes:equipment_settings' %}" title="Paramètres"><i class="bi bi-gear" aria-hidden="true"></i><span class="sidebar-label">Paramètres</span></a>
     </nav>
     <div class="sidebar-nav mt-auto">
+      <a class="sidebar-link{% if request.resolver_match.url_name == 'about' %} active{% endif %}" href="{% url 'recipes:about' %}" title="À propos"><i class="bi bi-info-circle" aria-hidden="true"></i><span class="sidebar-label">À propos</span></a>
       <a class="sidebar-link" href="{% url 'password_change' %}" title="Changer le mot de passe"><i class="bi bi-key" aria-hidden="true"></i><span class="sidebar-label">Mot de passe</span></a>
       <form method="post" action="{% url 'logout' %}">
         {% csrf_token %}

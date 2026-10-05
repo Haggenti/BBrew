@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block title %}À propos · BBS{% endblock %}
+{% block content %}
+<style>
+  .about-page { --bbs-blue: #0055aa; --bbs-ink: #07315e; }
+  .about-hero {
+    background-color: var(--bbs-blue);
+    background-image: radial-gradient(rgba(255, 255, 255, .16) 1px, transparent 1px);
+    background-position: 12px 12px;
+    background-size: 24px 24px;
+    border: 4px solid #fff;
+    box-shadow: 0 0 0 2px var(--bbs-blue), 8px 8px 0 rgba(7, 49, 94, .16);
+    color: #fff;
+    overflow: hidden;
+    position: relative;
+  }
+  .about-hero::after {
+    border: 1px solid rgba(255, 255, 255, .22);
+    content: "";
+    inset: .55rem;
+    pointer-events: none;
+    position: absolute;
+  }
+  .about-terminal {
+    background: #062b24;
+    border: 2px solid #b7f77b;
+    box-shadow: 5px 5px 0 rgba(0, 0, 0, .22);
+    color: #b7f77b;
+    font-family: "Courier New", monospace;
+    line-height: 1.55;
+  }
+  .about-terminal-bar { background: #b7f77b; color: #062b24; }
+  .about-terminal-cursor { animation: about-blink 1.2s steps(2, start) infinite; }
+  @keyframes about-blink { to { visibility: hidden; } }
+  @media (prefers-reduced-motion: reduce) {
+    .about-terminal-cursor { animation: none; }
+  }
+  .about-feature { border-top: 3px solid var(--bbs-blue); }
+  .about-feature-icon {
+    align-items: center;
+    background: #e7f1ff;
+    border-radius: .75rem;
+    color: var(--bbs-blue);
+    display: inline-flex;
+    font-size: 1.35rem;
+    height: 2.75rem;
+    justify-content: center;
+    width: 2.75rem;
+  }
+  .about-tag {
+    background: #e7f1ff;
+    border: 1px solid #b6d4fe;
+    color: var(--bbs-ink);
+    font-family: "Courier New", monospace;
+  }
+</style>
+<main class="about-page">
+  <div class="d-flex justify-content-between align-items-center gap-3 mb-4 flex-wrap">
+    <div>
+      <div class="small text-secondary font-monospace">À PROPOS DU SYSTÈME</div>
+      <h1 class="h2 mb-0">À propos de BBS</h1>
+    </div>
+    <a class="btn btn-outline-primary" href="{% url 'recipes:dashboard' %}"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>Retour au tableau de bord</a>
+  </div>
+
+  <section class="about-hero rounded-3 p-4 p-lg-5 mb-5" aria-labelledby="about-hero-title">
+    <div class="row align-items-center g-4 position-relative" style="z-index: 1">
+      <div class="col-lg-7">
+        <span class="badge text-bg-warning mb-3">BREWING BRAIN SYSTEM</span>
+        <h2 class="display-5 fw-bold mb-3" id="about-hero-title">Le BBS des brasseurs.</h2>
+        <p class="lead mb-0">L’esprit des BBS d’antan, les couleurs de l’Amiga et un atelier bien rangé pour vos recettes, brassins et stocks.</p>
+      </div>
+      <div class="col-lg-5">
+        <div class="about-terminal rounded-2 overflow-hidden" aria-label="Écran de connexion rétro">
+          <div class="about-terminal-bar d-flex justify-content-between px-3 py-2 small fw-bold"><span>BBS BREW NODE</span><span>ONLINE</span></div>
+          <div class="p-3 p-lg-4 small">
+            <div>&gt; INITIALISATION DU SYSTEME...</div>
+            <div>&gt; RECETTES .............. OK</div>
+            <div>&gt; BRASSINS .............. OK</div>
+            <div>&gt; STOCK ................. OK</div>
+            <div>&gt; CONNECT ............... OK</div>
+            <div class="mt-3">&gt; BIENVENUE, BRASSEUR<span class="about-terminal-cursor">_</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="d-flex align-items-center gap-2 mb-3">
+    <span class="about-feature-icon"><i class="bi bi-cup-hot" aria-hidden="true"></i></span>
+    <div><h2 class="h4 mb-0">Votre atelier brassicole</h2><p class="text-secondary mb-0">Tout le nécessaire, sans jongler entre les fichiers.</p></div>
+  </div>
+  <div class="row g-3 mb-4">
+    <div class="col-md-4">
+      <section class="card card-body about-feature h-100">
+        <h3 class="h5"><i class="bi bi-journal-richtext me-2 text-primary" aria-hidden="true"></i>Imaginer</h3>
+        <p class="text-secondary mb-0">Créez et faites évoluer vos recettes, ingrédients, paliers et profils de fermentation. Gardez un historique des versions.</p>
+      </section>
+    </div>
+    <div class="col-md-4">
+      <section class="card card-body about-feature h-100">
+        <h3 class="h5"><i class="bi bi-calendar2-check me-2 text-primary" aria-hidden="true"></i>Brasser</h3>
+        <p class="text-secondary mb-0">Planifiez vos brassins, suivez leurs étapes et retrouvez les dates de brassage et d’embouteillage dans le calendrier.</p>
+      </section>
+    </div>
+    <div class="col-md-4">
+      <section class="card card-body about-feature h-100">
+        <h3 class="h5"><i class="bi bi-box-seam me-2 text-primary" aria-hidden="true"></i>Garder le fil</h3>
+        <p class="text-secondary mb-0">Suivez les stocks et les courses, estimez les coûts quand vous le souhaitez et sauvegardez vos données.</p>
+      </section>
+    </div>
+  </div>
+
+  <section class="card card-body border-0 bg-white">
+    <div class="row align-items-center g-3">
+      <div class="col-lg-7">
+        <h2 class="h5 mb-2">Sous le capot</h2>
+        <p class="text-secondary mb-0">BBS s’appuie sur Django et Python, une base SQLite, des templates Django, HTMX, Bootstrap et Chart.js. Les calculs brassicoles vivent dans un module Python indépendant.</p>
+      </div>
+      <div class="col-lg-5 d-flex flex-wrap gap-2 justify-content-lg-end" aria-label="Technologies">
+        <span class="badge rounded-pill about-tag">DJANGO</span>
+        <span class="badge rounded-pill about-tag">PYTHON</span>
+        <span class="badge rounded-pill about-tag">SQLITE</span>
+        <span class="badge rounded-pill about-tag">HTMX</span>
+        <span class="badge rounded-pill about-tag">BEERXML</span>
+      </div>
+    </div>
+  </section>
+  <div class="d-flex justify-content-center align-items-center flex-wrap gap-3 mt-4 text-secondary small font-monospace">
+    <span>VERSION {{ version }}</span>
+    <span aria-hidden="true">·</span>
+    <a href="{{ repository_url }}" target="_blank" rel="noopener noreferrer">
+      <i class="bi bi-github me-1" aria-hidden="true"></i>Code source sur GitHub
+      <span class="visually-hidden">(ouvre un nouvel onglet)</span>
+    </a>
+  </div>
+  <p class="text-center text-secondary small mt-4 mb-0 font-monospace">FIN DE TRANSMISSION · À VOUS DE JOUER</p>
+</div>
+{% endblock %}

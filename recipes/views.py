@@ -1,4 +1,5 @@
 from django.contrib import messages
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Max
 from django.http import HttpResponse
@@ -72,6 +73,13 @@ def dashboard(request):
         "stock_alert_count": stock_alert_count,
     }
     return render(request, "recipes/dashboard.html", {"dashboard": dashboard})
+
+
+def about(request):
+    return render(request, "recipes/about.html", {
+        "version": settings.BBS_VERSION,
+        "repository_url": settings.BBS_REPOSITORY_URL,
+    })
 
 
 def brew_list(request):

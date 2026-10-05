@@ -5,6 +5,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-only-change-me")
 DEBUG = os.environ.get("DJANGO_DEBUG", "1").lower() in {"1", "true", "yes", "on"}
+BBS_VERSION = os.environ.get("BBS_VERSION", "Développement")
+BBS_REPOSITORY_URL = "https://github.com/Haggenti/BBrew"
 DATA_DIR = Path(os.environ.get("BBREW_DATA_DIR", BASE_DIR))
 ALLOWED_HOSTS = [
     host.strip()

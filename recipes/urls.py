@@ -6,6 +6,7 @@ app_name = "recipes"
 
 urlpatterns = [
     path("", views.dashboard, name="dashboard"),
+    path("a-propos/", views.about, name="about"),
     path("recettes/", views.recipe_list, name="list"),
     path("brassins/", views.brew_list, name="brews"),
     path("brassins/ajouter/", views.brew_create, name="brew_create"),
