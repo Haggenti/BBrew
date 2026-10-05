@@ -5,16 +5,34 @@
   <h1 class="h2 mb-0">Brassins</h1>
 </div>
 <section class="card mb-4 shadow-sm">
-  <div class="card-header bg-light d-flex justify-content-between align-items-center">
+  <div class="card-header bg-light calendar-header d-flex flex-wrap justify-content-between align-items-center gap-2">
     <h2 class="h5 mb-0"><i class="bi bi-calendar3 me-2" aria-hidden="true"></i>Calendrier des brassins</h2>
-    <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+    <div class="calendar-controls d-flex align-items-center justify-content-end gap-2">
       <a class="btn btn-sm btn-outline-secondary" href="?month={{ previous_month }}" aria-label="Mois précédent" title="Mois précédent"><i class="bi bi-chevron-left" aria-hidden="true"></i></a>
-      <strong class="text-capitalize">{{ calendar_month }}</strong>
-      <form method="get" class="d-flex align-items-center gap-2">
-        <label class="visually-hidden" for="calendar-month">Choisir un mois</label>
-        <input class="form-control form-control-sm" id="calendar-month" type="month" name="month" value="{{ calendar_month_value }}" aria-label="Choisir un mois">
-        <button class="btn btn-sm btn-primary" type="submit">Afficher</button>
-      </form>
+      <div class="dropdown">
+        <button class="btn btn-sm btn-light text-capitalize fw-semibold" type="button" id="calendar-month-picker" data-bs-toggle="dropdown" aria-expanded="false">
+          {{ calendar_month }} <i class="bi bi-chevron-down ms-1 small" aria-hidden="true"></i>
+        </button>
+        <div class="dropdown-menu dropdown-menu-end p-3" aria-labelledby="calendar-month-picker">
+          <form method="get" class="calendar-picker-form">
+            <div class="calendar-picker-fields">
+              <div>
+                <label class="form-label small" for="calendar-month">Mois</label>
+                <select class="form-select form-select-sm text-capitalize" id="calendar-month" name="month_number">
+                  {% for month_number, month_name in calendar_months %}<option value="{{ month_number }}"{% if month_number == calendar_selected_month %} selected{% endif %}>{{ month_name }}</option>{% endfor %}
+                </select>
+              </div>
+              <div>
+                <label class="form-label small" for="calendar-year">Année</label>
+                <select class="form-select form-select-sm" id="calendar-year" name="year">
+                  {% for year in calendar_years %}<option value="{{ year }}"{% if year == calendar_selected_year %} selected{% endif %}>{{ year }}</option>{% endfor %}
+                </select>
+              </div>
+            </div>
+            <button class="btn btn-primary w-100" type="submit">Afficher</button>
+          </form>
+        </div>
+      </div>
       <a class="btn btn-sm btn-outline-secondary" href="?month={{ next_month }}" aria-label="Mois suivant" title="Mois suivant"><i class="bi bi-chevron-right" aria-hidden="true"></i></a>
       <a class="btn btn-sm btn-outline-primary" href="?month={{ today_month }}">Aujourd’hui</a>
     </div>
@@ -22,11 +40,11 @@
   <div class="card-body">
     <div class="table-responsive">
       <table class="table table-bordered align-middle text-center mb-0 brew-calendar">
-        <thead><tr><th class="small text-secondary fw-semibold">Sem.</th>{% for weekday in calendar_weekdays %}<th class="small text-secondary fw-semibold">{{ weekday }}</th>{% endfor %}</tr></thead>
+        <thead><tr><th class="calendar-week-column small fw-semibold">Sem.</th>{% for weekday in calendar_weekdays %}<th class="calendar-weekday small fw-semibold">{{ weekday }}</th>{% endfor %}</tr></thead>
         <tbody>
           {% for week in calendar_weeks %}
           <tr>
-            <td class="small text-secondary fw-semibold">{{ week.number }}</td>
+            <td class="calendar-week-column small fw-semibold">{{ week.number }}</td>
             {% for day in week.days %}
             <td class="brew-calendar-day{% if not day.in_month %} text-bg-light{% endif %}">
               <div class="small {% if day.date == calendar_today %}fw-bold text-primary{% else %}text-secondary{% endif %}">{{ day.number }}</div>
@@ -44,7 +62,21 @@
   </div>
 </section>
 <style>
-  .brew-calendar th { min-width: 5rem; }
+  .brew-status-badge { border: 0; cursor: pointer; }
+  .brew-status-badge.status-planned { background: var(--bs-primary-bg-subtle); color: var(--bs-primary-text-emphasis); }
+  .brew-status-badge.status-brewing { background: var(--bs-warning-bg-subtle); color: var(--bs-warning-text-emphasis); }
+  .brew-status-badge.status-fermenting { background: var(--bs-info-bg-subtle); color: var(--bs-info-text-emphasis); }
+  .brew-status-badge.status-conditioning { background: #eee5f5; color: #593078; }
+  .brew-status-badge.status-completed { background: var(--bs-success-bg-subtle); color: var(--bs-success-text-emphasis); }
+  .brew-status-badge.status-cancelled { background: var(--bs-danger-bg-subtle); color: var(--bs-danger-text-emphasis); }
+  .brew-status-badge:hover { filter: brightness(.95); }
+  .calendar-picker-form { min-width: 17rem; }
+  .calendar-picker-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .75fr); gap: .75rem; margin-bottom: .75rem; }
+  .calendar-picker-fields .form-label { margin-bottom: .25rem; }
+  .brew-calendar .calendar-weekday,
+  .brew-calendar .calendar-week-column { background-color: #edf4fc !important; }
+  .brew-calendar .calendar-weekday { min-width: 5rem; }
+  .brew-calendar .calendar-week-column { width: 3.25rem; min-width: 3.25rem; max-width: 3.25rem; padding-left: .25rem; padding-right: .25rem; color: var(--bs-secondary-color); }
   .brew-calendar-day { height: 4.5rem; vertical-align: top !important; }
   .brew-calendar-dot { width: .7rem; height: .7rem; border-radius: 50%; display: inline-block; border: 1px solid rgba(0, 0, 0, .15); }
   .brew-calendar-dot.status-planned { background: var(--bs-primary); }
@@ -56,6 +88,13 @@
   .brew-calendar-dot.stock-ok { outline: 2px solid var(--bs-success); outline-offset: 1px; }
   .brew-calendar-dot.stock-shopping { outline: 2px solid var(--bs-warning); outline-offset: 1px; }
   .brew-calendar-dot.stock-insufficient { outline: 2px solid var(--bs-danger); outline-offset: 1px; }
+  @media (max-width: 575.98px) {
+    .calendar-header { align-items: stretch !important; flex-direction: column; }
+    .calendar-controls { justify-content: space-between !important; }
+    .calendar-controls .dropdown { flex: 1; }
+    .calendar-controls #calendar-month-picker { width: 100%; }
+    .calendar-controls > a:last-child { white-space: nowrap; }
+  }
 </style>
 {% if brews %}
 <div class="card shadow-sm">
@@ -66,7 +105,7 @@
         {% for brew in brews %}
         <tr>
           <td><a class="fw-semibold text-decoration-none" href="{% url 'recipes:brew_detail' brew.pk %}">{{ brew.recipe_name }}</a></td>
-          <td><span class="badge text-bg-secondary">{{ brew.get_status_display }}</span>{% if brew.stock_status == "ok" %}<span class="ms-2 text-success" title="Stock suffisant" aria-label="Stock suffisant"><i class="bi bi-check-circle-fill" aria-hidden="true"></i></span>{% elif brew.stock_status == "shopping" %}<span class="ms-2 text-warning" title="Stock manquant, prévu dans la liste de courses" aria-label="Stock manquant, prévu dans la liste de courses"><i class="bi bi-cart-check-fill" aria-hidden="true"></i></span>{% elif brew.stock_status == "insufficient" %}{% if brew.stock_missing_items %}<button class="btn btn-link btn-sm p-0 ms-2 text-danger align-baseline" type="button" data-bs-toggle="modal" data-bs-target="#missing-stock-{{ brew.pk }}" title="Voir le stock manquant" aria-label="Voir le stock manquant"><i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i></button>{% else %}<span class="ms-2 text-danger" title="Stock insuffisant" aria-label="Stock insuffisant"><i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i></span>{% endif %}{% endif %}</td>
+          <td><form class="d-inline" method="post" action="{% url 'recipes:brew_status_cycle' brew.pk %}">{% csrf_token %}<button class="badge brew-status-badge status-{{ brew.status }}" type="submit" title="Cliquer pour passer à l’étape suivante" aria-label="Statut {{ brew.get_status_display }}. Cliquer pour passer à l’étape suivante">{{ brew.get_status_display }} <i class="bi bi-arrow-repeat ms-1" aria-hidden="true"></i></button></form>{% if brew.stock_status == "ok" %}<span class="ms-2 text-success" title="Stock suffisant" aria-label="Stock suffisant"><i class="bi bi-check-circle-fill" aria-hidden="true"></i></span>{% elif brew.stock_status == "shopping" %}<span class="ms-2 text-warning" title="Stock manquant, prévu dans la liste de courses" aria-label="Stock manquant, prévu dans la liste de courses"><i class="bi bi-cart-check-fill" aria-hidden="true"></i></span>{% elif brew.stock_status == "insufficient" %}{% if brew.stock_missing_items %}<button class="btn btn-link btn-sm p-0 ms-2 text-danger align-baseline" type="button" data-bs-toggle="modal" data-bs-target="#missing-stock-{{ brew.pk }}" title="Voir le stock manquant" aria-label="Voir le stock manquant"><i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i></button>{% else %}<span class="ms-2 text-danger" title="Stock insuffisant" aria-label="Stock insuffisant"><i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i></span>{% endif %}{% endif %}</td>
           <td>{{ brew.planned_date|date:"d/m/Y"|default:"—" }}</td>
           <td>{{ brew.recipe_version_label|default:"—" }}</td>
           <td>{% if brew.actual_batch_size_l %}{{ brew.actual_batch_size_l }} L{% else %}—{% endif %}</td>

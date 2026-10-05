@@ -41,6 +41,9 @@ deactivate
   les fiches manquantes.
 - **Stock** : gérer les malts, houblons, levures, ingrédients divers et
   consommables comme les capsules.
+- **Coûts** : activer la gestion dans les paramètres puis renseigner le coût
+  estimé de la quantité utilisée pour chaque ingrédient d’une recette. Les coûts
+  inconnus restent vides et sont exclus du total, indiqué comme partiel.
 - **Brassins** : sélectionner la version d'une recette, saisir les mesures
   réelles et suivre la consommation du stock.
 - **Courses** : ajouter les articles manquants, les marquer comme commandés,

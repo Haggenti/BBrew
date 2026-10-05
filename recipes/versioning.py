@@ -112,7 +112,7 @@ def recipe_snapshot(recipe):
                 "for_bottling": item.for_bottling,
                 "notes": item.notes,
                 "color_ebc": str(item.color_ebc),
-                "cost_total": str(item.cost_total),
+                "cost_total": str(item.cost_total) if item.cost_total is not None else None,
                 "potential_yield": str(item.potential_yield),
                 "alpha_acid": str(item.alpha_acid),
                 "boil_minutes": item.boil_minutes,

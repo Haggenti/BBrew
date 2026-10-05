@@ -181,6 +181,7 @@ class EquipmentSettings(models.Model):
     dead_space_l = models.DecimalField("volume mort (L)", max_digits=5, decimal_places=2, default=0)
     mash_efficiency = models.DecimalField("rendement de brassage (%)", max_digits=5, decimal_places=1, default=75)
     style_tolerance_percent = models.DecimalField("tolérance des styles (%)", max_digits=5, decimal_places=1, default=10)
+    cost_management_enabled = models.BooleanField("gestion des coûts activée", default=False)
 
     def __str__(self):
         return "Paramètres de brassage"
@@ -300,7 +301,13 @@ class Ingredient(models.Model):
     addition = models.CharField("ajout", max_length=100, blank=True)
     notes = models.CharField("notes", max_length=300, blank=True)
     color_ebc = models.DecimalField("couleur (EBC)", max_digits=7, decimal_places=1, default=0)
-    cost_total = models.DecimalField("coût total", max_digits=8, decimal_places=2, default=0)
+    cost_total = models.DecimalField(
+        "coût de cette quantité (€)",
+        max_digits=8,
+        decimal_places=2,
+        blank=True,
+        null=True,
+    )
     potential_yield = models.DecimalField("rendement potentiel (%)", max_digits=5, decimal_places=1, default=80)
     alpha_acid = models.DecimalField("acides alpha (%)", max_digits=5, decimal_places=2, default=5)
     boil_minutes = models.PositiveIntegerField("ébullition (min)", default=60)

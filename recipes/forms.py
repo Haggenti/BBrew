@@ -65,11 +65,17 @@ class StyledModelForm(forms.ModelForm):
         if "potential_yield" in self.fields:
             self.fields["potential_yield"].label = "Rendement"
         for field in self.fields.values():
-            css_class = "form-select" if isinstance(field.widget, forms.Select) else "form-control"
+            if isinstance(field.widget, forms.CheckboxInput):
+                css_class = "form-check-input"
+            else:
+                css_class = "form-select" if isinstance(field.widget, forms.Select) else "form-control"
             field.widget.attrs["class"] = css_class
 
     def clean_cost_total(self):
-        return self.cleaned_data.get("cost_total") or Decimal("0")
+        value = self.cleaned_data.get("cost_total")
+        if value is not None and value < 0:
+            raise forms.ValidationError("Le coût ne peut pas être négatif.")
+        return value
 
     def clean_quantity_available(self):
         quantity = self.cleaned_data.get("quantity_available")
@@ -110,6 +116,9 @@ class EquipmentSettingsForm(StyledModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["style_tolerance_percent"].required = False
+        self.fields["cost_management_enabled"].help_text = (
+            "Les coûts inconnus restent vides et ne sont pas inclus dans l’estimation."
+        )
 
     def clean_style_tolerance_percent(self):
         value = self.cleaned_data.get("style_tolerance_percent")
@@ -130,6 +139,7 @@ class EquipmentSettingsForm(StyledModelForm):
             "dead_space_l",
             "mash_efficiency",
             "style_tolerance_percent",
+            "cost_management_enabled",
         ]
         widgets = {
             "diameter_cm": forms.NumberInput(attrs={"min": "1", "step": "0.1"}),
@@ -140,6 +150,7 @@ class EquipmentSettingsForm(StyledModelForm):
             "dead_space_l": forms.NumberInput(attrs={"min": "0", "step": "0.01"}),
             "mash_efficiency": forms.NumberInput(attrs={"min": "1", "max": "100", "step": "0.1"}),
             "style_tolerance_percent": forms.NumberInput(attrs={"min": "0", "max": "100", "step": "0.1"}),
+            "cost_management_enabled": forms.CheckboxInput(attrs={"class": "form-check-input"}),
         }
         labels = {
             "evaporation_l_h": "évaporation (L/h)",
@@ -433,9 +444,10 @@ class ScaleForm(forms.Form):
 class IngredientForm(StyledModelForm):
     class Meta:
         model = Ingredient
-        fields = ["name", "kind", "amount_g", "potential_yield", "alpha_acid", "boil_minutes", "attenuation"]
+        fields = ["name", "kind", "amount_g", "cost_total", "potential_yield", "alpha_acid", "boil_minutes", "attenuation"]
         widgets = {
             "amount_g": forms.NumberInput(attrs={"step": "0.1", "min": "0"}),
+            "cost_total": forms.NumberInput(attrs={"min": "0", "step": "0.01"}),
             "potential_yield": forms.NumberInput(attrs={"step": "0.1", "min": "0", "max": "100"}),
             "alpha_acid": forms.NumberInput(attrs={"step": "0.1", "min": "0"}),
             "boil_minutes": forms.NumberInput(attrs={"min": "0"}),
@@ -443,11 +455,29 @@ class IngredientForm(StyledModelForm):
         }
 
 
+class IngredientCostForm(forms.Form):
+    cost_total = forms.DecimalField(
+        label="Coût de cette quantité (€)",
+        required=False,
+        min_value=0,
+        max_digits=8,
+        decimal_places=2,
+        widget=forms.NumberInput(attrs={"class": "form-control form-control-sm", "min": "0", "step": "0.01"}),
+    )
+
+
 class CatalogIngredientForm(StyledModelForm):
     catalog_kind = None
 
     def __init__(self, *args, **kwargs):
+        self.cost_tracking_enabled = kwargs.pop("cost_tracking_enabled", False)
         super().__init__(*args, **kwargs)
+        if not self.cost_tracking_enabled:
+            self.fields.pop("cost_total", None)
+        else:
+            self.fields["cost_total"].widget.attrs.update(
+                {"min": "0", "step": "0.01", "placeholder": "Inconnu"}
+            )
         catalog_queryset = IngredientCatalog.objects.filter(kind=self.catalog_kind)
         self.fields["catalog"].queryset = catalog_queryset
         self.fields["catalog"].required = False
@@ -466,8 +496,11 @@ class CatalogIngredientForm(StyledModelForm):
 
     def limit_edit_fields(self, editable_fields=("amount_g",)):
         if self.instance and self.instance.pk:
+            allowed_fields = set(editable_fields)
+            if self.cost_tracking_enabled:
+                allowed_fields.add("cost_total")
             for field_name in list(self.fields):
-                if field_name not in editable_fields:
+                if field_name not in allowed_fields:
                     del self.fields[field_name]
 
     def clean(self):
@@ -508,7 +541,7 @@ class MaltForm(CatalogIngredientForm):
 
     class Meta:
         model = Ingredient
-        fields = ["amount_g", "catalog", "addition"]
+        fields = ["amount_g", "catalog", "addition", "cost_total"]
         widgets = {
             "amount_g": forms.NumberInput(attrs={"step": "0.1", "min": "0", "placeholder": "5000"}),
             "potential_yield": forms.NumberInput(attrs={"step": "0.1", "min": "0", "max": "100", "placeholder": "80"}),
@@ -526,7 +559,7 @@ class MaltForm(CatalogIngredientForm):
             required=False,
             widget=forms.Select(attrs={"class": "form-select"}),
         )
-        self.order_add_fields(["name", "amount_g", "addition", "catalog"])
+        self.order_add_fields(["name", "amount_g", "addition", "cost_total", "catalog"])
         self.limit_edit_fields()
 
 
@@ -535,7 +568,7 @@ class HopForm(CatalogIngredientForm):
 
     class Meta:
         model = Ingredient
-        fields = ["amount_g", "catalog", "addition", "boil_minutes", "addition_temperature_c"]
+        fields = ["amount_g", "catalog", "addition", "boil_minutes", "addition_temperature_c", "cost_total"]
         widgets = {
             "amount_g": forms.NumberInput(attrs={"step": "0.1", "min": "0", "placeholder": "25"}),
             "alpha_acid": forms.NumberInput(attrs={"step": "0.1", "min": "0", "placeholder": "5.0"}),
@@ -555,7 +588,7 @@ class HopForm(CatalogIngredientForm):
             required=False,
             widget=forms.Select(attrs={"class": "form-select"}),
         )
-        self.order_add_fields(["name", "amount_g", "addition", "boil_minutes", "addition_temperature_c", "catalog"])
+        self.order_add_fields(["name", "amount_g", "addition", "boil_minutes", "addition_temperature_c", "cost_total", "catalog"])
         self.limit_edit_fields()
 
     def clean(self):
@@ -576,7 +609,7 @@ class YeastForm(CatalogIngredientForm):
 
     class Meta:
         model = Ingredient
-        fields = ["amount_g", "catalog", "for_bottling"]
+        fields = ["amount_g", "catalog", "for_bottling", "cost_total"]
         widgets = {
             "amount_g": forms.NumberInput(attrs={"step": "0.1", "min": "0", "placeholder": "11.5"}),
             "attenuation": forms.NumberInput(attrs={"step": "1", "min": "0", "max": "100", "placeholder": "78"}),
@@ -593,7 +626,7 @@ class YeastForm(CatalogIngredientForm):
         if "for_bottling" in self.fields:
             self.fields["for_bottling"].label = "Ajoutée à l'embouteillage"
             self.fields["for_bottling"].widget.attrs["class"] = "form-check-input"
-        self.order_add_fields(["name", "amount_g", "for_bottling", "catalog"])
+        self.order_add_fields(["name", "amount_g", "for_bottling", "cost_total", "catalog"])
         self.limit_edit_fields()
 
 
@@ -602,7 +635,7 @@ class OtherForm(CatalogIngredientForm):
 
     class Meta:
         model = Ingredient
-        fields = ["amount_g", "catalog", "addition", "boil_minutes", "notes"]
+        fields = ["amount_g", "catalog", "addition", "boil_minutes", "notes", "cost_total"]
         widgets = {
             "amount_g": forms.NumberInput(attrs={"step": "0.1", "min": "0", "placeholder": "10"}),
             "boil_minutes": forms.NumberInput(attrs={"min": "0", "step": "1"}),
@@ -619,7 +652,7 @@ class OtherForm(CatalogIngredientForm):
             widget=forms.Select(attrs={"class": "form-select"}),
         )
         self.fields["boil_minutes"].label = "Minutes avant fin d’ébullition"
-        self.order_add_fields(["name", "amount_g", "addition", "boil_minutes", "notes", "catalog"])
+        self.order_add_fields(["name", "amount_g", "addition", "boil_minutes", "notes", "cost_total", "catalog"])
         self.limit_edit_fields(("amount_g", "addition", "boil_minutes"))
 
 

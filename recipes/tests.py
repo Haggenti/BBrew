@@ -247,6 +247,28 @@ class RecipeWorkflowTests(TestCase):
         response = self.client.get("/")
         self.assertEqual(response.context["dashboard"]["stock_alert_count"], 0)
 
+    def test_brew_calendar_navigation_allows_month_and_year_selection(self):
+        response = self.client.get("/brassins/", {"month": "2026-10"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["calendar_month"], "octobre 2026")
+        self.assertContains(response, 'id="calendar-month-picker"')
+        self.assertContains(response, 'aria-label="Mois précédent"')
+        self.assertContains(response, 'aria-label="Mois suivant"')
+        self.assertContains(
+            response,
+            f'href="?month={response.context["today_month"]}">Aujourd’hui</a>',
+            html=False,
+        )
+        self.assertContains(response, '<option value="10" selected>octobre</option>', html=False)
+        self.assertContains(response, '<option value="2026" selected>2026</option>', html=False)
+
+        selected_response = self.client.get(
+            "/brassins/",
+            {"month_number": "3", "year": "2027"},
+        )
+        self.assertEqual(selected_response.context["calendar_month"], "mars 2027")
+
     def test_catalog_groups_stock_deficits_by_planned_brew(self):
         malt = IngredientCatalog.objects.create(
             name="Pale malt",
@@ -456,6 +478,7 @@ class RecipeWorkflowTests(TestCase):
                 "grain_absorption_l_kg": "0.80",
                 "dead_space_l": "1.5",
                 "mash_efficiency": "78",
+                "cost_management_enabled": "on",
             },
         )
         self.assertRedirects(response, "/parametres/")
@@ -463,6 +486,144 @@ class RecipeWorkflowTests(TestCase):
         self.assertEqual(settings.diameter_cm, 50)
         self.assertEqual(settings.grain_absorption_l_kg, Decimal("0.80"))
         self.assertEqual(settings.bag_weight_g, Decimal("1250.0"))
+        self.assertTrue(settings.cost_management_enabled)
+
+    def test_recipe_cost_estimate_handles_unknown_costs_and_updates(self):
+        equipment = EquipmentSettings.objects.create(cost_management_enabled=True)
+        recipe = Recipe.objects.create(name="Coût Ale", batch_size_l=20)
+        known = Ingredient.objects.create(
+            recipe=recipe,
+            name="Malt connu",
+            kind=Ingredient.Kind.MALT,
+            amount_g=3000,
+            cost_total=Decimal("8.50"),
+        )
+        unknown = Ingredient.objects.create(
+            recipe=recipe,
+            name="Houblon ancien",
+            kind=Ingredient.Kind.HOP,
+            amount_g=50,
+        )
+
+        response = self.client.get(f"/recettes/{recipe.pk}/")
+
+        self.assertEqual(response.context["estimated_recipe_cost"], Decimal("8.50"))
+        self.assertEqual(response.context["estimated_cost_per_liter"], Decimal("0.425"))
+        self.assertEqual(response.context["known_cost_count"], 1)
+        self.assertEqual(response.context["ingredient_count"], 2)
+        self.assertContains(response, "Estimation partielle : 1 coût renseigné sur 2 ingrédients")
+        self.assertContains(response, 'id="inventory-cost"')
+
+        catalog = IngredientCatalog.objects.create(
+            name="Cascade",
+            kind=IngredientCatalog.Kind.HOP,
+            quantity_available=100,
+        )
+        add_hop_data = {
+            "kind": Ingredient.Kind.HOP,
+            "catalog": catalog.pk,
+            "amount_g": "30",
+            "addition": "Dry hop",
+            "boil_minutes": "60",
+            "cost_total": "1.25",
+        }
+        add_hop_form = HopForm(add_hop_data, cost_tracking_enabled=True)
+        self.assertTrue(add_hop_form.is_valid(), add_hop_form.errors)
+        self.client.post(
+            f"/recettes/{recipe.pk}/ingredients/ajouter/",
+            add_hop_data,
+        )
+        added_hop = Ingredient.objects.get(recipe=recipe, catalog=catalog)
+        self.assertEqual(added_hop.cost_total, Decimal("1.25"))
+
+        response = self.client.post(
+            f"/ingredients/{unknown.pk}/cout/",
+            {"cost_total": "2.50"},
+        )
+        self.assertRedirects(response, f"/recettes/{recipe.pk}/")
+        unknown.refresh_from_db()
+        self.assertEqual(unknown.cost_total, Decimal("2.50"))
+
+        self.client.post(f"/ingredients/{known.pk}/cout/", {"cost_total": ""})
+        known.refresh_from_db()
+        self.assertIsNone(known.cost_total)
+        self.assertTrue(equipment.cost_management_enabled)
+
+    def test_recipe_cost_entry_is_rejected_when_management_is_disabled(self):
+        recipe = Recipe.objects.create(name="Sans coût")
+        ingredient = Ingredient.objects.create(
+            recipe=recipe,
+            name="Malt",
+            kind=Ingredient.Kind.MALT,
+            amount_g=1000,
+        )
+
+        response = self.client.post(
+            f"/ingredients/{ingredient.pk}/cout/",
+            {"cost_total": "3.00"},
+            follow=True,
+        )
+
+        self.assertRedirects(response, f"/recettes/{recipe.pk}/")
+        ingredient.refresh_from_db()
+        self.assertIsNone(ingredient.cost_total)
+        self.assertContains(response, "Activez d’abord la gestion des coûts")
+
+    def test_brew_detail_places_planned_actual_next_to_analysis(self):
+        recipe = Recipe.objects.create(name="Ale à analyser")
+        brew = Brew.objects.create(recipe=recipe, recipe_name=recipe.name)
+
+        response = self.client.get(f"/brassins/{brew.pk}/")
+
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        bottling_position = content.index("Mise en bouteille")
+        comparison_row_position = content.index('<div class="row g-3 mt-0 align-items-stretch">')
+        analysis_position = content.index("Analyse du brassin")
+        comparison_position = content.index("<h2 class=\"h5 mb-0\">Prévu / réel</h2>")
+        self.assertLess(bottling_position, comparison_row_position)
+        self.assertLess(comparison_row_position, analysis_position)
+        self.assertLess(analysis_position, comparison_position)
+        self.assertContains(response, 'data-bs-target="#bottling-modal"')
+        self.assertContains(response, 'id="bottling-modal"')
+        self.assertContains(response, f'action="/brassins/{brew.pk}/mise-en-bouteille/"')
+        self.assertContains(response, f'action="/brassins/{brew.pk}/cycle-statut/"')
+        self.assertContains(response, "brew-status-badge status-planned")
+
+        response = self.client.post(
+            f"/brassins/{brew.pk}/cycle-statut/",
+            {"return_to": "detail"},
+        )
+        self.assertRedirects(response, f"/brassins/{brew.pk}/")
+        brew.refresh_from_db()
+        self.assertEqual(brew.status, Brew.Status.BREWING)
+        response = self.client.get(f"/brassins/{brew.pk}/")
+        self.assertContains(response, "brew-status-badge status-brewing")
+
+    def test_brew_status_can_be_cycled_from_brew_list(self):
+        brew = Brew.objects.create(recipe_name="Statut cyclique")
+        self.assertEqual(brew.status, Brew.Status.PLANNED)
+
+        response = self.client.get("/brassins/")
+        self.assertContains(response, f'action="/brassins/{brew.pk}/cycle-statut/"')
+        self.assertContains(response, "Cliquer pour passer à l’étape suivante")
+
+        expected_statuses = [
+            Brew.Status.BREWING,
+            Brew.Status.FERMENTING,
+            Brew.Status.CONDITIONING,
+            Brew.Status.COMPLETED,
+            Brew.Status.CANCELLED,
+            Brew.Status.PLANNED,
+        ]
+        for expected_status in expected_statuses:
+            response = self.client.post(f"/brassins/{brew.pk}/cycle-statut/")
+            self.assertRedirects(response, "/brassins/")
+            brew.refresh_from_db()
+            self.assertEqual(brew.status, expected_status)
+
+        response = self.client.get(f"/brassins/{brew.pk}/cycle-statut/")
+        self.assertEqual(response.status_code, 405)
 
     def test_database_reset_requires_confirmation_and_selected_sections(self):
         recipe = Recipe.objects.create(name="À conserver")

@@ -3,7 +3,7 @@
 {% block content %}
 <div class="mb-4">
   <h1 class="h2 mb-1"><i class="bi bi-gear me-2" aria-hidden="true"></i>Paramètres</h1>
-  <p class="text-secondary mb-0">Définissez votre équipement de brassage pour fiabiliser les calculs de volumes.</p>
+  <p class="text-secondary mb-0">Définissez votre équipement de brassage et activez au besoin l’estimation du coût des recettes.</p>
 </div>
 <section class="card border-primary-subtle">
   <div class="card-header bg-primary-subtle">
@@ -13,11 +13,22 @@
     <form method="post" class="row g-3">
       {% csrf_token %}
       {% for field in form %}
+      {% if field.name == "cost_management_enabled" %}
+      <div class="col-12">
+        <div class="form-check">
+          {{ field }}
+          <label class="form-check-label fw-semibold" for="{{ field.id_for_label }}">{{ field.label }}</label>
+        </div>
+        {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+        {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+      </div>
+      {% else %}
       <div class="col-md-6">
         <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
         {{ field }}
         {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
       </div>
+      {% endif %}
       {% endfor %}
       <div class="col-12">
         <button class="btn btn-primary" type="submit"><i class="bi bi-check-lg me-1" aria-hidden="true"></i>Enregistrer</button>

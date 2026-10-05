@@ -16,7 +16,7 @@ from decimal import Decimal
 from decimal import ROUND_CEILING, ROUND_FLOOR
 from django.utils import timezone
 
-from .forms import BackupUploadForm, BeerCategoryForm, BeerXMLUploadForm, BoilSettingsForm, BrewForm, CatalogConsumableForm, CatalogHopForm, CatalogMaltForm, CatalogOtherForm, CatalogYeastForm, CatalogForm, EquipmentSettingsForm, FermentationStepForm, HopForm, MaltForm, MashGraphSettingsForm, MashStepForm, OtherForm, RecipeCategoryForm, RecipeEfficiencyForm, RecipeForm, RecipeNameForm, RecipeNotesForm, ScaleForm, ShoppingItemForm, YeastForm
+from .forms import BackupUploadForm, BeerCategoryForm, BeerXMLUploadForm, BoilSettingsForm, BrewForm, CatalogConsumableForm, CatalogHopForm, CatalogMaltForm, CatalogOtherForm, CatalogYeastForm, CatalogForm, EquipmentSettingsForm, FermentationStepForm, HopForm, IngredientCostForm, MaltForm, MashGraphSettingsForm, MashStepForm, OtherForm, RecipeCategoryForm, RecipeEfficiencyForm, RecipeForm, RecipeNameForm, RecipeNotesForm, ScaleForm, ShoppingItemForm, YeastForm
 from .models import BeerCategory, Brew, EquipmentSettings, FermentationStep, Ingredient, IngredientCatalog, MashStep, Recipe, RecipeVersion, ShoppingItem
 from .signals import save_version, suspend_versioning
 from .versioning import describe_version_change
@@ -104,8 +104,21 @@ def brew_list(request):
             brew.stock_missing_items = []
     today = timezone.localdate()
     try:
-        calendar_date = date.fromisoformat(f"{request.GET.get('month', '')}-01")
-    except ValueError:
+        if request.GET.get("month"):
+            calendar_date = date.fromisoformat(f"{request.GET['month']}-01")
+        elif "month_number" in request.GET or "year" in request.GET:
+            selected_year = request.GET.get("year")
+            selected_month = request.GET.get("month_number")
+            if selected_year is None or selected_month is None:
+                raise ValueError
+            calendar_date = date(
+                int(selected_year),
+                int(selected_month),
+                1,
+            )
+        else:
+            raise ValueError
+    except (TypeError, ValueError):
         calendar_date = today.replace(day=1)
     previous_month = (calendar_date.replace(day=1) - timedelta(days=1)).replace(day=1)
     next_month = (calendar_date.replace(day=28) + timedelta(days=4)).replace(day=1)
@@ -146,7 +159,13 @@ def brew_list(request):
             "calendar_days": calendar_days,
             "calendar_today": today,
             "calendar_date": calendar_date,
-            "calendar_month_value": calendar_date.strftime("%Y-%m"),
+            "calendar_selected_month": calendar_date.month,
+            "calendar_selected_year": calendar_date.year,
+            "calendar_years": sorted(
+                set(range(max(1, today.year - 10), min(9999, today.year + 10) + 1))
+                | {calendar_date.year}
+            ),
+            "calendar_months": tuple(enumerate(month_names, start=1)),
             "today_month": today.strftime("%Y-%m"),
             "previous_month": previous_month.strftime("%Y-%m"),
             "next_month": next_month.strftime("%Y-%m"),
@@ -376,6 +395,19 @@ def brew_edit(request, pk):
         messages.success(request, f"Le brassin « {brew.recipe_name} » a été mis à jour.")
         return redirect("recipes:brew_detail", pk=brew.pk)
     return render(request, "recipes/brew_form.html", {"form": form, "brew": brew, "latest_versions": _latest_recipe_versions()})
+
+
+@require_POST
+def brew_status_cycle(request, pk):
+    brew = get_object_or_404(Brew, pk=pk)
+    statuses = [status for status, _ in Brew.Status.choices]
+    current_index = statuses.index(brew.status)
+    brew.status = statuses[(current_index + 1) % len(statuses)]
+    brew.save(update_fields=["status"])
+    messages.success(request, f"Statut mis à jour : {brew.get_status_display()}.")
+    if request.POST.get("return_to") == "detail":
+        return redirect("recipes:brew_detail", pk=brew.pk)
+    return redirect("recipes:brews")
 
 
 def _latest_recipe_versions():
@@ -927,6 +959,20 @@ def recipe_detail(request, pk, edit_forms=None):
             recipe.category = default_category
             recipe.save(update_fields=["category"])
     equipment = EquipmentSettings.objects.first() or EquipmentSettings()
+    cost_tracking_enabled = equipment.cost_management_enabled
+    ingredient_costs = [
+        ingredient.cost_total
+        for ingredient in recipe.ingredients.all()
+        if ingredient.cost_total is not None
+    ]
+    ingredient_count = recipe.ingredients.count()
+    known_cost_count = len(ingredient_costs)
+    estimated_recipe_cost = sum(ingredient_costs, Decimal("0")) if known_cost_count else None
+    estimated_cost_per_liter = (
+        estimated_recipe_cost / Decimal(recipe.batch_size_l)
+        if estimated_recipe_cost is not None and recipe.batch_size_l
+        else None
+    )
     edit_forms = edit_forms or {}
     malts = recipe.ingredients.filter(kind="malt")
     hops = recipe.ingredients.filter(kind="hop")
@@ -1075,7 +1121,10 @@ def recipe_detail(request, pk, edit_forms=None):
             "ingredient": malt,
             "proportion": round(float(malt.amount_g) / malt_total * 100, 1) if malt_total else 0,
             "edit_form": inline_form(
-                edit_forms.get(malt.pk, MaltForm(instance=malt)),
+                edit_forms.get(
+                    malt.pk,
+                    MaltForm(instance=malt, cost_tracking_enabled=cost_tracking_enabled),
+                ),
                 f"edit-malt-{malt.pk}",
             ),
         }
@@ -1086,7 +1135,10 @@ def recipe_detail(request, pk, edit_forms=None):
             "ingredient": hop,
             "ibu": tinseth_ibu([hop], float(recipe.batch_size_l), og or float(recipe.target_og)),
             "edit_form": inline_form(
-                edit_forms.get(hop.pk, HopForm(instance=hop)),
+                edit_forms.get(
+                    hop.pk,
+                    HopForm(instance=hop, cost_tracking_enabled=cost_tracking_enabled),
+                ),
                 f"edit-hop-{hop.pk}",
             ),
         }
@@ -1162,10 +1214,16 @@ def recipe_detail(request, pk, edit_forms=None):
             "efficiency_form": RecipeEfficiencyForm(instance=recipe),
             "notes_form": RecipeNotesForm(instance=recipe),
             "scale_form": ScaleForm(initial={"batch_size_l": recipe.batch_size_l}),
-            "malt_form": MaltForm(),
-            "hop_form": HopForm(),
-            "yeast_form": YeastForm(),
-            "other_form": OtherForm(),
+            "malt_form": MaltForm(cost_tracking_enabled=cost_tracking_enabled),
+            "hop_form": HopForm(cost_tracking_enabled=cost_tracking_enabled),
+            "yeast_form": YeastForm(cost_tracking_enabled=cost_tracking_enabled),
+            "other_form": OtherForm(cost_tracking_enabled=cost_tracking_enabled),
+            "cost_tracking_enabled": cost_tracking_enabled,
+            "estimated_recipe_cost": estimated_recipe_cost,
+            "estimated_cost_per_liter": estimated_cost_per_liter,
+            "known_cost_count": known_cost_count,
+            "ingredient_count": ingredient_count,
+            "cost_rows": recipe.ingredients.all(),
             "malt_rows": malt_rows,
             "malt_total_g": malt_total,
             "mash_chart_points": mash_chart_points,
@@ -1183,7 +1241,10 @@ def recipe_detail(request, pk, edit_forms=None):
                 {
                     "ingredient": yeast,
                     "edit_form": inline_form(
-                        edit_forms.get(yeast.pk, YeastForm(instance=yeast)),
+                        edit_forms.get(
+                            yeast.pk,
+                            YeastForm(instance=yeast, cost_tracking_enabled=cost_tracking_enabled),
+                        ),
                         f"edit-yeast-{yeast.pk}",
                     ),
                 }
@@ -1193,7 +1254,10 @@ def recipe_detail(request, pk, edit_forms=None):
                 {
                     "ingredient": other,
                     "edit_form": inline_form(
-                        edit_forms.get(other.pk, OtherForm(instance=other)),
+                        edit_forms.get(
+                            other.pk,
+                            OtherForm(instance=other, cost_tracking_enabled=cost_tracking_enabled),
+                        ),
                         f"edit-other-{other.pk}",
                     ),
                 }
@@ -1508,8 +1572,11 @@ def recipe_scale(request, pk):
             for ingredient in recipe.ingredients.all():
                 precision = Decimal("1") if ingredient.kind in (Ingredient.Kind.MALT, Ingredient.Kind.YEAST) else Decimal("0.1")
                 ingredient.amount_g = (Decimal(ingredient.amount_g) * ratio).quantize(precision)
-                ingredient.cost_total = (Decimal(ingredient.cost_total) * ratio).quantize(Decimal("0.01"))
-                ingredient.save(update_fields=["amount_g", "cost_total"])
+                update_fields = ["amount_g"]
+                if ingredient.cost_total is not None:
+                    ingredient.cost_total = (ingredient.cost_total * ratio).quantize(Decimal("0.01"))
+                    update_fields.append("cost_total")
+                ingredient.save(update_fields=update_fields)
             recipe.batch_size_l = new_volume
             recipe.save(update_fields=["batch_size_l"])
         messages.success(request, f"La recette a été redimensionnée pour {new_volume} L.")
@@ -1707,7 +1774,11 @@ def ingredient_create(request, pk):
     if catalog is None:
         messages.error(request, "La fiche de stock sélectionnée n'existe pas ou ne correspond pas au type.")
         return redirect("recipes:detail", pk=recipe.pk)
-    form = form_class(request.POST)
+    cost_tracking_enabled = (
+        EquipmentSettings.objects.values_list("cost_management_enabled", flat=True).first()
+        or False
+    )
+    form = form_class(request.POST, cost_tracking_enabled=cost_tracking_enabled)
     if request.method == "POST" and form.is_valid():
         ingredient = form.save(commit=False)
         ingredient.recipe = recipe
@@ -1726,12 +1797,41 @@ def ingredient_edit(request, pk):
         Ingredient.Kind.OTHER: OtherForm,
     }
     form_class = form_classes[ingredient.kind]
-    form = form_class(request.POST or None, instance=ingredient)
+    cost_tracking_enabled = (
+        EquipmentSettings.objects.values_list("cost_management_enabled", flat=True).first()
+        or False
+    )
+    form = form_class(
+        request.POST or None,
+        instance=ingredient,
+        cost_tracking_enabled=cost_tracking_enabled,
+    )
     if request.method == "POST" and form.is_valid():
         form.save()
         messages.success(request, f"{ingredient.name} a été modifié.")
         return redirect("recipes:detail", pk=ingredient.recipe_id)
     return recipe_detail(request, ingredient.recipe_id, {ingredient.pk: form})
+
+
+@require_POST
+def ingredient_cost_update(request, pk):
+    ingredient = get_object_or_404(Ingredient, pk=pk)
+    recipe_id = ingredient.recipe_id
+    cost_tracking_enabled = (
+        EquipmentSettings.objects.values_list("cost_management_enabled", flat=True).first()
+        or False
+    )
+    if not cost_tracking_enabled:
+        messages.error(request, "Activez d’abord la gestion des coûts dans les paramètres.")
+    else:
+        form = IngredientCostForm(request.POST)
+        if form.is_valid():
+            ingredient.cost_total = form.cleaned_data["cost_total"]
+            ingredient.save(update_fields=["cost_total"])
+            messages.success(request, f"Le coût de {ingredient.name} a été mis à jour.")
+        else:
+            messages.error(request, "Le coût doit être un montant positif ou laissé vide.")
+    return redirect("recipes:detail", pk=recipe_id)
 
 
 @require_POST
