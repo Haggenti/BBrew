@@ -38,7 +38,7 @@ def create_backup():
     for model in BACKUP_MODELS:
         records.extend(json.loads(serializers.serialize("json", model.objects.all())))
     return {
-        "format": "BBrew backup",
+        "format": "BBS backup",
         "version": BACKUP_VERSION,
         "created_at": timezone.now().isoformat(),
         "records": records,
@@ -56,8 +56,8 @@ def create_backup():
 
 
 def validate_backup(data):
-    if not isinstance(data, dict) or data.get("format") != "BBrew backup":
-        raise ValueError("Le fichier n’est pas une sauvegarde BBrew valide.")
+    if not isinstance(data, dict) or data.get("format") not in {"BBS backup", "BBrew backup"}:
+        raise ValueError("Le fichier n’est pas une sauvegarde BBS valide.")
     if data.get("version") not in SUPPORTED_BACKUP_VERSIONS:
         raise ValueError("La version de cette sauvegarde n’est pas compatible.")
     if not isinstance(data.get("records"), list):

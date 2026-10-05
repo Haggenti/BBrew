@@ -1,12 +1,13 @@
-# BBrew
+# BBS — Brewing Brain System
 
 Application de conception de recettes de bière basée sur Django, SQLite,
 Django Templates, HTMX et Bootstrap.
 
-BBrew permet de gérer les recettes et leurs versions, les paliers
-de brassage, les brassins, le stock d'ingrédients et de consommables, ainsi
-que la liste de courses. Les recettes peuvent être importées et exportées au
-format BeerXML.
+BBS est le **Brewing Brain System**, le BBS des brasseurs : recettes, brassins
+et stock connectés sans modem 56k. Il permet de gérer les recettes et leurs
+versions, les paliers de brassage, le stock d'ingrédients et de consommables,
+ainsi que la liste de courses. Les recettes peuvent être importées et exportées
+au format BeerXML.
 
 ## Installation et lancement avec Fish
 
@@ -107,11 +108,11 @@ collectés dans l'image.
   `DJANGO_SECURE_COOKIES` et `DJANGO_SECURE_PROXY_SSL_HEADER` à `1`, indiquez l'origine
   `https://...` dans `DJANGO_CSRF_TRUSTED_ORIGINS` et empêchez les accès directs qui
   contourneraient le proxy.
-- Gardez une seule instance BBrew active : SQLite ne convient pas à plusieurs
+- Gardez une seule instance BBS active : SQLite ne convient pas à plusieurs
   réplicas applicatifs concurrents.
 - Le répertoire `data/` contient la base SQLite directement sur le NAS, hors du
   conteneur. Il est exclu de Git ; sauvegardez-le régulièrement, ainsi que les
-  sauvegardes générées dans BBrew, vers un autre emplacement.
+  sauvegardes générées dans BBS, vers un autre emplacement.
 - Pour mettre à jour : sauvegardez les données, mettez le code à jour, puis lancez
   `git pull` puis `docker compose up --build`. Les migrations sont exécutées au
   démarrage.

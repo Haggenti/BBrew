@@ -1,9 +1,10 @@
+{% load static %}
 <!doctype html>
 <html lang="fr">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}BBrew{% endblock %}</title>
+  <title>{% block title %}BBS — Brewing Brain System{% endblock %}</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
   <script src="https://unpkg.com/htmx.org@2.0.4"></script>
@@ -13,9 +14,8 @@
 <body class="bg-light">
   <aside class="app-sidebar" id="app-sidebar">
     <div class="sidebar-header">
-      <a class="sidebar-brand" href="{% url 'recipes:dashboard' %}" title="BBrew">
-        <span class="sidebar-brand-mark"><i class="bi bi-cup-straw" aria-hidden="true"></i></span>
-        <span class="sidebar-label">BBrew</span>
+      <a class="sidebar-brand" href="{% url 'recipes:dashboard' %}" title="BBS — Brewing Brain System">
+        <img class="sidebar-brand-logo" src="{% static 'recipes/bbs-logo-curseur.svg' %}" alt="BBS — Brewing Brain System">
       </a>
       <button class="sidebar-toggle" id="sidebar-toggle" type="button" aria-controls="app-sidebar" aria-expanded="true" aria-label="Replier le menu" title="Replier le menu">
         <i class="bi bi-chevron-left" aria-hidden="true"></i>
@@ -52,7 +52,7 @@
     .app-sidebar { background: #212529; bottom: 0; color: #fff; display: flex; flex-direction: column; left: 0; padding: 1rem .75rem; position: fixed; top: 0; transition: width .2s ease; width: var(--sidebar-width); z-index: 1030; }
     .sidebar-header { align-items: center; display: flex; gap: .5rem; justify-content: space-between; margin-bottom: 2rem; }
     .sidebar-brand { align-items: center; color: #fff; display: flex; font-size: 1.25rem; font-weight: 600; gap: .65rem; overflow: hidden; text-decoration: none; white-space: nowrap; }
-    .sidebar-brand-mark { align-items: center; background: #ffc107; border-radius: .65rem; color: #212529; display: inline-flex; height: 2.25rem; justify-content: center; min-width: 2.25rem; }
+    .sidebar-brand-logo { display: block; height: 3rem; max-width: 8rem; object-fit: contain; width: 6.2rem; }
     .sidebar-toggle { background: transparent; border: 1px solid rgba(255, 255, 255, .2); border-radius: .5rem; color: #adb5bd; height: 2.25rem; min-width: 2.25rem; }
     .sidebar-toggle:hover { background: rgba(255, 255, 255, .1); color: #fff; }
     .sidebar-nav { display: flex; flex-direction: column; gap: .35rem; }
@@ -65,6 +65,7 @@
     body.sidebar-collapsed .app-sidebar { width: var(--sidebar-collapsed-width); }
     body.sidebar-collapsed .app-main { margin-left: var(--sidebar-collapsed-width); }
     body.sidebar-collapsed .sidebar-label { display: none; }
+    body.sidebar-collapsed .sidebar-brand-logo { height: 2.75rem; width: 2.75rem; }
     body.sidebar-collapsed .sidebar-header { justify-content: center; }
     body.sidebar-collapsed .sidebar-toggle i { transform: rotate(180deg); }
     body.sidebar-collapsed .sidebar-link { justify-content: center; padding-left: .75rem; padding-right: .75rem; }
@@ -72,6 +73,7 @@
       .app-sidebar { width: var(--sidebar-collapsed-width); }
       .app-main { margin-left: var(--sidebar-collapsed-width); padding: 1rem .75rem; }
       .sidebar-label { display: none; }
+      .sidebar-brand-logo { height: 2.75rem; width: 2.75rem; }
       .sidebar-header { justify-content: center; }
       .sidebar-link { justify-content: center; padding-left: .75rem; padding-right: .75rem; }
     }

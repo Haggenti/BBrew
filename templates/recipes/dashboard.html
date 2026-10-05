@@ -1,9 +1,15 @@
 {% extends "base.html" %}
-{% block title %}Tableau de bord · BBrew{% endblock %}
+{% load static %}
+{% block title %}Tableau de bord · BBS{% endblock %}
 {% block content %}
 <div class="mb-4">
-  <h1 class="h2 mb-1">Tableau de bord</h1>
-  <p class="text-secondary mb-0">Vue d’ensemble de votre activité brassicole.</p>
+  <div class="d-flex align-items-center gap-3">
+    <img src="{% static 'recipes/bbs-logo-dashboard.svg' %}" width="240" height="64" class="img-fluid" alt="BBS — Brewing Brain System">
+    <div>
+      <h1 class="h2 mb-1">Tableau de bord</h1>
+      <p class="text-secondary mb-0">Vue d’ensemble de votre activité brassicole.</p>
+    </div>
+  </div>
 </div>
 <div class="row g-3" aria-label="Résumé de l'activité">
   <div class="col-6 col-lg-3"><a class="card h-100 text-decoration-none shadow-sm" href="{% url 'recipes:list' %}"><div class="card-body"><div class="small text-secondary">Recettes</div><div class="display-6 text-dark">{{ dashboard.recipe_count }}</div></div></a></div>

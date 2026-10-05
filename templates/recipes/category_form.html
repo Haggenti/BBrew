@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Catégorie BJCP · BBrew{% endblock %}
+{% block title %}Catégorie BJCP · BBS{% endblock %}
 {% block content %}
 <div class="mb-4"><a href="{% url 'recipes:categories' %}" class="text-secondary text-decoration-none">← Catégories BJCP</a><h1 class="h2 mt-2">{% if category %}Modifier la catégorie{% else %}Ajouter une catégorie{% endif %}</h1></div>
 <form method="post" class="card card-body">

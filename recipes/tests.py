@@ -26,6 +26,7 @@ from .calculations import (
 )
 from .forms import ADDITION_CHOICES, MALT_ADDITION_CHOICES, BrewForm, CatalogForm, CatalogOtherForm, CatalogYeastForm, HopForm, MaltForm, MashStepForm, OtherForm, YeastForm
 from .beerxml import import_recipe
+from .backup import validate_backup
 from .models import BeerCategory, Brew, EquipmentSettings, FermentationStep, Ingredient, IngredientCatalog, MashStep, Recipe, RecipeVersion, ShoppingItem
 from .templatetags.recipe_formatting import compact_number
 
@@ -45,6 +46,15 @@ class AuthenticationTests(TestCase):
         response = self.client.get("/")
 
         self.assertRedirects(response, "/accounts/login/?next=/")
+
+    def test_login_page_displays_full_bbs_logo(self):
+        response = self.client.get("/accounts/login/")
+
+        self.assertContains(response, 'src="/static/recipes/bbs-logo.svg"')
+        self.assertContains(response, 'alt="BBS — Brewing Brain System"')
+        self.assertContains(response, "Le BBS des brasseurs.")
+        self.assertNotContains(response, "Modem 56k facultatif")
+        self.assertContains(response, "#0055aa")
 
     def test_default_credentials_can_log_in_and_log_out(self):
         response = self.client.post(
@@ -223,6 +233,8 @@ class RecipeWorkflowTests(TestCase):
             quantity_available=0,
         )
         response = self.client.get("/")
+        self.assertContains(response, 'src="/static/recipes/bbs-logo-dashboard.svg"')
+        self.assertContains(response, 'src="/static/recipes/bbs-logo-curseur.svg"')
         self.assertEqual(response.context["dashboard"]["stock_alert_count"], 0)
 
         recipe = Recipe.objects.create(name="Brassin prévu")
@@ -1248,6 +1260,9 @@ class RecipeWorkflowTests(TestCase):
         self.assertEqual(restored.tasting_notes, "Notes d’agrumes.")
         self.assertEqual(restored.ingredients.get().catalog.name, "Pale malt")
         self.assertFalse(Recipe.objects.filter(name="Données à remplacer").exists())
+
+    def test_backup_accepts_legacy_bbrew_format(self):
+        validate_backup({"format": "BBrew backup", "version": 2, "records": []})
 
     def test_backup_restores_shopping_item_source_brews(self):
         recipe = Recipe.objects.create(name="Brassin sauvegardé")
