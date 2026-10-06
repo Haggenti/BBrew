@@ -101,6 +101,11 @@ collectés dans l'image.
    avec `brewer` / `brewer` uniquement sur un réseau de confiance, puis changez
    immédiatement le mot de passe depuis le menu **Mot de passe**.
 
+   Les connexions sont conservées dans un cookie de session de navigateur, supprimé
+   à la fermeture du navigateur. Toutes les sessions enregistrées sont également
+   invalidées au démarrage du serveur ; il faut donc se reconnecter après un arrêt
+   ou un redémarrage de BBS.
+
 ### Accès et opérations courantes
 
 - Ne transférez pas le port 8000 directement depuis Internet. Pour un accès extérieur,

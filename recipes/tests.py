@@ -4,10 +4,13 @@ import json
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.contrib.sessions.models import Session
+from django.test import TestCase, override_settings
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import translation
 from django.utils import timezone
+
+from bbrew.session_lifecycle import invalidate_sessions_on_startup
 
 from .calculations import (
     abv_from_gravity,
@@ -72,6 +75,28 @@ class AuthenticationTests(TestCase):
         response = self.client.post("/accounts/logout/")
         self.assertRedirects(response, "/accounts/login/")
         self.assertNotIn("_auth_user_id", self.client.session)
+
+    @override_settings(SESSION_EXPIRE_AT_BROWSER_CLOSE=True)
+    def test_session_cookie_expires_when_browser_closes(self):
+        response = self.client.post(
+            "/accounts/login/",
+            {"username": "brewer", "password": "brewer"},
+        )
+
+        session_cookie = response.cookies["sessionid"]
+        self.assertEqual(session_cookie["expires"], "")
+        self.assertEqual(session_cookie["max-age"], "")
+
+    def test_server_start_invalidates_existing_sessions(self):
+        self.client.login(username="brewer", password="brewer")
+        session_key = self.client.session.session_key
+        self.assertTrue(Session.objects.filter(session_key=session_key).exists())
+
+        invalidate_sessions_on_startup()
+
+        self.assertFalse(Session.objects.filter(session_key=session_key).exists())
+        response = self.client.get("/")
+        self.assertRedirects(response, "/accounts/login/?next=/")
 
     def test_user_can_change_default_password(self):
         self.assertTrue(self.client.login(username="brewer", password="brewer"))

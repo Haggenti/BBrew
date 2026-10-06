@@ -57,7 +57,7 @@
 <main class="about-page">
   <div class="d-flex justify-content-between align-items-center gap-3 mb-4 flex-wrap">
     <div>
-      <div class="small text-secondary font-monospace">À PROPOS DU SYSTÈME</div>
+     
       <h1 class="h2 mb-0">À propos de BBS</h1>
     </div>
     <a class="btn btn-outline-primary" href="{% url 'recipes:dashboard' %}"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>Retour au tableau de bord</a>
@@ -68,18 +68,20 @@
       <div class="col-lg-7">
         <span class="badge text-bg-warning mb-3">BREWING BRAIN SYSTEM</span>
         <h2 class="display-5 fw-bold mb-3" id="about-hero-title">Le BBS des brasseurs.</h2>
-        <p class="lead mb-0">L’esprit des BBS d’antan, les couleurs de l’Amiga et un atelier bien rangé pour vos recettes, brassins et stocks.</p>
+        <p class="lead mb-0">Un soft bien organisé pour vos recettes, brassins et stocks.</p>
       </div>
       <div class="col-lg-5">
         <div class="about-terminal rounded-2 overflow-hidden" aria-label="Écran de connexion rétro">
           <div class="about-terminal-bar d-flex justify-content-between px-3 py-2 small fw-bold"><span>BBS BREW NODE</span><span>ONLINE</span></div>
           <div class="p-3 p-lg-4 small">
-            <div>&gt; INITIALISATION DU SYSTEME...</div>
+            <div>&gt; SYSTEM READY...</div>
             <div>&gt; RECETTES .............. OK</div>
             <div>&gt; BRASSINS .............. OK</div>
             <div>&gt; STOCK ................. OK</div>
             <div>&gt; CONNECT ............... OK</div>
-            <div class="mt-3">&gt; BIENVENUE, BRASSEUR<span class="about-terminal-cursor">_</span></div>
+            <div>&gt; 40/80 Column Support</div>
+            <div class="mt-3">&gt; ASCII ANSI CG<span class="about-terminal-cursor">_</span></div>
+
           </div>
         </div>
       </div>
@@ -106,7 +108,7 @@
     <div class="col-md-4">
       <section class="card card-body about-feature h-100">
         <h3 class="h5"><i class="bi bi-box-seam me-2 text-primary" aria-hidden="true"></i>Garder le fil</h3>
-        <p class="text-secondary mb-0">Suivez les stocks et les courses, estimez les coûts quand vous le souhaitez et sauvegardez vos données.</p>
+        <p class="text-secondary mb-0">Suivez les stocks et les approvisionnements.</p>
       </section>
     </div>
   </div>
@@ -134,6 +136,6 @@
       <span class="visually-hidden">(ouvre un nouvel onglet)</span>
     </a>
   </div>
-  <p class="text-center text-secondary small mt-4 mb-0 font-monospace">FIN DE TRANSMISSION · À VOUS DE JOUER</p>
+  <p class="text-center text-secondary small mt-4 mb-0 font-monospace">EOF</p>
 </div>
 {% endblock %}
