@@ -1,9 +1,12 @@
 FROM python:3.13-slim-bookworm
 
+ARG BBS_VERSION=indisponible
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    BBREW_DATA_DIR=/data
+    BBREW_DATA_DIR=/data \
+    BBS_VERSION=${BBS_VERSION}
 
 WORKDIR /app
 

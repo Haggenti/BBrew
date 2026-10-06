@@ -18,7 +18,7 @@ from decimal import Decimal
 from decimal import ROUND_CEILING, ROUND_FLOOR
 from django.utils import timezone
 
-from .forms import BackupUploadForm, BeerCategoryForm, BeerXMLUploadForm, BoilSettingsForm, BrewForm, CatalogConsumableForm, CatalogHopForm, CatalogMaltForm, CatalogOtherForm, CatalogYeastForm, CatalogForm, EquipmentSettingsForm, FermentationStepForm, HopForm, MaltForm, MashGraphSettingsForm, MashStepForm, OtherForm, RecipeCategoryForm, RecipeEfficiencyForm, RecipeForm, RecipeNameForm, RecipeNotesForm, RecipeTastingForm, ScaleForm, ShoppingItemForm, YeastForm
+from .forms import BackupUploadForm, BeerCategoryForm, BeerXMLUploadForm, BoilSettingsForm, BrewForm, CatalogConsumableForm, CatalogHopForm, CatalogMaltForm, CatalogOtherForm, CatalogYeastForm, CatalogForm, EquipmentSettingsForm, FermentationStepForm, HopForm, IngredientQuantityAdjustmentForm, MaltForm, MashGraphSettingsForm, MashStepForm, OtherForm, RecipeBrewingSettingsForm, RecipeCategoryForm, RecipeEfficiencyForm, RecipeForm, RecipeNameForm, RecipeNotesForm, RecipeTastingForm, ScaleForm, ShoppingItemForm, YeastForm
 from .models import ActivityEvent, BeerCategory, Brew, EquipmentSettings, FermentationStep, Ingredient, IngredientCatalog, MashStep, Recipe, RecipeVersion, ShoppingItem
 from .signals import log_activity, save_version, suspend_versioning
 from .versioning import describe_version_change
@@ -78,7 +78,7 @@ def dashboard(request):
 
 def about(request):
     return render(request, "recipes/about.html", {
-        "version": settings.BBS_VERSION,
+        "version": settings.BBS_VERSION[:7],
         "repository_url": settings.BBS_REPOSITORY_URL,
     })
 
@@ -1430,7 +1430,7 @@ def recipe_detail(request, pk, edit_forms=None):
                 )
             ],
             "category_form": category_form,
-            "efficiency_form": RecipeEfficiencyForm(instance=recipe),
+            "brewing_settings_form": RecipeBrewingSettingsForm(instance=recipe),
             "notes_form": RecipeNotesForm(instance=recipe),
             "scale_form": ScaleForm(initial={"batch_size_l": recipe.batch_size_l}),
             "malt_form": MaltForm(cost_tracking_enabled=cost_tracking_enabled),
@@ -1832,6 +1832,18 @@ def boil_settings_update(request, pk):
     return redirect("recipes:detail", pk=recipe.pk)
 
 
+@require_POST
+def recipe_brewing_settings_update(request, pk):
+    recipe = get_object_or_404(Recipe, pk=pk)
+    form = RecipeBrewingSettingsForm(request.POST, instance=recipe)
+    if form.is_valid():
+        form.save()
+        messages.success(request, "Les paramètres de brassage ont été mis à jour.")
+    else:
+        messages.error(request, "Vérifiez la durée d’ébullition et l’efficacité saisies.")
+    return redirect("recipes:detail", pk=recipe.pk)
+
+
 def recipe_efficiency_update(request, pk):
     recipe = get_object_or_404(Recipe, pk=pk)
     form = RecipeEfficiencyForm(request.POST or None, instance=recipe)
@@ -2101,6 +2113,39 @@ def ingredient_create(request, pk):
         ingredient.save()
         messages.success(request, f"{ingredient.name} a été ajouté à la recette.")
     return redirect("recipes:detail", pk=recipe.pk)
+
+
+@require_POST
+def ingredient_quantity_update(request, pk):
+    ingredient = get_object_or_404(Ingredient, pk=pk)
+    form = IngredientQuantityAdjustmentForm(request.POST)
+    if form.is_valid():
+        quantity_delta = form.cleaned_data["quantity_delta"]
+        if ingredient.kind != Ingredient.Kind.OTHER and quantity_delta != quantity_delta.to_integral_value():
+            messages.error(request, "La quantité doit être un nombre entier pour cet ingrédient.")
+        else:
+            quantity = ingredient.amount_g + quantity_delta
+            if quantity < 0:
+                messages.error(request, "La quantité ne peut pas devenir négative.")
+            elif quantity > Decimal("9999999.9"):
+                messages.error(request, "La quantité dépasse la valeur maximale autorisée.")
+            else:
+                ingredient.amount_g = quantity
+                ingredient.save(update_fields=["amount_g"])
+                unit = {
+                    Ingredient.Kind.MALT: "g",
+                    Ingredient.Kind.HOP: "g",
+                    Ingredient.Kind.YEAST: "paquet(s)",
+                    Ingredient.Kind.OTHER: "unité(s)",
+                }[ingredient.kind]
+                action = "ajoutée à" if quantity_delta > 0 else "retirée de"
+                messages.success(
+                    request,
+                    f"Quantité de {abs(quantity_delta):g} {unit} {action} {ingredient.name}.",
+                )
+    else:
+        messages.error(request, form.errors.get("quantity_delta", ["La quantité indiquée est invalide."])[0])
+    return redirect("recipes:detail", pk=ingredient.recipe_id)
 
 
 def ingredient_edit(request, pk):

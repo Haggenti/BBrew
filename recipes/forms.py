@@ -412,6 +412,16 @@ class RecipeEfficiencyForm(StyledModelForm):
         widgets = {"efficiency": forms.NumberInput(attrs={"min": "1", "max": "100", "step": "0.1"})}
 
 
+class RecipeBrewingSettingsForm(StyledModelForm):
+    class Meta:
+        model = Recipe
+        fields = ["boil_time_min", "efficiency"]
+        widgets = {
+            "boil_time_min": forms.NumberInput(attrs={"min": "1", "max": "240", "step": "1"}),
+            "efficiency": forms.NumberInput(attrs={"min": "1", "max": "100", "step": "0.1"}),
+        }
+
+
 class RecipeNameForm(StyledModelForm):
     class Meta:
         model = Recipe
@@ -483,6 +493,21 @@ class IngredientForm(StyledModelForm):
             "boil_minutes": forms.NumberInput(attrs={"min": "0"}),
             "attenuation": forms.NumberInput(attrs={"step": "1", "min": "0", "max": "100"}),
         }
+
+
+class IngredientQuantityAdjustmentForm(forms.Form):
+    quantity_delta = forms.DecimalField(
+        label="Quantité à ajouter ou retirer",
+        max_digits=8,
+        decimal_places=1,
+        widget=forms.NumberInput(attrs={"class": "form-control", "step": "1"}),
+    )
+
+    def clean_quantity_delta(self):
+        quantity_delta = self.cleaned_data["quantity_delta"]
+        if quantity_delta == 0:
+            raise forms.ValidationError("Indiquez une quantité différente de zéro.")
+        return quantity_delta
 
 
 class CatalogIngredientForm(StyledModelForm):

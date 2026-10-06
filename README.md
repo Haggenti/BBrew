@@ -43,9 +43,9 @@ deactivate
   les fiches manquantes.
 - **Stock** : gérer les malts, houblons, levures, ingrédients divers et
   consommables comme les capsules.
-- **Coûts** : activer la gestion dans les paramètres puis renseigner le coût
-  estimé de la quantité utilisée pour chaque ingrédient d’une recette. Les coûts
-  inconnus restent vides et sont exclus du total, indiqué comme partiel.
+- **Coûts** : renseigner le coût unitaire sur les fiches de stock. La fiche
+  recette estime ensuite le coût de chaque ingrédient selon sa quantité et
+  affiche les totaux par catégorie ainsi que le total estimé.
 - **Brassins** : chaque brassin reçoit une référence auto-incrémentée.
   Le calendrier indique les brassages et les embouteillages, avec un accès
   à la fiche correspondante.
@@ -119,8 +119,9 @@ collectés dans l'image.
   conteneur. Il est exclu de Git ; sauvegardez-le régulièrement, ainsi que les
   sauvegardes générées dans BBS, vers un autre emplacement.
 - Pour mettre à jour : sauvegardez les données, mettez le code à jour, puis lancez
-  `git pull` puis `docker compose up --build`. Les migrations sont exécutées au
-  démarrage.
+  `git pull`, `set -x BBS_VERSION (git rev-parse HEAD)` et
+  `docker compose up --build` dans Fish. Les migrations sont exécutées au
+  démarrage et l'image reçoit le hash du commit déployé.
 - Pour arrêter : `docker compose down`. Ce répertoire reste en place lors de la
   suppression ou de la reconstruction du conteneur ; sauvegardez-le avant toute
   opération de nettoyage manuelle.
@@ -134,14 +135,23 @@ d'environnement :
 set -x DJANGO_SECRET_KEY "une-cle-secrete"
 set -x DJANGO_DEBUG 0
 set -x DJANGO_ALLOWED_HOSTS "localhost,127.0.0.1"
-set -x BBS_VERSION "1.0.0"
 ```
 
 En développement, les valeurs par défaut permettent de lancer l'application
 sans configuration supplémentaire. Pour une mise en production, définissez
 au minimum une clé secrète personnalisée, désactivez `DEBUG` et renseignez
-les hôtes autorisés. `BBS_VERSION` est facultative ; elle définit la version
-affichée dans la page « À propos » (par défaut : « Développement »).
+les hôtes autorisés. La version affichée dans « À propos » est le hash court
+(7 caractères) du commit Git courant. Dans un clone Git, elle est détectée automatiquement.
+Pour construire l'image Docker (où `.git` n'est pas inclus), renseignez le hash
+au moment de la construction :
+
+```fish
+set -x BBS_VERSION (git rev-parse HEAD)
+docker compose up --build
+```
+
+Consultez [changelog.md](./changelog.md) pour l'historique des évolutions ;
+ajoutez-y une entrée à chaque évolution livrée.
 
 ## Tests
 

@@ -1,0 +1,17 @@
+<span class="d-flex align-items-center gap-2">
+  <button class="btn btn-sm py-0 px-1 btn-outline-success" type="button" data-bs-toggle="collapse" data-bs-target="#adjust-ingredient-{{ ingredient.pk }}" aria-label="Modifier la quantité de {{ ingredient.name }}" title="Ajouter ou retirer une quantité">
+    <i class="bi bi-plus-slash-minus" aria-hidden="true"></i>
+  </button>
+  <span class="ingredient-display">
+    {% if ingredient.kind == "yeast" %}{{ ingredient.amount_g|floatformat:"0" }} paquet{{ ingredient.amount_g|pluralize:"s" }}{% elif ingredient.kind == "other" %}{{ ingredient.amount_g|floatformat:"-1" }}{% else %}{{ ingredient.amount_g|floatformat:"-1" }} g{% endif %}
+  </span>
+</span>
+<form id="adjust-ingredient-{{ ingredient.pk }}" class="collapse mt-2" method="post" action="{% url 'recipes:ingredient_quantity_update' ingredient.pk %}">
+  {% csrf_token %}
+  <div class="input-group input-group-sm">
+    <input class="form-control" type="number" name="quantity_delta" step="{% if ingredient.kind == 'other' %}0.1{% else %}1{% endif %}" placeholder="{% if ingredient.kind == 'yeast' %}+/- paquets{% elif ingredient.kind == 'other' %}+/- quantité{% else %}+/- g{% endif %}" aria-label="Quantité à ajouter ou retirer pour {{ ingredient.name }}" required>
+    <button class="btn btn-success" type="submit" aria-label="Valider la quantité de {{ ingredient.name }}" title="Valider">
+      <i class="bi bi-check-lg" aria-hidden="true"></i>
+    </button>
+  </div>
+</form>

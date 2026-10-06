@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.contrib.sessions.models import Session
+from django.conf import settings
 from django.db import connection
 from django.test import TestCase, override_settings
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -299,7 +300,8 @@ class RecipeWorkflowTests(TestCase):
         self.assertContains(response, "BBS des brasseurs")
         self.assertContains(response, "CONNECT")
         self.assertContains(response, 'href="/a-propos/"')
-        self.assertContains(response, "VERSION Développement")
+        self.assertEqual(response.context["version"], settings.BBS_VERSION[:7])
+        self.assertContains(response, f"VERSION {settings.BBS_VERSION[:7]}")
         self.assertContains(
             response,
             'href="https://github.com/Haggenti/BBrew"',
@@ -559,6 +561,33 @@ class RecipeWorkflowTests(TestCase):
         )
         self.assertRedirects(response, f"/recettes/{recipe.pk}/")
         recipe.refresh_from_db()
+        self.assertEqual(recipe.efficiency, Decimal("82.50"))
+
+    def test_recipe_brewing_settings_modal_updates_boil_time_and_efficiency(self):
+        recipe = Recipe.objects.create(
+            name="Réglages brassage",
+            boil_time_min=60,
+            efficiency=75,
+        )
+
+        response = self.client.get(f"/recettes/{recipe.pk}/")
+
+        self.assertContains(response, 'id="brewing-settings-modal"')
+        self.assertContains(response, "Ajuster le volume")
+        self.assertContains(response, 'data-bs-target="#brewing-settings-modal"')
+        characteristics = response.content.decode().split("Caractéristiques", 1)[1].split("</section>", 1)[0]
+        self.assertIn("Volume de la recette", characteristics)
+        self.assertNotIn("data-inline-setting", characteristics)
+        self.assertNotIn('name="action" value="volume_only"', characteristics)
+
+        response = self.client.post(
+            f"/recettes/{recipe.pk}/parametres-brassage/",
+            {"boil_time_min": "75", "efficiency": "82.5"},
+        )
+
+        self.assertRedirects(response, f"/recettes/{recipe.pk}/")
+        recipe.refresh_from_db()
+        self.assertEqual(recipe.boil_time_min, 75)
         self.assertEqual(recipe.efficiency, Decimal("82.50"))
 
     def test_bjcp_categories_are_available_and_manageable(self):
@@ -1343,8 +1372,9 @@ class RecipeWorkflowTests(TestCase):
         self.assertContains(response, 'data-sort-types="number,text')
         self.assertContains(response, "recipe-sort:")
         self.assertContains(response, "window.localStorage.setItem")
-        self.assertContains(response, 'quantityCell.addEventListener("dblclick"')
-        self.assertContains(response, 'input.form?.requestSubmit()')
+        self.assertContains(response, 'data-bs-target="#adjust-ingredient-')
+        self.assertContains(response, 'name="quantity_delta"')
+        self.assertNotContains(response, 'quantityCell.addEventListener("dblclick"')
         self.assertContains(response, "recipe-scroll:")
         self.assertContains(response, "window.scrollTo(0, Number(savedScroll))")
         self.assertNotContains(response, 'id="add-malt"')
@@ -1373,6 +1403,76 @@ class RecipeWorkflowTests(TestCase):
         response = self.client.post(f"/ingredients/{ingredient.pk}/supprimer/")
         self.assertRedirects(response, f"/recettes/{recipe.pk}/")
         self.assertFalse(Ingredient.objects.filter(pk=ingredient.pk).exists())
+
+    def test_ingredient_quantity_can_be_adjusted_from_recipe_detail(self):
+        recipe = Recipe.objects.create(name="Quantités ajustables")
+        ingredients = [
+            (Ingredient.Kind.MALT, Decimal("1000")),
+            (Ingredient.Kind.HOP, Decimal("25")),
+            (Ingredient.Kind.YEAST, Decimal("2")),
+            (Ingredient.Kind.OTHER, Decimal("10.5")),
+        ]
+        saved_ingredients = []
+        for kind, amount in ingredients:
+            saved_ingredients.append(
+                Ingredient.objects.create(
+                    recipe=recipe,
+                    name=f"Ingrédient {kind}",
+                    kind=kind,
+                    amount_g=amount,
+                )
+            )
+
+        response = self.client.get(f"/recettes/{recipe.pk}/")
+        for ingredient in saved_ingredients:
+            self.assertContains(
+                response,
+                f'id="adjust-ingredient-{ingredient.pk}"',
+            )
+            self.assertContains(
+                response,
+                f'action="/ingredients/{ingredient.pk}/quantite/"',
+            )
+
+        malt = saved_ingredients[0]
+        response = self.client.post(
+            f"/ingredients/{malt.pk}/quantite/",
+            {"quantity_delta": "250"},
+        )
+        self.assertRedirects(response, f"/recettes/{recipe.pk}/")
+        malt.refresh_from_db()
+        self.assertEqual(malt.amount_g, Decimal("1250.0"))
+
+        self.client.post(
+            f"/ingredients/{malt.pk}/quantite/",
+            {"quantity_delta": "-500"},
+        )
+        malt.refresh_from_db()
+        self.assertEqual(malt.amount_g, Decimal("750.0"))
+
+        self.client.post(
+            f"/ingredients/{malt.pk}/quantite/",
+            {"quantity_delta": "-1000"},
+            follow=True,
+        )
+        malt.refresh_from_db()
+        self.assertEqual(malt.amount_g, Decimal("750.0"))
+
+        self.client.post(
+            f"/ingredients/{malt.pk}/quantite/",
+            {"quantity_delta": "1.5"},
+            follow=True,
+        )
+        malt.refresh_from_db()
+        self.assertEqual(malt.amount_g, Decimal("750.0"))
+
+        other = saved_ingredients[-1]
+        self.client.post(
+            f"/ingredients/{other.pk}/quantite/",
+            {"quantity_delta": "0.5"},
+        )
+        other.refresh_from_db()
+        self.assertEqual(other.amount_g, Decimal("11.0"))
 
     def test_invalid_ingredient_edit_stays_inline_on_recipe_detail(self):
         recipe = Recipe.objects.create(name="Invalid edit")
@@ -2337,8 +2437,11 @@ class RecipeWorkflowTests(TestCase):
             amount_g=5000,
         )
         detail_response = self.client.get(f"/recettes/{recipe.pk}/")
-        self.assertContains(detail_response, 'title="Double-cliquez pour modifier">20 L</strong>')
+        self.assertContains(detail_response, '<strong class="fs-4">20 L</strong>')
         self.assertContains(detail_response, 'name="batch_size_l"')
+        characteristics = detail_response.content.decode().split("Caractéristiques", 1)[1].split("</section>", 1)[0]
+        self.assertNotIn("data-inline-setting", characteristics)
+        self.assertNotIn("Double-cliquez pour modifier", characteristics)
 
         response = self.client.post(
             f"/recettes/{recipe.pk}/scale/",
