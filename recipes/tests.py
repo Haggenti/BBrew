@@ -31,7 +31,7 @@ from .calculations import (
 from .forms import ADDITION_CHOICES, MALT_ADDITION_CHOICES, BrewForm, CatalogForm, CatalogOtherForm, CatalogYeastForm, HopForm, MaltForm, MashStepForm, OtherForm, YeastForm
 from .beerxml import import_recipe
 from .backup import validate_backup
-from .models import BeerCategory, Brew, EquipmentSettings, FermentationStep, Ingredient, IngredientCatalog, MashStep, Recipe, RecipeVersion, ShoppingItem
+from .models import ActivityEvent, BeerCategory, Brew, EquipmentSettings, FermentationStep, Ingredient, IngredientCatalog, MashStep, Recipe, RecipeVersion, ShoppingItem
 from .templatetags.recipe_formatting import compact_number
 
 
@@ -517,6 +517,10 @@ class RecipeWorkflowTests(TestCase):
         self.assertContains(response, "IPA")
         self.assertContains(response, "Styles compatibles avec la recette")
         indicators = response.context["style_indicators"]
+        alcohol_indicator = next(item for item in indicators if item["label"] == "Alcool")
+        self.assertEqual(alcohol_indicator["precision"], 1)
+        self.assertContains(response, "ABV estimé")
+        self.assertContains(response, 'toFixed(1).replace(".", ",")')
         self.assertTrue(0 < indicators[0]["position"] < 100)
         self.assertLess(indicators[0]["scale_minimum"], indicators[0]["minimum"])
         self.assertGreater(indicators[0]["scale_maximum"], indicators[0]["maximum"])
@@ -622,86 +626,126 @@ class RecipeWorkflowTests(TestCase):
         self.assertEqual(settings.bag_weight_g, Decimal("1250.0"))
         self.assertTrue(settings.cost_management_enabled)
 
-    def test_recipe_cost_estimate_handles_unknown_costs_and_updates(self):
-        equipment = EquipmentSettings.objects.create(cost_management_enabled=True)
-        recipe = Recipe.objects.create(name="Coût Ale", batch_size_l=20)
-        known = Ingredient.objects.create(
+    def test_activity_log_records_model_creation_updates_and_deletions(self):
+        recipe = Recipe.objects.create(name="Journal Ale")
+        self.assertTrue(
+            ActivityEvent.objects.filter(
+                event_type=ActivityEvent.EventType.CREATE,
+                description="Création — recette : Journal Ale",
+            ).exists()
+        )
+
+        recipe.name = "Journal IPA"
+        recipe.save(update_fields=["name"])
+        self.assertTrue(
+            ActivityEvent.objects.filter(
+                event_type=ActivityEvent.EventType.UPDATE,
+                description="Modification — recette : Journal IPA",
+            ).exists()
+        )
+
+        response = self.client.get("/parametres/journal/?q=Journal+IPA")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Modification — recette : Journal IPA")
+        self.assertNotContains(response, "Création — recette : Journal Ale")
+        self.assertContains(self.client.get("/parametres/"), "Ouvrir le journal")
+
+        recipe.delete()
+        self.assertTrue(
+            ActivityEvent.objects.filter(
+                event_type=ActivityEvent.EventType.DELETE,
+                description="Suppression — recette : Journal IPA",
+            ).exists()
+        )
+
+    def test_activity_log_can_be_cleared(self):
+        Recipe.objects.create(name="Journal à vider")
+        self.assertTrue(ActivityEvent.objects.exists())
+
+        response = self.client.post("/parametres/journal/vider/")
+
+        self.assertRedirects(response, "/parametres/journal/")
+        self.assertFalse(ActivityEvent.objects.exists())
+
+    def test_activity_log_records_shopping_brew_relationship_changes(self):
+        brew = Brew.objects.create(recipe_name="Brassin lié")
+        item = ShoppingItem.objects.create(name="Houblon à acheter")
+        item.source_brews.add(brew)
+
+        self.assertTrue(
+            ActivityEvent.objects.filter(
+                event_type=ActivityEvent.EventType.UPDATE,
+                description__contains="Brassins associés",
+            ).exists()
+        )
+
+    def test_recipe_cost_estimate_uses_unit_costs_from_stock(self):
+        EquipmentSettings.objects.create(cost_management_enabled=True)
+        recipe = Recipe.objects.create(name="Coût stock", batch_size_l=20)
+        ingredients = [
+            (Ingredient.Kind.MALT, 3000, Decimal("2.0000"), Decimal("99.00"), Decimal("6.00")),
+            (Ingredient.Kind.HOP, 20, Decimal("0.0500"), Decimal("99.00"), Decimal("1.00")),
+            (Ingredient.Kind.YEAST, 2, Decimal("3.0000"), Decimal("99.00"), Decimal("6.00")),
+            (Ingredient.Kind.OTHER, 3, Decimal("4.0000"), Decimal("99.00"), Decimal("12.00")),
+        ]
+        for index, (kind, quantity, unit_cost, legacy_cost, _) in enumerate(ingredients):
+            catalog = IngredientCatalog.objects.create(
+                name=f"Ingrédient {index}",
+                kind=kind,
+                unit_cost=unit_cost,
+            )
+            Ingredient.objects.create(
+                recipe=recipe,
+                catalog=catalog,
+                name=catalog.name,
+                kind=kind,
+                amount_g=quantity,
+                cost_total=legacy_cost,
+            )
+        unpriced_malt = IngredientCatalog.objects.create(
+            name="Malt sans prix",
+            kind=IngredientCatalog.Kind.MALT,
+        )
+        Ingredient.objects.create(
             recipe=recipe,
-            name="Malt connu",
-            kind=Ingredient.Kind.MALT,
-            amount_g=3000,
-            cost_total=Decimal("8.50"),
-        )
-        unknown = Ingredient.objects.create(
-            recipe=recipe,
-            name="Houblon ancien",
-            kind=Ingredient.Kind.HOP,
-            amount_g=50,
-        )
-
-        response = self.client.get(f"/recettes/{recipe.pk}/")
-
-        self.assertEqual(response.context["estimated_recipe_cost"], Decimal("8.50"))
-        self.assertEqual(response.context["estimated_cost_per_liter"], Decimal("0.425"))
-        self.assertEqual(response.context["known_cost_count"], 1)
-        self.assertEqual(response.context["ingredient_count"], 2)
-        self.assertContains(response, "Estimation partielle : 1 coût renseigné sur 2 ingrédients")
-        self.assertContains(response, 'id="inventory-cost"')
-
-        catalog = IngredientCatalog.objects.create(
-            name="Cascade",
-            kind=IngredientCatalog.Kind.HOP,
-            quantity_available=100,
-        )
-        add_hop_data = {
-            "kind": Ingredient.Kind.HOP,
-            "catalog": catalog.pk,
-            "amount_g": "30",
-            "addition": "Dry hop",
-            "boil_minutes": "60",
-            "cost_total": "1.25",
-        }
-        add_hop_form = HopForm(add_hop_data, cost_tracking_enabled=True)
-        self.assertTrue(add_hop_form.is_valid(), add_hop_form.errors)
-        self.client.post(
-            f"/recettes/{recipe.pk}/ingredients/ajouter/",
-            add_hop_data,
-        )
-        added_hop = Ingredient.objects.get(recipe=recipe, catalog=catalog)
-        self.assertEqual(added_hop.cost_total, Decimal("1.25"))
-
-        response = self.client.post(
-            f"/ingredients/{unknown.pk}/cout/",
-            {"cost_total": "2.50"},
-        )
-        self.assertRedirects(response, f"/recettes/{recipe.pk}/")
-        unknown.refresh_from_db()
-        self.assertEqual(unknown.cost_total, Decimal("2.50"))
-
-        self.client.post(f"/ingredients/{known.pk}/cout/", {"cost_total": ""})
-        known.refresh_from_db()
-        self.assertIsNone(known.cost_total)
-        self.assertTrue(equipment.cost_management_enabled)
-
-    def test_recipe_cost_entry_is_rejected_when_management_is_disabled(self):
-        recipe = Recipe.objects.create(name="Sans coût")
-        ingredient = Ingredient.objects.create(
-            recipe=recipe,
-            name="Malt",
+            catalog=unpriced_malt,
+            name=unpriced_malt.name,
             kind=Ingredient.Kind.MALT,
             amount_g=1000,
         )
 
-        response = self.client.post(
-            f"/ingredients/{ingredient.pk}/cout/",
-            {"cost_total": "3.00"},
-            follow=True,
-        )
+        response = self.client.get(f"/recettes/{recipe.pk}/")
 
-        self.assertRedirects(response, f"/recettes/{recipe.pk}/")
-        ingredient.refresh_from_db()
-        self.assertIsNone(ingredient.cost_total)
-        self.assertContains(response, "Activez d’abord la gestion des coûts")
+        self.assertEqual(response.context["malt_cost_total"], Decimal("6.00"))
+        self.assertEqual(response.context["hop_cost_total"], Decimal("1.00"))
+        self.assertEqual(response.context["yeast_cost_total"], Decimal("6.00"))
+        self.assertEqual(response.context["other_cost_total"], Decimal("12.00"))
+        self.assertEqual(
+            response.context["estimated_recipe_cost"],
+            Decimal("25.00"),
+        )
+        self.assertEqual(response.context["malt_rows"][0]["stock_cost"], Decimal("6.00"))
+        self.assertIsNone(response.context["malt_rows"][1]["stock_cost"])
+        self.assertContains(response, "6,00 €")
+        self.assertContains(response, "1,00 €")
+        self.assertContains(response, "12,00 €")
+        self.assertContains(response, "Coût total estimé des ingrédients")
+        self.assertContains(response, "25,00 €")
+        self.assertContains(
+            response,
+            '<small class="ingredient-display d-block text-secondary">6,00 €</small>',
+        )
+        self.assertNotContains(
+            response,
+            '[data-drop-zone="malt"] td:nth-child(2) > .ingredient-display.d-block',
+        )
+        self.assertContains(response, "Coût non renseigné")
+        self.assertNotContains(response, "Coût estimé des ingrédients")
+        self.assertNotContains(response, "Coût total manuel")
+        self.assertNotIn("cost_total", MaltForm().fields)
+        self.assertNotIn("cost_total", HopForm().fields)
+        self.assertNotIn("cost_total", YeastForm().fields)
+        self.assertNotIn("cost_total", OtherForm().fields)
 
     def test_brew_detail_places_planned_actual_next_to_analysis(self):
         recipe = Recipe.objects.create(name="Ale à analyser")
@@ -843,6 +887,177 @@ class RecipeWorkflowTests(TestCase):
         step.refresh_from_db()
         self.assertEqual(step.phase, "Cold crash")
 
+    def test_fermentation_graph_updates_temperature_duration_and_order(self):
+        recipe = Recipe.objects.create(name="Graphique fermentation")
+        yeast_catalog = IngredientCatalog.objects.create(
+            name="Levure de test",
+            kind=IngredientCatalog.Kind.YEAST,
+            fermentation_temperature_min_c=18,
+            fermentation_temperature_max_c=22,
+        )
+        Ingredient.objects.create(
+            recipe=recipe,
+            catalog=yeast_catalog,
+            name=yeast_catalog.name,
+            kind=Ingredient.Kind.YEAST,
+            amount_g=11.5,
+        )
+        first = FermentationStep.objects.create(
+            recipe=recipe,
+            position=1,
+            phase=FermentationStep.Phase.PRIMARY,
+            temperature_c=19,
+            duration_days=7,
+            action="Contrôler la densité",
+        )
+        second = FermentationStep.objects.create(
+            recipe=recipe,
+            position=2,
+            phase=FermentationStep.Phase.COLD_CRASH,
+            temperature_c=4,
+            duration_days=2,
+        )
+
+        detail_response = self.client.get(f"/recettes/{recipe.pk}/")
+        rendered = detail_response.content.decode()
+        self.assertEqual(
+            detail_response.context["fermentation_temperature_zones"][0]["name"],
+            "Levure de test",
+        )
+        self.assertEqual(
+            (
+                detail_response.context["fermentation_temperature_zones"][0]["min"],
+                detail_response.context["fermentation_temperature_zones"][0]["max"],
+            ),
+            (18.0, 22.0),
+        )
+        self.assertEqual(
+            detail_response.context["fermentation_temperature_zones"][0]["fill_color"],
+            "rgba(255, 235, 140, 0.4)",
+        )
+        self.assertContains(detail_response, "<th>Plage de fermentation</th>")
+        self.assertContains(detail_response, "18–22 °C")
+        self.assertContains(detail_response, "Levure de test : 18–22 °C")
+        self.assertContains(detail_response, "beforeDatasetsDraw(chart)")
+        self.assertContains(detail_response, "fermentationTemperatureZones")
+        self.assertContains(detail_response, "scales.y.getPixelForValue(0)")
+        self.assertContains(detail_response, 'ctx.setLineDash([4, 4])')
+        self.assertContains(detail_response, 'ctx.strokeStyle = "#dc3545"')
+        self.assertContains(detail_response, "chart.tooltip.setActiveElements(activeTooltipElement")
+        self.assertContains(detail_response, "chart.update(\"none\")")
+        self.assertContains(detail_response, "steps[stepIndex - 1].duration = boundedElapsed - previousStart")
+        self.assertContains(detail_response, "remainingDays = steps.slice(stepIndex).reduce")
+        self.assertContains(detail_response, "endpoint: true")
+        self.assertContains(detail_response, "steps[stepIndex].duration = Math.max(1, Math.min(dayMaximum() - previousDays, requestedElapsed - previousDays))")
+        self.assertContains(detail_response, "stepIndex + (draggedFermentationEndpoint ? 1 : 0)")
+        self.assertContains(detail_response, "déplacez le début d’un palier")
+        fermentation_section = rendered.split("Fermentation", 1)[1].split("Carbonatation", 1)[0]
+        self.assertLess(
+            fermentation_section.index("fermentation-summary-table"),
+            fermentation_section.index("fermentation-profile-chart"),
+        )
+        self.assertContains(detail_response, ".fermentation-layout { display: grid; grid-template-columns: minmax(0, max-content) minmax(0, 1fr);")
+        self.assertContains(detail_response, ".fermentation-summary-column .table-responsive { max-width: 100%; width: max-content; }")
+        self.assertContains(detail_response, ".fermentation-summary-table { max-width: 100%; width: auto; }")
+        self.assertContains(detail_response, "Math.min(40, Math.max(5, totalDays() + 5))")
+        self.assertContains(detail_response, "max: 30")
+        self.assertContains(detail_response, "min: -2")
+        self.assertContains(detail_response, "stepSize: 1, autoSkip: false")
+        self.assertContains(detail_response, "ticks: { stepSize: 1, autoSkip: false, font: { size: 9 }, padding: 2 }")
+        self.assertContains(detail_response, "Math.round(value)")
+        self.assertContains(detail_response, 'style="height: 440px"')
+        self.assertContains(detail_response, 'id="fermentation-step-modal"')
+        self.assertNotContains(detail_response, 'data-bs-target="#add-fermentation"')
+        self.assertContains(detail_response, 'form="fermentation-graph-form"')
+        self.assertContains(detail_response, 'form="mash-graph-form"')
+        summary_markup = rendered.split('id="fermentation-steps-list"', 1)[1].split("</tbody>", 1)[0]
+        self.assertNotIn('draggable="true"', summary_markup)
+        self.assertNotIn("/supprimer/", summary_markup)
+        self.assertIn('<td class="text-secondary text-nowrap">1.</td>', summary_markup)
+        self.assertContains(detail_response, "actionPoint: index + 1 < steps.length")
+        self.assertContains(detail_response, 'context.raw?.actionPoint ? "#fd7e14"')
+
+        response = self.client.post(
+            f"/recettes/{recipe.pk}/fermentation/graphique/",
+            {
+                "step_id": [str(first.pk), str(second.pk)],
+                "step_phase": ["Fermentation primaire", "Cold crash"],
+                "step_temperature": ["20", "3"],
+                "step_duration": ["6", "3"],
+                "step_action": ["Contrôler la densité", "Refroidissement"],
+            },
+        )
+
+        self.assertRedirects(response, f"/recettes/{recipe.pk}/")
+        first.refresh_from_db()
+        second.refresh_from_db()
+        self.assertEqual((first.position, first.temperature_c, first.duration_days), (1, 20, 6))
+        self.assertEqual(first.action, "Contrôler la densité")
+        self.assertEqual((second.position, second.temperature_c, second.duration_days), (2, 3, 3))
+        self.assertEqual(second.phase, FermentationStep.Phase.COLD_CRASH)
+        self.assertEqual(second.action, "Refroidissement")
+
+    def test_fermentation_graph_can_add_and_remove_steps(self):
+        recipe = Recipe.objects.create(name="Graphique vide")
+
+        response = self.client.get(f"/recettes/{recipe.pk}/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "fermentation-profile-chart")
+        self.assertContains(response, "fermentation-graph-form")
+        response = self.client.post(
+            f"/recettes/{recipe.pk}/fermentation/graphique/",
+            {
+                "step_id": ["new-1"],
+                "step_phase": ["Dry hop"],
+                "step_temperature": ["18"],
+                "step_duration": ["5"],
+                "step_action": ["Ajouter 50 g de houblon"],
+            },
+        )
+        self.assertRedirects(response, f"/recettes/{recipe.pk}/")
+        step = FermentationStep.objects.get(recipe=recipe)
+        self.assertEqual(step.phase, "Dry hop")
+        self.assertEqual(step.temperature_c, 18)
+        self.assertEqual(step.duration_days, 5)
+        self.assertEqual(step.action, "Ajouter 50 g de houblon")
+
+        self.client.post(
+            f"/recettes/{recipe.pk}/fermentation/graphique/",
+            {
+                "step_id": [],
+                "step_phase": [],
+                "step_temperature": [],
+                "step_duration": [],
+                "step_action": [],
+            },
+        )
+
+        self.assertFalse(FermentationStep.objects.filter(recipe=recipe).exists())
+
+    def test_fermentation_graph_rejects_temperature_outside_integer_range(self):
+        recipe = Recipe.objects.create(name="Température hors échelle")
+        step = FermentationStep.objects.create(
+            recipe=recipe,
+            phase=FermentationStep.Phase.PRIMARY,
+            temperature_c=20,
+            duration_days=5,
+        )
+
+        self.client.post(
+            f"/recettes/{recipe.pk}/fermentation/graphique/",
+            {
+                "step_id": [str(step.pk)],
+                "step_phase": ["Fermentation primaire"],
+                "step_temperature": ["20.5"],
+                "step_duration": ["5"],
+                "step_action": [""],
+            },
+        )
+
+        step.refresh_from_db()
+        self.assertEqual(step.temperature_c, 20)
+
     def test_fermentation_steps_can_be_reordered(self):
         recipe = Recipe.objects.create(name="Ordre fermentation")
         first = FermentationStep.objects.create(
@@ -909,6 +1124,15 @@ class RecipeWorkflowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, "recipe-chart-data")
         self.assertContains(response, "Carbonatation")
+        rendered_detail = response.content.decode()
+        settings_position = rendered_detail.index("Paramètres de brassage")
+        notes_position = rendered_detail.index(">Notes</h2>")
+        self.assertLess(settings_position, notes_position)
+        self.assertIn(
+            '<div class="col-12 col-lg-4">\n    <section class="card card-body h-100 border-secondary-subtle">',
+            rendered_detail,
+        )
+        self.assertIn('<div class="col-12 col-lg-8">\n    <section class="card card-body h-100">', rendered_detail)
         self.assertContains(response, "carb-result")
         self.assertContains(response, 'data-bs-target="#carbonation-settings-modal"')
         self.assertContains(response, 'id="carbonation-settings-modal"')
@@ -1588,6 +1812,11 @@ class RecipeWorkflowTests(TestCase):
         pilsen = IngredientCatalog.objects.create(name="Pilsen", kind=IngredientCatalog.Kind.MALT)
         IngredientCatalog.objects.create(name="Cascade", kind=IngredientCatalog.Kind.HOP)
         IngredientCatalog.objects.create(name="US-05", kind=IngredientCatalog.Kind.YEAST)
+        IngredientCatalog.objects.create(
+            name="Malt Cara Gold",
+            kind=IngredientCatalog.Kind.MALT,
+            unit_cost=Decimal("3.9900"),
+        )
         item = ShoppingItem.objects.create(name="Pilsen", is_ordered=True, received_quantity=5000)
 
         response = self.client.get("/courses/")
@@ -1596,6 +1825,13 @@ class RecipeWorkflowTests(TestCase):
         self.assertContains(response, '"250", "250 g"')
         self.assertContains(response, "Nombre de paquets")
         self.assertContains(response, f'name="catalog_id" value="{pilsen.pk}"')
+        self.assertContains(response, 'id="receive-modal-')
+        self.assertContains(response, 'name="total_price"')
+        self.assertContains(response, "data-bs-toggle=\"modal\"")
+        self.assertContains(response, "data-unit-cost-preview")
+        stock_response = self.client.get("/catalogue/")
+        self.assertContains(stock_response, "3,99 €/kg")
+        self.assertNotContains(stock_response, "3,9900")
         item.delete()
 
     def test_shopping_item_can_be_marked_received_before_stock_integration(self):
@@ -1642,13 +1878,67 @@ class RecipeWorkflowTests(TestCase):
 
         response = self.client.post(
             f"/courses/{item.pk}/receptionner/",
-            {"quantity": "4000"},
+            {"quantity": "4000", "total_price": "8.00"},
         )
 
         self.assertRedirects(response, "/courses/")
         catalog.refresh_from_db()
         self.assertEqual(catalog.quantity_available, 5000)
+        self.assertEqual(catalog.unit_cost, Decimal("2.0000"))
         self.assertFalse(ShoppingItem.objects.filter(pk=item.pk).exists())
+
+    def test_shopping_item_receipt_calculates_cost_per_catalog_unit(self):
+        cases = [
+            (IngredientCatalog.Kind.MALT, 5000, "10.00", Decimal("2.0000")),
+            (IngredientCatalog.Kind.HOP, 100, "5.00", Decimal("0.0500")),
+            (IngredientCatalog.Kind.YEAST, 2, "12.00", Decimal("6.0000")),
+            (IngredientCatalog.Kind.OTHER, 4, "8.00", Decimal("2.0000")),
+            (IngredientCatalog.Kind.CONSUMABLE, 10, "15.00", Decimal("1.5000")),
+        ]
+        for kind, quantity, total_price, expected_unit_cost in cases:
+            with self.subTest(kind=kind):
+                item = ShoppingItem.objects.create(name=f"Article {kind}", is_ordered=True)
+                response = self.client.post(
+                    f"/courses/{item.pk}/receptionner/",
+                    {
+                        "catalog_id": "new",
+                        "new_kind": kind,
+                        "quantity": str(quantity),
+                        "total_price": total_price,
+                    },
+                )
+
+                self.assertRedirects(response, "/courses/")
+                catalog = IngredientCatalog.objects.get(name=f"Article {kind}")
+                self.assertEqual(catalog.quantity_available, quantity)
+                self.assertEqual(catalog.unit_cost, expected_unit_cost)
+                stock_events = ActivityEvent.objects.filter(
+                    model_name="fiche de stock",
+                    object_id=str(catalog.pk),
+                )
+                self.assertEqual(stock_events.count(), 1)
+                self.assertEqual(
+                    stock_events.get().event_type,
+                    ActivityEvent.EventType.CREATE,
+                )
+
+    def test_receiving_without_price_preserves_existing_catalog_unit_cost(self):
+        catalog = IngredientCatalog.objects.create(
+            name="Malt Pilsen",
+            kind=IngredientCatalog.Kind.MALT,
+            quantity_available=1000,
+            unit_cost=Decimal("2.5000"),
+        )
+        item = ShoppingItem.objects.create(name="Malt Pilsen", is_ordered=True)
+
+        self.client.post(
+            f"/courses/{item.pk}/receptionner/",
+            {"catalog_id": catalog.pk, "quantity": "2000"},
+        )
+
+        catalog.refresh_from_db()
+        self.assertEqual(catalog.quantity_available, 3000)
+        self.assertEqual(catalog.unit_cost, Decimal("2.5000"))
 
     def test_shopping_item_receive_rolls_back_stock_when_deletion_fails(self):
         catalog = IngredientCatalog.objects.create(
@@ -1755,7 +2045,10 @@ class RecipeWorkflowTests(TestCase):
         self.assertEqual(item.quantity_available, 100)
 
     def test_consumable_catalog_forms_only_expose_name_and_quantity(self):
-        self.assertEqual(set(CatalogForm(instance=IngredientCatalog(kind=IngredientCatalog.Kind.CONSUMABLE)).fields), {"name", "quantity_available"})
+        self.assertEqual(
+            set(CatalogForm(instance=IngredientCatalog(kind=IngredientCatalog.Kind.CONSUMABLE)).fields),
+            {"name", "quantity_available", "unit_cost"},
+        )
 
     def test_missing_stock_can_add_selected_items_without_duplicates(self):
         brew = Brew.objects.create(recipe_name="Brassin test")
@@ -2071,9 +2364,70 @@ class RecipeWorkflowTests(TestCase):
         self.assertIn("boil_minutes", OtherForm().fields)
         self.assertNotIn("manufacturer", OtherForm().fields)
         self.assertEqual(CatalogYeastForm().fields["manufacturer"].label, "Laboratoire")
+        self.assertIn("fermentation_temperature_min_c", CatalogYeastForm().fields)
+        self.assertIn("fermentation_temperature_max_c", CatalogYeastForm().fields)
+        self.assertNotIn(
+            "fermentation_temperature_min_c",
+            CatalogForm(instance=IngredientCatalog(kind=IngredientCatalog.Kind.MALT)).fields,
+        )
         self.assertNotIn("manufacturer", CatalogOtherForm().fields)
         self.assertEqual(list(MaltForm().fields["addition"].choices)[1:], MALT_ADDITION_CHOICES)
         self.assertEqual(list(HopForm().fields["addition"].choices)[1:], ADDITION_CHOICES)
+
+    def test_yeast_catalog_form_saves_a_valid_fermentation_temperature_range(self):
+        response = self.client.post(
+            "/catalogue/ajouter/",
+            {
+                "kind": IngredientCatalog.Kind.YEAST,
+                "name": "Levure température",
+                "manufacturer": "Laboratoire",
+                "product_id": "",
+                "form": "Sèche",
+                "quantity_available": "2",
+                "attenuation": "78",
+                "fermentation_temperature_min_c": "17",
+                "fermentation_temperature_max_c": "21",
+            },
+        )
+
+        self.assertRedirects(response, "/catalogue/")
+        yeast = IngredientCatalog.objects.get(name="Levure température")
+        self.assertEqual(yeast.fermentation_temperature_min_c, Decimal("17.0"))
+        self.assertEqual(yeast.fermentation_temperature_max_c, Decimal("21.0"))
+        self.assertContains(self.client.get("/catalogue/"), "17–21 °C")
+
+    def test_yeast_catalog_form_rejects_inverted_fermentation_range(self):
+        form = CatalogYeastForm(
+            data={
+                "name": "Levure invalide",
+                "manufacturer": "",
+                "product_id": "",
+                "form": "",
+                "quantity_available": "1",
+                "attenuation": "78",
+                "fermentation_temperature_min_c": "22",
+                "fermentation_temperature_max_c": "18",
+            }
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("fermentation_temperature_max_c", form.errors)
+
+    def test_yeast_catalog_form_requires_both_fermentation_temperature_bounds(self):
+        form = CatalogYeastForm(
+            data={
+                "name": "Levure partielle",
+                "manufacturer": "",
+                "product_id": "",
+                "form": "",
+                "quantity_available": "1",
+                "attenuation": "78",
+                "fermentation_temperature_min_c": "18",
+                "fermentation_temperature_max_c": "",
+            }
+        )
+
+        self.assertFalse(form.is_valid())
 
     def test_ingredient_edit_form_only_exposes_quantity(self):
         recipe = Recipe.objects.create(name="Quantité")
@@ -2142,6 +2496,15 @@ class RecipeWorkflowTests(TestCase):
         recipe = Recipe.objects.create(name="Profil graphique")
         first = MashStep.objects.create(recipe=recipe, position=1, name="Palier 1", temperature_c=63, duration_min=30)
         second = MashStep.objects.create(recipe=recipe, position=2, name="Palier 2", temperature_c=68, duration_min=30)
+
+        detail_response = self.client.get(f"/recettes/{recipe.pk}/")
+        self.assertContains(detail_response, "déplacez le début d’un palier")
+        self.assertContains(detail_response, "const point = { x: elapsed, y: step.temperature")
+        self.assertContains(detail_response, "steps[stepIndex - 1].duration = clampDuration")
+        self.assertContains(detail_response, "endpoint: true")
+        self.assertContains(detail_response, "step.duration = clampDuration(requestedElapsed - previousElapsed, timeMax - previousElapsed)")
+        self.assertContains(detail_response, "if (draggedMashEndpoint)")
+        self.assertContains(detail_response, "if (!draggedMashEndpoint && stepIndex > 0)")
 
         response = self.client.post(
             f"/recettes/{recipe.pk}/brassage/graphique/",

@@ -81,8 +81,22 @@
     const kindSelect = form.querySelector("[data-new-kind]");
     const quantityInput = form.querySelector("[name='quantity']");
     const quantityPreset = form.querySelector("[data-quantity-preset]");
+    const totalPriceInput = form.querySelector("[data-total-price]");
+    const unitCostPreview = form.querySelector("[data-unit-cost-preview]");
     const selectedKind = () => {
       return form.dataset.catalogKind || kindSelect?.value || "";
+    };
+    const updateUnitCostPreview = () => {
+      const kind = selectedKind();
+      const quantity = Number(quantityInput.value);
+      const totalPrice = Number(totalPriceInput.value);
+      if (!kind || !quantity || !totalPriceInput.value || !Number.isFinite(totalPrice)) {
+        unitCostPreview.textContent = "";
+        return;
+      }
+      const costPerUnit = kind === "malt" ? totalPrice * 1000 / quantity : totalPrice / quantity;
+      const unit = kind === "malt" ? "€/kg" : kind === "hop" ? "€/g" : kind === "yeast" ? "€/paquet" : "€/unité";
+      unitCostPreview.textContent = `Estimation : ${costPerUnit.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} ${unit}.`;
     };
     const updateQuantityOptions = () => {
       const kind = selectedKind();
@@ -92,11 +106,15 @@
       quantityPreset.classList.toggle("d-none", kindPresets.length === 0);
       quantityInput.placeholder = kind === "yeast" ? "Nombre de paquets" : "Quantité";
       quantityInput.setAttribute("aria-label", kind === "yeast" ? "Nombre de paquets reçus" : "Quantité reçue");
+      updateUnitCostPreview();
     };
     kindSelect?.addEventListener("change", updateQuantityOptions);
+    quantityInput.addEventListener("input", updateUnitCostPreview);
+    totalPriceInput.addEventListener("input", updateUnitCostPreview);
     quantityPreset.addEventListener("change", () => {
       if (quantityPreset.value) {
         quantityInput.value = quantityPreset.value;
+        updateUnitCostPreview();
       }
     });
     updateQuantityOptions();

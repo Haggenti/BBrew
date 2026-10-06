@@ -41,6 +41,20 @@
   .carbonation-field { width: max-content; }
   .carbonation-field label { white-space: nowrap; }
   .carbonation-field input { width: 7rem; }
+  .fermentation-layout { display: grid; grid-template-columns: minmax(0, max-content) minmax(0, 1fr); align-items: start; gap: 1rem; }
+  .fermentation-summary-column { max-width: min(35vw, 28rem); min-width: 0; }
+  .fermentation-chart-column { min-width: 0; }
+  .fermentation-summary-column .table-responsive { max-width: 100%; width: max-content; }
+  .fermentation-summary-table { max-width: 100%; width: auto; }
+  .fermentation-summary-table > tbody > tr > td { padding: .35rem .3rem; }
+  .fermentation-summary-table select,
+  .fermentation-summary-table input { font-size: .8rem; min-width: 0; width: 100%; }
+  .fermentation-summary-table .ingredient-edit.d-flex > * { flex: 1 1 0; }
+  .fermentation-chart-column canvas { width: 100% !important; }
+  @media (max-width: 991.98px) {
+    .fermentation-layout { grid-template-columns: minmax(0, 1fr); }
+    .fermentation-summary-column { max-width: 100%; }
+  }
   .mash-editor-layout { flex-wrap: nowrap; }
   .mash-table-column { flex: 0 1 auto; width: 35%; max-width: 55%; min-width: 25%; resize: horizontal; overflow: auto; }
   .mash-chart-column { flex: 1 1 auto; min-width: 0; }
@@ -57,8 +71,6 @@
   [data-sortable-table] th[data-sort-type][aria-sort="ascending"]::after { content: " ↑"; color: var(--bs-primary); }
   [data-sortable-table] th[data-sort-type][aria-sort="descending"]::after { content: " ↓"; color: var(--bs-primary); }
   [data-inline-row] > td:first-child input { width: 6rem; }
-  [data-drop-zone="malt"] td:nth-child(2) > .ingredient-display.d-block,
-  [data-drop-zone="malt"] td:nth-child(2) > .ingredient-edit.d-block { display: none !important; }
   [data-inline-row] > td:last-child > .ingredient-display button[data-inline-edit],
   [data-inline-row] button[data-inline-cancel] { display: none !important; }
   [data-inline-row].quantity-editing > td:first-child .ingredient-display { display: none !important; }
@@ -126,7 +138,7 @@
       <div class="modal-body">
         <p class="small text-secondary" id="inventory-catalog-label"></p>
         <div class="mb-3"><label class="form-label" for="inventory-amount">Quantité</label><input class="form-control" type="number" min="1" step="1" name="amount_g" id="inventory-amount" required></div>
-        {% if cost_tracking_enabled %}<div class="mb-3"><label class="form-label" for="inventory-cost">Coût de cette quantité (€)</label><input class="form-control" type="number" min="0" step="0.01" name="cost_total" id="inventory-cost" placeholder="Laisser vide si inconnu"><div class="form-text">Coût estimé de la quantité utilisée dans la recette.</div></div>{% endif %}
+
         <div class="mb-3 inventory-field inventory-field-malt"><label class="form-label" for="inventory-malt-addition">Ajout</label><select class="form-select" name="addition" id="inventory-malt-addition"><option value="">Brassage</option><option value="Ébullition">Ébullition</option></select></div>
         <div class="inventory-field inventory-field-hop">
           <div class="mb-3"><label class="form-label" for="inventory-hop-addition">Ajout</label><select class="form-select" name="addition" id="inventory-hop-addition"><option value="Ébullition">Ébullition</option><option value="Refroidissement">Refroidissement</option><option value="Dry hop">Dry hop</option></select></div>
@@ -145,16 +157,7 @@
   </div></div>
 </div>
 <div class="row g-3 mb-4 align-items-stretch">
-  <div class="col-lg-8">
-    <section class="card card-body h-100">
-      <h2 class="h5"><i class="bi bi-sticky me-2" aria-hidden="true"></i>Notes</h2>
-      <form method="post" action="{% url 'recipes:notes_update' recipe.pk %}">
-        {% csrf_token %}{{ notes_form.notes }}<button class="btn btn-outline-primary mt-3" type="submit">Enregistrer les notes</button>
-        <button class="btn btn-outline-primary mt-3 ms-2" type="button" data-bs-toggle="modal" data-bs-target="#tasting-profile-modal"><i class="bi bi-diagram-3 me-1" aria-hidden="true"></i>Profil de dégustation</button>
-      </form>
-    </section>
-  </div>
-  <div class="col-lg-4">
+  <div class="col-12 col-lg-4">
     <section class="card card-body h-100 border-secondary-subtle">
       <h2 class="h5 mb-3"><i class="bi bi-sliders me-2" aria-hidden="true"></i>Paramètres de brassage</h2>
       <div class="inline-setting mb-3" data-inline-setting>
@@ -183,6 +186,15 @@
       </div>
     </section>
   </div>
+  <div class="col-12 col-lg-8">
+    <section class="card card-body h-100">
+      <h2 class="h5"><i class="bi bi-sticky me-2" aria-hidden="true"></i>Notes</h2>
+      <form method="post" action="{% url 'recipes:notes_update' recipe.pk %}">
+        {% csrf_token %}{{ notes_form.notes }}<button class="btn btn-outline-primary mt-3" type="submit">Enregistrer les notes</button>
+        <button class="btn btn-outline-primary mt-3 ms-2" type="button" data-bs-toggle="modal" data-bs-target="#tasting-profile-modal"><i class="bi bi-diagram-3 me-1" aria-hidden="true"></i>Profil de dégustation</button>
+      </form>
+    </section>
+  </div>
 </div>
 <div class="row g-3 mb-4 align-items-stretch">
   <div class="col-lg-auto">
@@ -204,14 +216,14 @@
             <div class="d-flex justify-content-between small">
               <span class="fw-semibold">{{ indicator.label }}</span>
             </div>
-            <div class="profile-range" role="img" aria-label="{{ indicator.label }} : {{ indicator.value|compact_number }}{{ indicator.unit }}, plage du style {{ indicator.minimum|compact_number }} à {{ indicator.maximum|compact_number }}{{ indicator.unit }}" title="Plage totale : {{ indicator.scale_minimum|compact_number }} à {{ indicator.scale_maximum|compact_number }}{{ indicator.unit }} · Plage du style : {{ indicator.minimum|compact_number }} à {{ indicator.maximum|compact_number }}{{ indicator.unit }}">
+            <div class="profile-range" role="img" aria-label="{{ indicator.label }} : {{ indicator.value|compact_number:indicator.precision }}{{ indicator.unit }}, plage du style {{ indicator.minimum|compact_number:indicator.precision }} à {{ indicator.maximum|compact_number:indicator.precision }}{{ indicator.unit }}" title="Plage totale : {{ indicator.scale_minimum|compact_number:indicator.precision }} à {{ indicator.scale_maximum|compact_number:indicator.precision }}{{ indicator.unit }} · Plage du style : {{ indicator.minimum|compact_number:indicator.precision }} à {{ indicator.maximum|compact_number:indicator.precision }}{{ indicator.unit }}">
               <span class="profile-style-range" style="left: {{ indicator.style_start|unlocalize }}%; width: {{ indicator.style_width|unlocalize }}%"></span>
-              <span class="profile-value-label{% if indicator.position <= 10 %} align-start{% elif indicator.position >= 90 %} align-end{% endif %} {% if indicator.ok %}text-success{% else %}text-warning{% endif %}" style="left: {{ indicator.position|unlocalize }}%">{{ indicator.value|compact_number }}</span>
+              <span class="profile-value-label{% if indicator.position <= 10 %} align-start{% elif indicator.position >= 90 %} align-end{% endif %} {% if indicator.ok %}text-success{% else %}text-warning{% endif %}" style="left: {{ indicator.position|unlocalize }}%">{{ indicator.value|compact_number:indicator.precision }}</span>
               <span class="profile-value-cursor{% if not indicator.ok %} out-of-range{% endif %}" style="left: {{ indicator.position|unlocalize }}%"></span>
             </div>
             <div class="d-flex justify-content-between text-secondary" style="font-size: .75rem">
-              <span>{{ indicator.scale_minimum|compact_number }}{{ indicator.unit }}</span>
-              <span>{{ indicator.scale_maximum|compact_number }}{{ indicator.unit }}</span>
+              <span>{{ indicator.scale_minimum|compact_number:indicator.precision }}{{ indicator.unit }}</span>
+              <span>{{ indicator.scale_maximum|compact_number:indicator.precision }}{{ indicator.unit }}</span>
             </div>
           </div>
         {% endfor %}
@@ -221,13 +233,14 @@
   <div class="col"><div class="row g-3 align-items-stretch"><div class="col-12"><section class="card card-body"><div class="d-flex justify-content-between align-items-start gap-3 mb-3 flex-wrap"><h2 class="h5 mb-0">Caractéristiques</h2><div></div></div><div class="row g-0">
     <div class="col-sm-6 border-bottom border-end-sm p-3"><small class="text-secondary d-block">DI estimée</small><strong class="fs-4">{% if estimated_og %}{{ estimated_og }} <small>/ {{ estimated_plato }} °P</small>{% else %}—{% endif %}</strong></div>
     <div class="col-sm-6 border-bottom p-3"><small class="text-secondary d-block">DF estimée</small><strong class="fs-4">{% if estimated_final_gravity is not None %}{{ estimated_final_gravity }} <small>/ {{ estimated_final_plato }} °P</small>{% else %}—{% endif %}</strong></div>
-    <div class="col-sm-6 border-bottom border-end-sm p-3"><small class="text-secondary d-block">ABV estimé</small><strong class="fs-4">{% if estimated_abv is not None %}{{ estimated_abv }} %{% else %}—{% endif %}</strong></div>
+    <div class="col-sm-6 border-bottom border-end-sm p-3"><small class="text-secondary d-block">ABV estimé</small><strong class="fs-4">{% if estimated_abv is not None %}{{ estimated_abv|floatformat:1 }} %{% else %}—{% endif %}</strong></div>
     <div class="col-sm-6 border-bottom p-3"><small class="text-secondary d-block">Couleur</small><strong class="fs-4">{% if estimated_ebc is not None %}{{ estimated_ebc }} EBC{% else %}—{% endif %}</strong></div>
     <div class="col-sm-6 border-end-sm p-3"><small class="text-secondary d-block">IBU estimés</small><strong class="fs-4">{{ estimated_ibu|default:"—" }}</strong></div>
     <div class="col-sm-6 p-3"><small class="text-secondary d-block">Ratio IBU / DF</small><strong class="fs-4">{% if ibu_df_ratio is not None %}{{ ibu_df_ratio }}{% else %}—{% endif %}</strong>{% if ibu_df_comment %}<small class="text-secondary d-block mt-1">{{ ibu_df_comment|capfirst }}</small>{% endif %}</div>
     <div class="col-sm-6 border-top p-3"><small class="text-secondary d-block">Eau de départ nécessaire</small><strong id="water-result" class="fs-4" data-bs-toggle="tooltip" data-bs-placement="top" title="Calculée selon le volume et l’équipement">— L</strong></div>
     <div class="col-sm-6 border-top p-3"><div class="inline-setting" data-inline-setting><small class="text-secondary d-block">Volume de la recette</small><strong class="inline-setting-display fs-4 d-block" data-inline-setting-display title="Double-cliquez pour modifier">{{ recipe.batch_size_l|floatformat:"-2" }} L</strong><form class="inline-setting-edit mt-2" method="post" action="{% url 'recipes:scale' recipe.pk %}">{% csrf_token %}<input type="hidden" name="action" value="volume_only"><div class="input-group input-group-sm"><input class="form-control" type="number" name="batch_size_l" min="1" max="1000" step="0.5" value="{{ recipe.batch_size_l|unlocalize }}" aria-label="Volume de la recette en litres" required><span class="input-group-text">L</span><button class="btn btn-primary" type="submit" aria-label="Enregistrer le volume"><i class="bi bi-check-lg" aria-hidden="true"></i></button><button class="btn btn-outline-secondary" type="button" data-inline-setting-cancel aria-label="Annuler la modification"><i class="bi bi-x-lg" aria-hidden="true"></i></button></div></form></div></div>
-    {% if cost_tracking_enabled %}<div class="col-12 border-top p-3"><small class="text-secondary d-block">Coût estimé des ingrédients</small><strong class="fs-4">{% if estimated_recipe_cost is not None %}{{ estimated_recipe_cost|floatformat:2 }} €{% else %}À renseigner{% endif %}</strong>{% if estimated_cost_per_liter is not None %}<span class="text-secondary ms-2">· {{ estimated_cost_per_liter|floatformat:2 }} €/L</span>{% endif %}{% if ingredient_count %}<small class="d-block text-secondary">{% if known_cost_count == ingredient_count %}Estimation complète{% else %}Estimation partielle : {{ known_cost_count }} coût{{ known_cost_count|pluralize }} renseigné{{ known_cost_count|pluralize }} sur {{ ingredient_count }} ingrédient{{ ingredient_count|pluralize }}{% endif %}</small>{% endif %}</div>{% endif %}
+    {% if cost_tracking_enabled %}<div class="col-sm-6 border-top p-3"><small class="text-secondary d-block">Coût total estimé des ingrédients</small><strong class="fs-4">{% if estimated_recipe_cost is not None %}{{ estimated_recipe_cost|floatformat:2 }} €{% else %}À renseigner dans le stock{% endif %}</strong></div>{% endif %}
+
   </div></section></div>
   </div></div></div>
 <div class="modal fade" id="tasting-profile-modal" tabindex="-1" aria-labelledby="tasting-profile-title" aria-hidden="true">
@@ -287,15 +300,15 @@
 <div class="row g-4">
   <div class="col-12">
     <section class="card h-100 border-warning-subtle" data-drop-zone="malt">
-      <div class="card-header bg-warning-subtle d-flex justify-content-between align-items-center position-relative"><h2 class="h5 mb-0"><img src="{% static 'recipes/icons/wheat.svg' %}" width="22" height="22" class="me-2" alt="" aria-hidden="true">Malts &amp; Sucres</h2><span class="badge text-bg-warning fs-6 px-3 py-2 position-absolute top-50 start-50 translate-middle">{{ malt_total_g|floatformat:"0" }} g</span><div class="d-flex align-items-center gap-2"><span class="badge text-bg-light">{{ malt_rows|length }}</span><button class="btn btn-sm btn-warning" type="button" data-bs-toggle="offcanvas" data-bs-target="#recipe-inventory" data-inventory-kind="malt" aria-controls="recipe-inventory" aria-label="Ajouter un malt depuis le stock" title="Ajouter depuis le stock"><i class="bi bi-plus-lg" aria-hidden="true"></i></button></div></div>
+      <div class="card-header bg-warning-subtle d-flex justify-content-between align-items-center position-relative"><h2 class="h5 mb-0"><img src="{% static 'recipes/icons/wheat.svg' %}" width="22" height="22" class="me-2" alt="" aria-hidden="true">Malts &amp; Sucres</h2><span class="badge text-bg-warning fs-6 px-3 py-2 position-absolute top-50 start-50 translate-middle">{{ malt_total_g|floatformat:"0" }} g</span><div class="d-flex align-items-center gap-2"><span class="badge text-bg-light">{{ malt_rows|length }}</span>{% if cost_tracking_enabled and malt_cost_total is not None %}<span class="badge text-bg-light">{{ malt_cost_total|floatformat:2 }} €</span>{% endif %}<button class="btn btn-sm btn-warning" type="button" data-bs-toggle="offcanvas" data-bs-target="#recipe-inventory" data-inventory-kind="malt" aria-controls="recipe-inventory" aria-label="Ajouter un malt depuis le stock" title="Ajouter depuis le stock"><i class="bi bi-plus-lg" aria-hidden="true"></i></button></div></div>
       <div class="card-body">
-        {% if malt_rows %}<div class="table-responsive mb-3"><table class="table table-sm align-middle mb-0" data-sortable-table data-sort-types="number,text,text,text,text,number,number,number"><thead><tr><th>Quantité</th><th>Nom</th><th>Fournisseur</th><th>Forme</th><th>Ajout</th><th>Couleur</th><th>Rendement</th><th>Proportion</th><th></th></tr></thead><tbody>{% for row in malt_rows %}<tr data-inline-row="edit-malt-{{ row.ingredient.pk }}"{% if row.edit_form.errors %} class="has-inline-errors"{% endif %}><td><span class="ingredient-display">{{ row.ingredient.amount_g|floatformat:"0" }} g</span><span class="ingredient-edit d-none">{{ row.edit_form.amount_g }}</span></td><td><span class="ingredient-display">{% if not row.ingredient.catalog %}<span class="text-danger fw-bold me-1" title="Ingrédient absent du stock" aria-label="Ingrédient absent du stock">!</span>{% endif %}{{ row.ingredient.name }}</span><span class="ingredient-edit d-none">{{ row.edit_form.name }}</span>{% if cost_tracking_enabled %}<small class="ingredient-display d-block text-secondary">{% if row.ingredient.cost_total is not None %}{{ row.ingredient.cost_total|floatformat:2 }} €{% else %}Coût inconnu{% endif %}</small><span class="ingredient-edit d-none d-block">{{ row.edit_form.cost_total }}</span>{% endif %}</td><td><span class="ingredient-display">{{ row.ingredient.manufacturer|default:"—" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.manufacturer }}</span></td><td><span class="ingredient-display">{{ row.ingredient.form|default:"Grains" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.form }}</span></td><td><span class="ingredient-display">{{ row.ingredient.addition|default:"Brassage" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.addition }}</span></td><td><span class="ingredient-display">{{ row.ingredient.color_ebc }} EBC</span><span class="ingredient-edit d-none">{{ row.edit_form.color_ebc }}</span></td><td><span class="ingredient-display">{{ row.ingredient.potential_yield }} %</span><span class="ingredient-edit d-none">{{ row.edit_form.potential_yield }}</span></td><td><span class="ingredient-display">{{ row.proportion }} %</span><span class="ingredient-edit d-none">—</span></td><td class="text-nowrap"><span class="ingredient-display"><button class="btn btn-sm btn-outline-secondary" type="button" data-inline-edit="edit-malt-{{ row.ingredient.pk }}" aria-label="Modifier {{ row.ingredient.name }}" title="Modifier"><i class="bi bi-pencil" aria-hidden="true"></i></button></span><span class="ingredient-edit d-none"><button class="btn btn-sm btn-outline-primary" type="submit" form="edit-malt-{{ row.ingredient.pk }}" aria-label="Enregistrer {{ row.ingredient.name }}" title="Enregistrer"><i class="bi bi-check-lg" aria-hidden="true"></i></button> <button class="btn btn-sm btn-outline-secondary" type="button" data-inline-cancel="edit-malt-{{ row.ingredient.pk }}" aria-label="Annuler" title="Annuler"><i class="bi bi-x-lg" aria-hidden="true"></i></button><div class="text-danger small">{{ row.edit_form.errors }}</div></span><form class="d-inline ingredient-display" method="post" action="{% url 'recipes:ingredient_delete' row.ingredient.pk %}" onsubmit="return confirm('Supprimer cet ingrédient ?');">{% csrf_token %}<button class="btn btn-sm btn-outline-danger" type="submit" aria-label="Supprimer l'ingrédient" title="Supprimer"><i class="bi bi-dash-lg" aria-hidden="true"></i></button></form></td></tr><form id="edit-malt-{{ row.ingredient.pk }}" method="post" action="{% url 'recipes:ingredient_edit' row.ingredient.pk %}">{% csrf_token %}</form>{% endfor %}</tbody></table></div>{% else %}<p class="small text-secondary">Aucun malt ajouté.</p>{% endif %}
+        {% if malt_rows %}<div class="table-responsive mb-3"><table class="table table-sm align-middle mb-0" data-sortable-table data-sort-types="number,text,text,text,text,number,number,number"><thead><tr><th>Quantité</th><th>Nom</th><th>Fournisseur</th><th>Forme</th><th>Ajout</th><th>Couleur</th><th>Rendement</th><th>Proportion</th><th></th></tr></thead><tbody>{% for row in malt_rows %}<tr data-inline-row="edit-malt-{{ row.ingredient.pk }}"{% if row.edit_form.errors %} class="has-inline-errors"{% endif %}><td><span class="ingredient-display">{{ row.ingredient.amount_g|floatformat:"0" }} g</span><span class="ingredient-edit d-none">{{ row.edit_form.amount_g }}</span></td><td><span class="ingredient-display">{% if not row.ingredient.catalog %}<span class="text-danger fw-bold me-1" title="Ingrédient absent du stock" aria-label="Ingrédient absent du stock">!</span>{% endif %}{{ row.ingredient.name }}</span><span class="ingredient-edit d-none">{{ row.edit_form.name }}</span>{% if cost_tracking_enabled %}<small class="ingredient-display d-block text-secondary">{% if row.stock_cost is not None %}{{ row.stock_cost|floatformat:2 }} €{% else %}Coût non renseigné{% endif %}</small>{% endif %}</td><td><span class="ingredient-display">{{ row.ingredient.manufacturer|default:"—" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.manufacturer }}</span></td><td><span class="ingredient-display">{{ row.ingredient.form|default:"Grains" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.form }}</span></td><td><span class="ingredient-display">{{ row.ingredient.addition|default:"Brassage" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.addition }}</span></td><td><span class="ingredient-display">{{ row.ingredient.color_ebc }} EBC</span><span class="ingredient-edit d-none">{{ row.edit_form.color_ebc }}</span></td><td><span class="ingredient-display">{{ row.ingredient.potential_yield }} %</span><span class="ingredient-edit d-none">{{ row.edit_form.potential_yield }}</span></td><td><span class="ingredient-display">{{ row.proportion }} %</span><span class="ingredient-edit d-none">—</span></td><td class="text-nowrap"><span class="ingredient-display"><button class="btn btn-sm btn-outline-secondary" type="button" data-inline-edit="edit-malt-{{ row.ingredient.pk }}" aria-label="Modifier {{ row.ingredient.name }}" title="Modifier"><i class="bi bi-pencil" aria-hidden="true"></i></button></span><span class="ingredient-edit d-none"><button class="btn btn-sm btn-outline-primary" type="submit" form="edit-malt-{{ row.ingredient.pk }}" aria-label="Enregistrer {{ row.ingredient.name }}" title="Enregistrer"><i class="bi bi-check-lg" aria-hidden="true"></i></button> <button class="btn btn-sm btn-outline-secondary" type="button" data-inline-cancel="edit-malt-{{ row.ingredient.pk }}" aria-label="Annuler" title="Annuler"><i class="bi bi-x-lg" aria-hidden="true"></i></button><div class="text-danger small">{{ row.edit_form.errors }}</div></span><form class="d-inline ingredient-display" method="post" action="{% url 'recipes:ingredient_delete' row.ingredient.pk %}" onsubmit="return confirm('Supprimer cet ingrédient ?');">{% csrf_token %}<button class="btn btn-sm btn-outline-danger" type="submit" aria-label="Supprimer l'ingrédient" title="Supprimer"><i class="bi bi-dash-lg" aria-hidden="true"></i></button></form></td></tr><form id="edit-malt-{{ row.ingredient.pk }}" method="post" action="{% url 'recipes:ingredient_edit' row.ingredient.pk %}">{% csrf_token %}</form>{% endfor %}</tbody></table></div>{% else %}<p class="small text-secondary">Aucun malt ajouté.</p>{% endif %}
       </div>
     </section>
   </div>
   <div class="col-12">
     <section class="card h-100 border-success-subtle" data-drop-zone="hop">
-      <div class="card-header bg-success-subtle d-flex justify-content-between align-items-center"><h2 class="h5 mb-0"><img src="{% static 'recipes/icons/hops.svg' %}" width="22" height="22" class="me-2" alt="" aria-hidden="true">Houblons</h2><div class="d-flex align-items-center gap-2"><span class="badge text-bg-success">{{ hop_rows|length }}</span><button class="btn btn-sm btn-success" type="button" data-bs-toggle="offcanvas" data-bs-target="#recipe-inventory" data-inventory-kind="hop" aria-controls="recipe-inventory" aria-label="Ajouter un houblon depuis le stock" title="Ajouter depuis le stock"><i class="bi bi-plus-lg" aria-hidden="true"></i></button></div></div>
+      <div class="card-header bg-success-subtle d-flex justify-content-between align-items-center"><h2 class="h5 mb-0"><img src="{% static 'recipes/icons/hops.svg' %}" width="22" height="22" class="me-2" alt="" aria-hidden="true">Houblons</h2><div class="d-flex align-items-center gap-2"><span class="badge text-bg-success">{{ hop_rows|length }}</span>{% if cost_tracking_enabled and hop_cost_total is not None %}<span class="badge text-bg-light">{{ hop_cost_total|floatformat:2 }} €</span>{% endif %}<button class="btn btn-sm btn-success" type="button" data-bs-toggle="offcanvas" data-bs-target="#recipe-inventory" data-inventory-kind="hop" aria-controls="recipe-inventory" aria-label="Ajouter un houblon depuis le stock" title="Ajouter depuis le stock"><i class="bi bi-plus-lg" aria-hidden="true"></i></button></div></div>
       <div class="card-body">
         <style>
           .hop-table { table-layout: fixed; }
@@ -310,7 +323,7 @@
           .hop-table .hop-actions { width: 13%; }
           .hop-table input, .hop-table select { min-width: 0; width: 100%; }
         </style>
-        {% if hop_rows %}<div class="table-responsive mb-3"><table class="table table-sm align-middle mb-0 hop-table" data-sortable-table data-sort-types="number,text,text,number,text,number,number"><colgroup><col class="hop-quantity"><col class="hop-name"><col class="hop-form"><col class="hop-alpha"><col class="hop-addition"><col class="hop-time"><col class="hop-ibu"><col class="hop-actions"></colgroup><thead><tr><th>Quantité</th><th>Nom</th><th>Forme</th><th>Alpha</th><th>Ajout</th><th>Temps</th><th>IBU</th><th></th></tr></thead><tbody>{% for row in hop_rows %}<tr data-inline-row="edit-hop-{{ row.ingredient.pk }}"{% if row.edit_form.errors %} class="has-inline-errors"{% endif %}><td><span class="ingredient-display">{{ row.ingredient.amount_g }} g</span><span class="ingredient-edit d-none">{{ row.edit_form.amount_g }}</span></td><td><span class="ingredient-display">{% if not row.ingredient.catalog %}<span class="text-danger fw-bold me-1" title="Ingrédient absent du stock" aria-label="Ingrédient absent du stock">!</span>{% endif %}{{ row.ingredient.name }}</span><span class="ingredient-edit d-none">{{ row.edit_form.name }}</span></td><td><span class="ingredient-display">{{ row.ingredient.form|default:"Pellets" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.form }}</span></td><td><span class="ingredient-display">{{ row.ingredient.alpha_acid }} %</span><span class="ingredient-edit d-none">{{ row.edit_form.alpha_acid }}</span></td><td><span class="ingredient-display">{{ row.ingredient.addition|default:"Ébullition" }}{% if row.ingredient.addition == "Refroidissement" and row.ingredient.addition_temperature_c %} · {{ row.ingredient.addition_temperature_c }} °C{% endif %}</span><span class="ingredient-edit d-none">{{ row.edit_form.addition }}</span><span class="ingredient-edit d-none hop-temperature-field">{{ row.edit_form.addition_temperature_c }}</span></td><td><span class="ingredient-display">{% if row.ingredient.addition == "Ébullition" or not row.ingredient.addition %}{{ row.ingredient.boil_minutes }} min{% else %}—{% endif %}</span><span class="ingredient-edit d-none hop-duration-field">{{ row.edit_form.boil_minutes }}</span></td><td><span class="ingredient-display">{{ row.ibu }}</span><span class="ingredient-edit d-none">—</span></td><td class="text-nowrap"><span class="ingredient-display"><button class="btn btn-sm btn-outline-secondary" type="button" data-inline-edit="edit-hop-{{ row.ingredient.pk }}" aria-label="Modifier {{ row.ingredient.name }}" title="Modifier"><i class="bi bi-pencil" aria-hidden="true"></i></button></span><span class="ingredient-edit d-none"><button class="btn btn-sm btn-outline-primary" type="submit" form="edit-hop-{{ row.ingredient.pk }}" aria-label="Enregistrer {{ row.ingredient.name }}" title="Enregistrer"><i class="bi bi-check-lg" aria-hidden="true"></i></button> <button class="btn btn-sm btn-outline-secondary" type="button" data-inline-cancel="edit-hop-{{ row.ingredient.pk }}" aria-label="Annuler" title="Annuler"><i class="bi bi-x-lg" aria-hidden="true"></i></button></span><form class="d-inline ingredient-display" method="post" action="{% url 'recipes:ingredient_delete' row.ingredient.pk %}" onsubmit="return confirm('Supprimer cet ingrédient ?');">{% csrf_token %}<button class="btn btn-sm btn-outline-danger" type="submit" aria-label="Supprimer" title="Supprimer"><i class="bi bi-dash-lg" aria-hidden="true"></i></button></form></td></tr><form id="edit-hop-{{ row.ingredient.pk }}" method="post" action="{% url 'recipes:ingredient_edit' row.ingredient.pk %}">{% csrf_token %}</form>{% endfor %}</tbody></table></div>{% else %}<p class="small text-secondary">Aucun houblon ajouté.</p>{% endif %}
+        {% if hop_rows %}<div class="table-responsive mb-3"><table class="table table-sm align-middle mb-0 hop-table" data-sortable-table data-sort-types="number,text,text,number,text,number,number"><colgroup><col class="hop-quantity"><col class="hop-name"><col class="hop-form"><col class="hop-alpha"><col class="hop-addition"><col class="hop-time"><col class="hop-ibu"><col class="hop-actions"></colgroup><thead><tr><th>Quantité</th><th>Nom</th><th>Forme</th><th>Alpha</th><th>Ajout</th><th>Temps</th><th>IBU</th><th></th></tr></thead><tbody>{% for row in hop_rows %}<tr data-inline-row="edit-hop-{{ row.ingredient.pk }}"{% if row.edit_form.errors %} class="has-inline-errors"{% endif %}><td><span class="ingredient-display">{{ row.ingredient.amount_g }} g</span><span class="ingredient-edit d-none">{{ row.edit_form.amount_g }}</span></td><td><span class="ingredient-display">{% if not row.ingredient.catalog %}<span class="text-danger fw-bold me-1" title="Ingrédient absent du stock" aria-label="Ingrédient absent du stock">!</span>{% endif %}{{ row.ingredient.name }}</span><span class="ingredient-edit d-none">{{ row.edit_form.name }}</span>{% if cost_tracking_enabled %}<small class="ingredient-display d-block text-secondary">{% if row.stock_cost is not None %}{{ row.stock_cost|floatformat:2 }} €{% else %}Coût non renseigné{% endif %}</small>{% endif %}</td><td><span class="ingredient-display">{{ row.ingredient.form|default:"Pellets" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.form }}</span></td><td><span class="ingredient-display">{{ row.ingredient.alpha_acid }} %</span><span class="ingredient-edit d-none">{{ row.edit_form.alpha_acid }}</span></td><td><span class="ingredient-display">{{ row.ingredient.addition|default:"Ébullition" }}{% if row.ingredient.addition == "Refroidissement" and row.ingredient.addition_temperature_c %} · {{ row.ingredient.addition_temperature_c }} °C{% endif %}</span><span class="ingredient-edit d-none">{{ row.edit_form.addition }}</span><span class="ingredient-edit d-none hop-temperature-field">{{ row.edit_form.addition_temperature_c }}</span></td><td><span class="ingredient-display">{% if row.ingredient.addition == "Ébullition" or not row.ingredient.addition %}{{ row.ingredient.boil_minutes }} min{% else %}—{% endif %}</span><span class="ingredient-edit d-none hop-duration-field">{{ row.edit_form.boil_minutes }}</span></td><td><span class="ingredient-display">{{ row.ibu }}</span><span class="ingredient-edit d-none">—</span></td><td class="text-nowrap"><span class="ingredient-display"><button class="btn btn-sm btn-outline-secondary" type="button" data-inline-edit="edit-hop-{{ row.ingredient.pk }}" aria-label="Modifier {{ row.ingredient.name }}" title="Modifier"><i class="bi bi-pencil" aria-hidden="true"></i></button></span><span class="ingredient-edit d-none"><button class="btn btn-sm btn-outline-primary" type="submit" form="edit-hop-{{ row.ingredient.pk }}" aria-label="Enregistrer {{ row.ingredient.name }}" title="Enregistrer"><i class="bi bi-check-lg" aria-hidden="true"></i></button> <button class="btn btn-sm btn-outline-secondary" type="button" data-inline-cancel="edit-hop-{{ row.ingredient.pk }}" aria-label="Annuler" title="Annuler"><i class="bi bi-x-lg" aria-hidden="true"></i></button></span><form class="d-inline ingredient-display" method="post" action="{% url 'recipes:ingredient_delete' row.ingredient.pk %}" onsubmit="return confirm('Supprimer cet ingrédient ?');">{% csrf_token %}<button class="btn btn-sm btn-outline-danger" type="submit" aria-label="Supprimer" title="Supprimer"><i class="bi bi-dash-lg" aria-hidden="true"></i></button></form></td></tr><form id="edit-hop-{{ row.ingredient.pk }}" method="post" action="{% url 'recipes:ingredient_edit' row.ingredient.pk %}">{% csrf_token %}</form>{% endfor %}</tbody></table></div>{% else %}<p class="small text-secondary">Aucun houblon ajouté.</p>{% endif %}
         <script>
           (() => {
             const style = document.createElement("style");
@@ -343,15 +356,15 @@
   </div>
   <div class="col-12">
     <section class="card h-100 border-info-subtle" data-drop-zone="yeast">
-      <div class="card-header bg-info-subtle d-flex justify-content-between align-items-center"><h2 class="h5 mb-0"><img src="{% static 'recipes/icons/erlenmeyer.svg' %}" width="22" height="22" class="me-2" alt="" aria-hidden="true">Levures</h2><div class="d-flex align-items-center gap-2"><span class="badge text-bg-info">{{ yeast_rows|length }}</span><button class="btn btn-sm btn-info" type="button" data-bs-toggle="offcanvas" data-bs-target="#recipe-inventory" data-inventory-kind="yeast" aria-controls="recipe-inventory" aria-label="Ajouter une levure depuis le stock" title="Ajouter depuis le stock"><i class="bi bi-plus-lg" aria-hidden="true"></i></button></div></div>
+      <div class="card-header bg-info-subtle d-flex justify-content-between align-items-center"><h2 class="h5 mb-0"><img src="{% static 'recipes/icons/erlenmeyer.svg' %}" width="22" height="22" class="me-2" alt="" aria-hidden="true">Levures</h2><div class="d-flex align-items-center gap-2"><span class="badge text-bg-info">{{ yeast_rows|length }}</span>{% if cost_tracking_enabled and yeast_cost_total is not None %}<span class="badge text-bg-light">{{ yeast_cost_total|floatformat:2 }} €</span>{% endif %}<button class="btn btn-sm btn-info" type="button" data-bs-toggle="offcanvas" data-bs-target="#recipe-inventory" data-inventory-kind="yeast" aria-controls="recipe-inventory" aria-label="Ajouter une levure depuis le stock" title="Ajouter depuis le stock"><i class="bi bi-plus-lg" aria-hidden="true"></i></button></div></div>
       <div class="card-body">
-        {% if yeast_rows %}<div class="table-responsive mb-3"><table class="table table-sm align-middle mb-0" data-sortable-table data-sort-types="number,text,text,text,number,text"><thead><tr><th>Quantité</th><th>Nom</th><th>Laboratoire</th><th>Forme</th><th>Atténuation</th><th>Embouteillage</th><th></th></tr></thead><tbody>{% for row in yeast_rows %}<tr data-inline-row="edit-yeast-{{ row.ingredient.pk }}"{% if row.edit_form.errors %} class="has-inline-errors"{% endif %}><td><span class="ingredient-display">{{ row.ingredient.amount_g|floatformat:"0" }} paquet{{ row.ingredient.amount_g|pluralize:"s" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.amount_g }}</span></td><td><span class="ingredient-display">{% if not row.ingredient.catalog %}<span class="text-danger fw-bold me-1" title="Ingrédient absent du stock" aria-label="Ingrédient absent du stock">!</span>{% endif %}{{ row.ingredient.name }}</span><span class="ingredient-edit d-none">{{ row.edit_form.name }}</span></td><td><span class="ingredient-display">{{ row.ingredient.manufacturer|default:"—" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.manufacturer }}</span></td>        <td><span class="ingredient-display">{{ row.ingredient.form|default:"Sèche" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.form }}</span></td><td><span class="ingredient-display">{{ row.ingredient.attenuation }} %</span><span class="ingredient-edit d-none">{{ row.edit_form.attenuation }}</span></td><td><span class="ingredient-display">{% if row.ingredient.for_bottling %}Oui{% else %}Non{% endif %}</span><span class="ingredient-edit d-none">{{ row.edit_form.for_bottling }}</span></td><td class="text-nowrap"><span class="ingredient-display"><button class="btn btn-sm btn-outline-secondary" type="button" data-inline-edit="edit-yeast-{{ row.ingredient.pk }}" aria-label="Modifier {{ row.ingredient.name }}" title="Modifier"><i class="bi bi-pencil" aria-hidden="true"></i></button></span><span class="ingredient-edit d-none"><button class="btn btn-sm btn-outline-primary" type="submit" form="edit-yeast-{{ row.ingredient.pk }}" aria-label="Enregistrer {{ row.ingredient.name }}" title="Enregistrer"><i class="bi bi-check-lg" aria-hidden="true"></i></button> <button class="btn btn-sm btn-outline-secondary" type="button" data-inline-cancel="edit-yeast-{{ row.ingredient.pk }}" aria-label="Annuler" title="Annuler"><i class="bi bi-x-lg" aria-hidden="true"></i></button></span><form class="d-inline ingredient-display" method="post" action="{% url 'recipes:ingredient_delete' row.ingredient.pk %}" onsubmit="return confirm('Supprimer cet ingrédient ?');">{% csrf_token %}<button class="btn btn-sm btn-outline-danger" type="submit" aria-label="Supprimer l'ingrédient" title="Supprimer"><i class="bi bi-dash-lg" aria-hidden="true"></i></button></form></td></tr><form id="edit-yeast-{{ row.ingredient.pk }}" method="post" action="{% url 'recipes:ingredient_edit' row.ingredient.pk %}">{% csrf_token %}</form>{% endfor %}</tbody></table></div>{% else %}<p class="small text-secondary">Aucune levure ajoutée.</p>{% endif %}
+        {% if yeast_rows %}<div class="table-responsive mb-3"><table class="table table-sm align-middle mb-0" data-sortable-table data-sort-types="number,text,text,text,number,text,text"><thead><tr><th>Quantité</th><th>Nom</th><th>Laboratoire</th><th>Forme</th><th>Atténuation</th><th>Plage de fermentation</th><th>Embouteillage</th><th></th></tr></thead><tbody>{% for row in yeast_rows %}<tr data-inline-row="edit-yeast-{{ row.ingredient.pk }}"{% if row.edit_form.errors %} class="has-inline-errors"{% endif %}><td><span class="ingredient-display">{{ row.ingredient.amount_g|floatformat:"0" }} paquet{{ row.ingredient.amount_g|pluralize:"s" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.amount_g }}</span></td><td><span class="ingredient-display">{% if not row.ingredient.catalog %}<span class="text-danger fw-bold me-1" title="Ingrédient absent du stock" aria-label="Ingrédient absent du stock">!</span>{% endif %}{{ row.ingredient.name }}</span><span class="ingredient-edit d-none">{{ row.edit_form.name }}</span>{% if cost_tracking_enabled %}<small class="ingredient-display d-block text-secondary">{% if row.stock_cost is not None %}{{ row.stock_cost|floatformat:2 }} €{% else %}Coût non renseigné{% endif %}</small>{% endif %}</td><td><span class="ingredient-display">{{ row.ingredient.manufacturer|default:"—" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.manufacturer }}</span></td>        <td><span class="ingredient-display">{{ row.ingredient.form|default:"Sèche" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.form }}</span></td><td><span class="ingredient-display">{{ row.ingredient.attenuation }} %</span><span class="ingredient-edit d-none">{{ row.edit_form.attenuation }}</span></td><td class="text-nowrap"><span class="ingredient-display">{% if row.ingredient.catalog.fermentation_temperature_min_c is not None and row.ingredient.catalog.fermentation_temperature_max_c is not None %}{{ row.ingredient.catalog.fermentation_temperature_min_c|floatformat:"-1" }}–{{ row.ingredient.catalog.fermentation_temperature_max_c|floatformat:"-1" }} °C{% else %}—{% endif %}</span></td><td><span class="ingredient-display">{% if row.ingredient.for_bottling %}Oui{% else %}Non{% endif %}</span><span class="ingredient-edit d-none">{{ row.edit_form.for_bottling }}</span></td><td class="text-nowrap"><span class="ingredient-display"><button class="btn btn-sm btn-outline-secondary" type="button" data-inline-edit="edit-yeast-{{ row.ingredient.pk }}" aria-label="Modifier {{ row.ingredient.name }}" title="Modifier"><i class="bi bi-pencil" aria-hidden="true"></i></button></span><span class="ingredient-edit d-none"><button class="btn btn-sm btn-outline-primary" type="submit" form="edit-yeast-{{ row.ingredient.pk }}" aria-label="Enregistrer {{ row.ingredient.name }}" title="Enregistrer"><i class="bi bi-check-lg" aria-hidden="true"></i></button> <button class="btn btn-sm btn-outline-secondary" type="button" data-inline-cancel="edit-yeast-{{ row.ingredient.pk }}" aria-label="Annuler" title="Annuler"><i class="bi bi-x-lg" aria-hidden="true"></i></button></span><form class="d-inline ingredient-display" method="post" action="{% url 'recipes:ingredient_delete' row.ingredient.pk %}" onsubmit="return confirm('Supprimer cet ingrédient ?');">{% csrf_token %}<button class="btn btn-sm btn-outline-danger" type="submit" aria-label="Supprimer l'ingrédient" title="Supprimer"><i class="bi bi-dash-lg" aria-hidden="true"></i></button></form></td></tr><form id="edit-yeast-{{ row.ingredient.pk }}" method="post" action="{% url 'recipes:ingredient_edit' row.ingredient.pk %}">{% csrf_token %}</form>{% endfor %}</tbody></table></div>{% else %}<p class="small text-secondary">Aucune levure ajoutée.</p>{% endif %}
       </div>
     </section>
   </div>
 </div>
 <section class="card border-secondary-subtle mt-4" data-drop-zone="other">
-  <div class="card-header bg-secondary-subtle d-flex justify-content-between align-items-center"><h2 class="h5 mb-0"><i class="bi bi-stars me-2" aria-hidden="true"></i>Divers</h2><div class="d-flex align-items-center gap-2"><span class="badge text-bg-secondary">{{ other_rows|length }}</span><button class="btn btn-sm btn-secondary" type="button" data-bs-toggle="offcanvas" data-bs-target="#recipe-inventory" data-inventory-kind="other" aria-controls="recipe-inventory" aria-label="Ajouter un ingrédient divers depuis le stock" title="Ajouter depuis le stock"><i class="bi bi-plus-lg" aria-hidden="true"></i></button></div></div>
+  <div class="card-header bg-secondary-subtle d-flex justify-content-between align-items-center"><h2 class="h5 mb-0"><i class="bi bi-stars me-2" aria-hidden="true"></i>Divers</h2><div class="d-flex align-items-center gap-2"><span class="badge text-bg-secondary">{{ other_rows|length }}</span>{% if cost_tracking_enabled and other_cost_total is not None %}<span class="badge text-bg-light">{{ other_cost_total|floatformat:2 }} €</span>{% endif %}<button class="btn btn-sm btn-secondary" type="button" data-bs-toggle="offcanvas" data-bs-target="#recipe-inventory" data-inventory-kind="other" aria-controls="recipe-inventory" aria-label="Ajouter un ingrédient divers depuis le stock" title="Ajouter depuis le stock"><i class="bi bi-plus-lg" aria-hidden="true"></i></button></div></div>
   <div class="card-body">
     {% if other_rows %}
       <div class="table-responsive mb-3">
@@ -361,7 +374,7 @@
             {% for row in other_rows %}
               <tr data-inline-row="edit-other-{{ row.ingredient.pk }}" data-other-ingredient-row>
                 <td><span class="ingredient-display">{{ row.ingredient.amount_g|floatformat:"1" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.amount_g }}</span></td>
-                <td><span class="ingredient-display">{% if not row.ingredient.catalog %}<span class="text-danger fw-bold me-1" title="Ingrédient absent du stock" aria-label="Ingrédient absent du stock">!</span>{% endif %}{{ row.ingredient.name }}</span><span class="ingredient-edit d-none">{{ row.edit_form.name }}</span></td>
+                <td><span class="ingredient-display">{% if not row.ingredient.catalog %}<span class="text-danger fw-bold me-1" title="Ingrédient absent du stock" aria-label="Ingrédient absent du stock">!</span>{% endif %}{{ row.ingredient.name }}</span><span class="ingredient-edit d-none">{{ row.edit_form.name }}</span>{% if cost_tracking_enabled %}<small class="ingredient-display d-block text-secondary">{% if row.stock_cost is not None %}{{ row.stock_cost|floatformat:2 }} €{% else %}Coût non renseigné{% endif %}</small>{% endif %}</td>
                 <td><span class="ingredient-display">{{ row.ingredient.form|default:"—" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.form }}</span></td>
                 <td><span class="ingredient-display">{{ row.ingredient.addition|default:"—" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.addition }}</span></td>
                 <td><span class="ingredient-display">{% if row.ingredient.addition == "Ébullition" %}{{ row.ingredient.boil_minutes }}{% else %}—{% endif %}</span><span class="ingredient-edit d-none other-boil-duration-field{% if row.ingredient.addition != 'Ébullition' %} other-boil-hidden{% endif %}">{{ row.edit_form.boil_minutes }}</span></td>
@@ -380,44 +393,11 @@
     {% else %}<p class="small text-secondary">Aucun ingrédient divers ajouté.</p>{% endif %}
   </div>
 </section>
-{% if cost_tracking_enabled %}
-<section class="card border-primary-subtle mt-4">
-  <div class="card-header bg-primary-subtle">
-    <h2 class="h5 mb-0"><i class="bi bi-currency-euro me-2" aria-hidden="true"></i>Coût estimé des ingrédients</h2>
-  </div>
-  <div class="card-body">
-    <p class="small text-secondary">Saisissez le coût de la quantité utilisée pour chaque ingrédient. Laissez vide si vous ne connaissez pas son prix ; il sera exclu du total.</p>
-    {% if cost_rows %}
-    <div class="table-responsive">
-      <table class="table table-sm align-middle mb-0">
-        <thead><tr><th>Ingrédient</th><th>Quantité</th><th>Coût saisi</th><th>Modifier le coût (€)</th></tr></thead>
-        <tbody>
-          {% for ingredient in cost_rows %}
-          <tr>
-            <td>{{ ingredient.name }} <span class="small text-secondary">· {{ ingredient.get_kind_display }}</span></td>
-            <td>{% if ingredient.kind == "yeast" %}{{ ingredient.amount_g|floatformat:"0" }} paquet{{ ingredient.amount_g|pluralize:"s" }}{% else %}{{ ingredient.amount_g|floatformat:"1" }} g{% endif %}</td>
-            <td>{% if ingredient.cost_total is not None %}{{ ingredient.cost_total|floatformat:2 }} €{% else %}<span class="text-secondary">Inconnu</span>{% endif %}</td>
-            <td>
-              <form class="d-flex gap-2" method="post" action="{% url 'recipes:ingredient_cost_update' ingredient.pk %}">
-                {% csrf_token %}
-                <label class="visually-hidden" for="ingredient-cost-{{ ingredient.pk }}">Coût de {{ ingredient.name }} en euros</label>
-                <input class="form-control form-control-sm" id="ingredient-cost-{{ ingredient.pk }}" type="number" min="0" step="0.01" name="cost_total"{% if ingredient.cost_total is not None %} value="{{ ingredient.cost_total|unlocalize }}"{% endif %} placeholder="Inconnu">
-                <button class="btn btn-sm btn-outline-primary" type="submit" aria-label="Enregistrer le coût de {{ ingredient.name }}" title="Enregistrer"><i class="bi bi-check-lg" aria-hidden="true"></i></button>
-              </form>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% else %}<p class="small text-secondary mb-0">Ajoutez des ingrédients pour renseigner leur coût.</p>{% endif %}
-  </div>
-</section>
-{% endif %}
 <hr class="my-4">
 <section class="card border-secondary-subtle">
   <div class="card-header bg-light d-flex justify-content-between align-items-center">
     <h2 class="h5 mb-0"><img src="{% static 'recipes/icons/paddles.svg' %}" width="22" height="22" class="me-2" alt="" aria-hidden="true">Paliers de brassage BIAB</h2>
+    <button class="btn btn-sm btn-primary" type="submit" form="mash-graph-form"><i class="bi bi-save me-1" aria-hidden="true"></i>Enregistrer les paliers</button>
   </div>
   <div class="card-body">
     {% if mash_steps %}
@@ -430,14 +410,13 @@
       <div class="mash-chart-column">
         <div class="border rounded bg-light-subtle p-2">
           <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
-            <div><div class="small text-secondary">Profil de température</div><div class="text-secondary" style="font-size: .75rem">Double-cliquez pour ajouter · clic droit pour supprimer · faites glisser pour modifier</div></div>
+            <div><div class="small text-secondary">Profil de température</div><div class="text-secondary" style="font-size: .75rem">Double-cliquez pour ajouter · clic droit pour supprimer · déplacez le début d’un palier pour décaler les suivants · premier point : température uniquement · dernier point : durée du dernier palier</div></div>
             <div class="d-flex gap-2"><button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#mash-zones-settings" title="Choisir les zones brassicoles" aria-label="Choisir les zones brassicoles"><i class="bi bi-layers" aria-hidden="true"></i></button><button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#mash-graph-settings" title="Réglages du graphique" aria-label="Régler les axes et le quadrillage"><i class="bi bi-sliders" aria-hidden="true"></i></button></div>
           </div>
           <div style="height: 300px"><canvas id="mash-profile-chart" aria-label="Profil de température des paliers" role="img"></canvas></div>
-          <form id="mash-graph-form" class="mt-2 text-end" method="post" action="{% url 'recipes:mash_graph_update' recipe.pk %}">
+          <form id="mash-graph-form" method="post" action="{% url 'recipes:mash_graph_update' recipe.pk %}">
             {% csrf_token %}
             <div id="mash-graph-inputs">{% for step in mash_steps %}<input type="hidden" name="step_id" value="{{ step.pk }}"><input type="hidden" name="step_name" value="{{ step.name }}"><input type="hidden" name="step_temperature" value="{{ step.temperature_c }}"><input type="hidden" name="step_duration" value="{{ step.duration_min }}">{% endfor %}</div>
-            <button class="btn btn-sm btn-primary" type="submit"><i class="bi bi-save me-1" aria-hidden="true"></i>Enregistrer les paliers</button>
           </form>
           <div class="modal fade" id="mash-graph-settings" tabindex="-1" aria-labelledby="mash-graph-settings-label" aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
@@ -482,6 +461,7 @@
     const steps = JSON.parse(document.getElementById("mash-edit-data").textContent);
     let selectedStepId = null;
     let draggedStepId = null;
+    let draggedMashEndpoint = false;
     const timeMin = {{ recipe.mash_time_min|unlocalize }};
     const timeMax = {{ recipe.mash_time_max|unlocalize }};
     const temperatureMin = {{ recipe.mash_temperature_min|unlocalize }};
@@ -506,10 +486,22 @@
     };
     const handlePoints = () => {
       let elapsed = 0;
-      return steps.map((step) => {
+      const points = steps.map((step) => {
+        const point = { x: elapsed, y: step.temperature, step_id: step.id, duration: step.duration };
         elapsed += step.duration;
-        return { x: elapsed, y: step.temperature, step_id: step.id, duration: step.duration };
+        return point;
       });
+      if (steps.length) {
+        const lastStep = steps[steps.length - 1];
+        points.push({
+          x: elapsed,
+          y: lastStep.temperature,
+          step_id: lastStep.id,
+          duration: lastStep.duration,
+          endpoint: true
+        });
+      }
+      return points;
     };
     const mashZonesPlugin = {
       id: "mashZones",
@@ -624,13 +616,21 @@
       const position = canvasPosition(event);
       const step = steps.find((item) => String(item.id) === String(draggedStepId));
       if (!step) return;
-      step.temperature = clampTemperature(chart.scales.y.getValueForPixel(position.y));
       const stepIndex = steps.indexOf(step);
-      const previousElapsed = steps.slice(0, stepIndex).reduce((total, item) => total + item.duration, 0);
-      const followingDuration = steps.slice(stepIndex + 1).reduce((total, item) => total + item.duration, 0);
-      const maxDuration = Math.max(1, timeMax - previousElapsed - followingDuration);
-      const requestedDuration = Math.round(chart.scales.x.getValueForPixel(position.x)) - previousElapsed;
-      step.duration = clampDuration(requestedDuration, maxDuration);
+      if (draggedMashEndpoint) {
+        const previousElapsed = steps.slice(0, -1).reduce((total, item) => total + item.duration, 0);
+        const requestedElapsed = Math.round(chart.scales.x.getValueForPixel(position.x));
+        step.duration = clampDuration(requestedElapsed - previousElapsed, timeMax - previousElapsed);
+      } else {
+        step.temperature = clampTemperature(chart.scales.y.getValueForPixel(position.y));
+      }
+      if (!draggedMashEndpoint && stepIndex > 0) {
+        const previousStart = steps.slice(0, stepIndex - 1).reduce((total, item) => total + item.duration, 0);
+        const remainingDuration = steps.slice(stepIndex).reduce((total, item) => total + item.duration, 0);
+        const maxPreviousDuration = Math.max(1, timeMax - previousStart - remainingDuration);
+        const requestedPreviousDuration = Math.round(chart.scales.x.getValueForPixel(position.x)) - previousStart;
+        steps[stepIndex - 1].duration = clampDuration(requestedPreviousDuration, maxPreviousDuration);
+      }
       syncGraph();
     };
     canvas.addEventListener("pointerdown", (event) => {
@@ -646,17 +646,21 @@
         }
       });
       if (nearest === null || nearestDistance > 24) return;
-      draggedStepId = chart.data.datasets[1].data[nearest].step_id;
+      const point = chart.data.datasets[1].data[nearest];
+      draggedStepId = point.step_id;
+      draggedMashEndpoint = Boolean(point.endpoint);
       selectedStepId = draggedStepId;
       canvas.setPointerCapture(event.pointerId);
     });
     canvas.addEventListener("pointermove", updateDraggedPoint);
     canvas.addEventListener("pointerup", (event) => {
       draggedStepId = null;
+      draggedMashEndpoint = false;
       canvas.releasePointerCapture(event.pointerId);
     });
     canvas.addEventListener("pointercancel", () => {
       draggedStepId = null;
+      draggedMashEndpoint = false;
     });
     canvas.addEventListener("dblclick", (event) => {
       const position = canvasPosition(event);
@@ -787,20 +791,397 @@
 <section class="card border-secondary-subtle mt-4">
   <div class="card-header bg-light d-flex justify-content-between align-items-center">
     <h2 class="h5 mb-0"><i class="bi bi-thermometer-snow me-2" aria-hidden="true"></i>Fermentation</h2>
-    <button class="btn btn-sm btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#add-fermentation" aria-label="Ajouter un palier de fermentation" title="Ajouter"><i class="bi bi-plus-lg" aria-hidden="true"></i></button>
+    <button class="btn btn-sm btn-primary" type="submit" form="fermentation-graph-form"><i class="bi bi-save me-1" aria-hidden="true"></i>Enregistrer les paliers</button>
   </div>
   <div class="card-body">
-    {% if fermentation_rows %}
-    <p class="small text-secondary"><i class="bi bi-arrows-move me-1" aria-hidden="true"></i>Glissez les phases pour modifier leur ordre.</p>
-    <div class="table-responsive mb-3"><table class="table table-sm align-middle mb-0"><thead><tr><th>#</th><th>Phase</th><th>Température</th><th>Durée</th><th>Action / commentaire</th><th></th></tr></thead><tbody id="fermentation-steps-list">
-      {% for row in fermentation_rows %}<tr draggable="true" data-step-id="{{ row.step.pk }}" data-inline-row="edit-fermentation-{{ row.step.pk }}"><td class="drag-handle text-secondary" title="Glisser pour réordonner"><i class="bi bi-grip-vertical" aria-hidden="true"></i> {{ row.step.position }}</td><td><span class="ingredient-display">{{ row.step.get_phase_display }}</span><span class="ingredient-edit d-none">{{ row.edit_form.phase }}</span></td><td><span class="ingredient-display">{{ row.step.temperature_c }} °C</span><span class="ingredient-edit d-none">{{ row.edit_form.temperature_c }}</span></td><td><span class="ingredient-display">{{ row.step.duration_days }} j</span><span class="ingredient-edit d-none">{{ row.edit_form.duration_days }}</span></td><td><span class="ingredient-display">{{ row.step.action|default:"—" }}</span><span class="ingredient-edit d-none">{{ row.edit_form.action }}</span></td><td class="text-nowrap"><span class="ingredient-display"><button class="btn btn-sm btn-outline-secondary" type="button" data-inline-edit="edit-fermentation-{{ row.step.pk }}" aria-label="Modifier le palier" title="Modifier"><i class="bi bi-pencil" aria-hidden="true"></i></button></span><span class="ingredient-edit d-none"><button class="btn btn-sm btn-outline-primary" type="submit" form="edit-fermentation-{{ row.step.pk }}" aria-label="Enregistrer" title="Enregistrer"><i class="bi bi-check-lg" aria-hidden="true"></i></button> <button class="btn btn-sm btn-outline-secondary" type="button" data-inline-cancel="edit-fermentation-{{ row.step.pk }}" aria-label="Annuler" title="Annuler"><i class="bi bi-x-lg" aria-hidden="true"></i></button></span><form class="d-inline ingredient-display" method="post" action="{% url 'recipes:fermentation_delete' row.step.pk %}" onsubmit="return confirm('Supprimer ce palier ?');">{% csrf_token %}<button class="btn btn-sm btn-outline-danger" type="submit" aria-label="Supprimer" title="Supprimer"><i class="bi bi-dash-lg" aria-hidden="true"></i></button></form></td></tr><form id="edit-fermentation-{{ row.step.pk }}" method="post" action="{% url 'recipes:fermentation_edit' row.step.pk %}">{% csrf_token %}</form>{% endfor %}
-    </tbody></table></div>
-    {% else %}<p class="text-secondary mb-3">Aucun palier de fermentation défini.</p>{% endif %}
-    <form id="add-fermentation" class="collapse border-top pt-3 mt-3" method="post" action="{% url 'recipes:fermentation_create' recipe.pk %}">
-      {% csrf_token %}<div class="row g-2 align-items-end">{% for field in fermentation_form %}<div class="col-md"><label class="form-label small" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div>{% endfor %}<div class="col-md-auto"><button class="btn btn-primary" type="submit" aria-label="Ajouter" title="Ajouter"><i class="bi bi-plus-lg" aria-hidden="true"></i></button></div></div>
-    </form>
+    <div class="fermentation-layout">
+      <div class="fermentation-summary-column">
+        {% if fermentation_rows %}
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0 fermentation-summary-table">
+            <tbody id="fermentation-steps-list">
+              {% for row in fermentation_rows %}
+              <tr data-inline-row="edit-fermentation-{{ row.step.pk }}">
+                <td class="text-secondary text-nowrap">{{ row.step.position }}.</td>
+                <td>
+                  <div class="ingredient-display fw-semibold">{{ row.step.get_phase_display }}</div>
+                  <div class="ingredient-edit d-none">{{ row.edit_form.phase }}</div>
+                  <div class="ingredient-display small text-secondary">{{ row.step.temperature_c }} °C · {{ row.step.duration_days }} j</div>
+                  <div class="ingredient-edit d-none d-flex gap-1">{{ row.edit_form.temperature_c }}{{ row.edit_form.duration_days }}</div>
+                  <div class="ingredient-display small text-secondary text-break">{{ row.step.action|default:"" }}</div>
+                  <div class="ingredient-edit d-none">{{ row.edit_form.action }}</div>
+                </td>
+                <td class="text-nowrap">
+                  <span class="ingredient-display"><button class="btn btn-sm btn-outline-secondary" type="button" data-inline-edit="edit-fermentation-{{ row.step.pk }}" aria-label="Modifier le palier" title="Modifier"><i class="bi bi-pencil" aria-hidden="true"></i></button></span>
+                  <span class="ingredient-edit d-none"><button class="btn btn-sm btn-outline-primary" type="submit" form="edit-fermentation-{{ row.step.pk }}" aria-label="Enregistrer" title="Enregistrer"><i class="bi bi-check-lg" aria-hidden="true"></i></button> <button class="btn btn-sm btn-outline-secondary" type="button" data-inline-cancel="edit-fermentation-{{ row.step.pk }}" aria-label="Annuler" title="Annuler"><i class="bi bi-x-lg" aria-hidden="true"></i></button></span>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% for row in fermentation_rows %}<form id="edit-fermentation-{{ row.step.pk }}" method="post" action="{% url 'recipes:fermentation_edit' row.step.pk %}">{% csrf_token %}</form>{% endfor %}
+        {% else %}<p class="small text-secondary mb-0">Aucun palier de fermentation défini.</p>{% endif %}
+      </div>
+      <div class="col-12 col-lg fermentation-chart-column">
+    <div class="border rounded bg-light-subtle p-2">
+      <div class="d-flex justify-content-between align-items-center gap-2 mb-2 flex-wrap">
+        <div>
+          <div class="small text-secondary">Profil de fermentation</div>
+          <div class="text-secondary" style="font-size: .75rem">Double-cliquez pour ajouter · déplacez le début d’un palier pour décaler les suivants · premier point : température uniquement · dernier point : durée du dernier palier · clic droit pour supprimer · points orange : action à température constante</div>
+        </div>
+      </div>
+      {% if fermentation_temperature_zones %}
+      <div class="d-flex flex-wrap gap-3 small mb-2" aria-label="Plages de fermentation recommandées">
+        {% for zone in fermentation_temperature_zones %}
+        <span><span class="d-inline-block rounded me-1" style="width: .8rem; height: .8rem; background-color: {{ zone.fill_color }}" aria-hidden="true"></span>{{ zone.name }} : {{ zone.min|floatformat:"-1" }}–{{ zone.max|floatformat:"-1" }} °C</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+      <div style="height: 440px"><canvas id="fermentation-profile-chart" aria-label="Profil de température et durée de fermentation" role="img"></canvas></div>
+      <form id="fermentation-graph-form" method="post" action="{% url 'recipes:fermentation_graph_update' recipe.pk %}">
+        {% csrf_token %}
+        <div id="fermentation-graph-inputs"></div>
+      </form>
+    </div>
+      </div>
+      <div class="modal fade" id="fermentation-step-modal" tabindex="-1" aria-labelledby="fermentation-step-modal-title" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h2 class="modal-title h5" id="fermentation-step-modal-title">Modifier le palier de fermentation</h2>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+            </div>
+            <div class="modal-body">
+              <div class="mb-3">
+                <label class="form-label" for="fermentation-step-name">Nom du palier</label>
+                <input class="form-control" id="fermentation-step-name" type="text" maxlength="60" required>
+              </div>
+              <div>
+                <label class="form-label" for="fermentation-step-action">Commentaire</label>
+                <textarea class="form-control" id="fermentation-step-action" rows="3" maxlength="200" placeholder="Ex. dry hop, vider le dump, collecter la levure…"></textarea>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">Annuler</button>
+              <button class="btn btn-primary" id="fermentation-step-save" type="button">Valider</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </section>
+{{ fermentation_edit_points|json_script:"fermentation-edit-data" }}
+{{ fermentation_temperature_zones|json_script:"fermentation-temperature-zones-data" }}
+<script>
+  (() => {
+    const canvas = document.getElementById("fermentation-profile-chart");
+    if (!canvas || !window.Chart) return;
+    const steps = JSON.parse(document.getElementById("fermentation-edit-data").textContent);
+    const fermentationTemperatureZones = JSON.parse(document.getElementById("fermentation-temperature-zones-data").textContent);
+    const formInputs = document.getElementById("fermentation-graph-inputs");
+    const stepModal = bootstrap.Modal.getOrCreateInstance(document.getElementById("fermentation-step-modal"));
+    const stepNameInput = document.getElementById("fermentation-step-name");
+    const stepActionInput = document.getElementById("fermentation-step-action");
+    let selectedStep = null;
+    let draggedStepId = null;
+    let draggedFermentationEndpoint = false;
+    let draggedDuringPointer = false;
+    let newStepCounter = 0;
+    let pendingClick = null;
+    const totalDays = () => steps.reduce((total, step) => total + step.duration, 0);
+    const dayMaximum = () => Math.min(40, Math.max(5, totalDays() + 5));
+    const linePoints = () => {
+      if (!steps.length) return [];
+      const points = [{ x: 0, y: steps[0].temperature }];
+      let elapsed = 0;
+      steps.forEach((step, index) => {
+        elapsed += step.duration;
+        points.push({ x: elapsed, y: step.temperature });
+        if (index + 1 < steps.length) {
+          points.push({ x: elapsed, y: steps[index + 1].temperature });
+        }
+      });
+      return points;
+    };
+    const handlePoints = () => {
+      let elapsed = 0;
+      const points = steps.map((step, index) => {
+        const point = {
+          x: elapsed,
+          y: step.temperature,
+          step_id: step.id,
+          duration: step.duration,
+          phase: step.phase,
+          action: step.action,
+          actionPoint: index + 1 < steps.length && step.temperature === steps[index + 1].temperature
+        };
+        elapsed += step.duration;
+        return point;
+      });
+      if (steps.length) {
+        const lastStep = steps[steps.length - 1];
+        points.push({
+          x: elapsed,
+          y: lastStep.temperature,
+          step_id: lastStep.id,
+          duration: lastStep.duration,
+          phase: lastStep.phase,
+          action: lastStep.action,
+          endpoint: true,
+          actionPoint: false
+        });
+      }
+      return points;
+    };
+    const fermentationZonesPlugin = {
+      id: "fermentationTemperatureZones",
+      beforeDatasetsDraw(chart) {
+        if (!chart.chartArea) return;
+        const { ctx, chartArea, scales } = chart;
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(chartArea.left, chartArea.top, chartArea.right - chartArea.left, chartArea.bottom - chartArea.top);
+        ctx.clip();
+        fermentationTemperatureZones.forEach((zone) => {
+          const top = scales.y.getPixelForValue(zone.max);
+          const bottom = scales.y.getPixelForValue(zone.min);
+          ctx.fillStyle = zone.fill_color;
+          ctx.fillRect(chartArea.left, top, chartArea.right - chartArea.left, bottom - top);
+        });
+        const zeroY = scales.y.getPixelForValue(0);
+        ctx.strokeStyle = "#dc3545";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(chartArea.left, zeroY);
+        ctx.lineTo(chartArea.right, zeroY);
+        ctx.stroke();
+        ctx.restore();
+      }
+    };
+    const chart = new Chart(canvas, {
+      type: "line",
+      data: {
+        datasets: [{
+          data: linePoints(),
+          borderColor: "#0d6efd",
+          backgroundColor: "rgba(13, 110, 253, .08)",
+          borderWidth: 2,
+          pointRadius: 0,
+          fill: true,
+          tension: 0
+        }, {
+          data: handlePoints(),
+          showLine: false,
+          pointRadius: 6,
+          pointHoverRadius: 8,
+          pointBackgroundColor: (context) => context.raw?.actionPoint ? "#fd7e14" : "#fff",
+          pointBorderColor: (context) => context.raw?.actionPoint ? "#fd7e14" : "#0d6efd",
+          pointBorderWidth: 2
+        }]
+      },
+      plugins: [fermentationZonesPlugin],
+      options: {
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            displayColors: false,
+            filter: (item) => item.datasetIndex === 1,
+            callbacks: {
+              title: (items) => items.length ? (items[0].raw.phase || `Palier ${items[0].dataIndex + 1}`) : "",
+              label: (context) => `${context.parsed.y} °C · ${context.raw.duration} j`,
+              afterLabel: (context) => context.raw.action || ""
+            }
+          }
+        },
+        scales: {
+          x: {
+            type: "linear",
+            title: { display: true, text: "Temps écoulé (jours)" },
+            min: 0,
+            max: dayMaximum(),
+            ticks: { precision: 0, stepSize: 1, autoSkip: false, maxRotation: 0, font: { size: 9 } }
+          },
+          y: {
+            title: { display: true, text: "Température (°C)" },
+            min: -2,
+            max: 30,
+            ticks: { stepSize: 1, autoSkip: false, font: { size: 9 }, padding: 2 }
+          }
+        }
+      }
+    });
+    const clampTemperature = (value) => Math.min(30, Math.max(-2, Math.round(value)));
+    const canvasPosition = (event) => {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: (event.clientX - rect.left) * (canvas.width / rect.width),
+        y: (event.clientY - rect.top) * (canvas.height / rect.height)
+      };
+    };
+    const syncGraph = () => {
+      chart.data.datasets[0].data = linePoints();
+      chart.data.datasets[1].data = handlePoints();
+      chart.options.scales.x.max = dayMaximum();
+      formInputs.replaceChildren();
+      steps.forEach((step) => {
+        [
+          ["step_id", step.id],
+          ["step_phase", step.phase],
+          ["step_temperature", step.temperature],
+          ["step_duration", step.duration],
+          ["step_action", step.action]
+        ]
+          .forEach(([name, value]) => {
+            const input = document.createElement("input");
+            input.type = "hidden";
+            input.name = name;
+            input.value = value;
+            formInputs.appendChild(input);
+          });
+      });
+      chart.update("none");
+    };
+    const findNearestHandle = (position) => {
+      const meta = chart.getDatasetMeta(1);
+      return meta.data.reduce((best, element, index) => {
+        const distance = Math.hypot(element.x - position.x, element.y - position.y);
+        return !best || distance < best.distance ? { index, distance } : best;
+      }, null);
+    };
+    canvas.addEventListener("pointerdown", (event) => {
+      const nearest = findNearestHandle(canvasPosition(event));
+      if (!nearest || nearest.distance > 24) return;
+      const point = chart.data.datasets[1].data[nearest.index];
+      draggedStepId = point.step_id;
+      draggedFermentationEndpoint = Boolean(point.endpoint);
+      draggedDuringPointer = false;
+      canvas.setPointerCapture(event.pointerId);
+    });
+    canvas.addEventListener("pointermove", (event) => {
+      if (draggedStepId === null) return;
+      draggedDuringPointer = true;
+      const stepIndex = steps.findIndex((step) => String(step.id) === String(draggedStepId));
+      if (stepIndex < 0) return;
+      const position = canvasPosition(event);
+      if (draggedFermentationEndpoint) {
+        const previousDays = steps.slice(0, -1).reduce((total, step) => total + step.duration, 0);
+        const requestedElapsed = Math.round(chart.scales.x.getValueForPixel(position.x));
+        steps[stepIndex].duration = Math.max(1, Math.min(dayMaximum() - previousDays, requestedElapsed - previousDays));
+      } else {
+        steps[stepIndex].temperature = clampTemperature(chart.scales.y.getValueForPixel(position.y));
+      }
+      if (!draggedFermentationEndpoint && stepIndex > 0) {
+        const previousStart = steps.slice(0, stepIndex - 1).reduce((total, step) => total + step.duration, 0);
+        const remainingDays = steps.slice(stepIndex).reduce((total, step) => total + step.duration, 0);
+        const maximumElapsed = dayMaximum() - remainingDays;
+        const requestedElapsed = Math.round(chart.scales.x.getValueForPixel(position.x));
+        const boundedElapsed = Math.max(previousStart + 1, Math.min(maximumElapsed, requestedElapsed));
+        steps[stepIndex - 1].duration = boundedElapsed - previousStart;
+      }
+      syncGraph();
+      const chartPointIndex = stepIndex + (draggedFermentationEndpoint ? 1 : 0);
+      const draggedPoint = chart.getDatasetMeta(1).data[chartPointIndex];
+      const activeTooltipElement = [{ datasetIndex: 1, index: chartPointIndex }];
+      chart.tooltip.setActiveElements(activeTooltipElement, { x: draggedPoint.x, y: draggedPoint.y });
+      chart.update("none");
+    });
+    canvas.addEventListener("pointerup", (event) => {
+      draggedStepId = null;
+      draggedFermentationEndpoint = false;
+      if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+    });
+    canvas.addEventListener("pointercancel", () => {
+      draggedStepId = null;
+      draggedFermentationEndpoint = false;
+      draggedDuringPointer = false;
+    });
+    const editStep = (step) => {
+      selectedStep = step;
+      stepNameInput.value = step.phase || "";
+      stepActionInput.value = step.action || "";
+      stepModal.show();
+      window.setTimeout(() => stepNameInput.focus(), 150);
+    };
+    document.getElementById("fermentation-step-save").addEventListener("click", () => {
+      if (!selectedStep) return;
+      const phase = stepNameInput.value.trim();
+      if (!phase) {
+        stepNameInput.focus();
+        return;
+      }
+      selectedStep.phase = phase;
+      selectedStep.action = stepActionInput.value.trim();
+      selectedStep = null;
+      syncGraph();
+      stepModal.hide();
+    });
+    canvas.addEventListener("click", (event) => {
+      if (draggedDuringPointer) {
+        draggedDuringPointer = false;
+        return;
+      }
+      if (draggedStepId !== null) return;
+      const nearest = findNearestHandle(canvasPosition(event));
+      if (!nearest || nearest.distance > 24) return;
+      window.clearTimeout(pendingClick);
+      pendingClick = window.setTimeout(() => {
+        editStep(steps[nearest.index]);
+        pendingClick = null;
+      }, 220);
+    });
+    canvas.addEventListener("dblclick", (event) => {
+      window.clearTimeout(pendingClick);
+      pendingClick = null;
+      const position = canvasPosition(event);
+      const nearest = findNearestHandle(position);
+      if (nearest && nearest.distance <= 24) return;
+      const clickedDay = Math.max(1, Math.round(chart.scales.x.getValueForPixel(position.x)));
+      const temperature = clampTemperature(chart.scales.y.getValueForPixel(position.y));
+      let elapsed = 0;
+      for (let index = 0; index < steps.length; index += 1) {
+        const step = steps[index];
+        const previousElapsed = elapsed;
+        elapsed += step.duration;
+        if (clickedDay > previousElapsed && clickedDay < elapsed) {
+          const firstDuration = clickedDay - previousElapsed;
+          const remainingDuration = step.duration - firstDuration;
+          step.duration = firstDuration;
+          steps.splice(index + 1, 0, {
+            id: `new-${Date.now()}-${newStepCounter++}`,
+            phase: "Nouveau palier",
+            temperature,
+            duration: remainingDuration,
+            action: ""
+          });
+          syncGraph();
+          return;
+        }
+      }
+      if (clickedDay > elapsed) {
+        steps.push({
+          id: `new-${Date.now()}-${newStepCounter++}`,
+          phase: "Nouveau palier",
+          temperature,
+          duration: clickedDay - elapsed,
+          action: ""
+        });
+        syncGraph();
+      }
+    });
+    canvas.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      const nearest = findNearestHandle(canvasPosition(event));
+      if (!nearest || nearest.distance > 24) return;
+      steps.splice(nearest.index, 1);
+      syncGraph();
+    });
+    syncGraph();
+  })();
+</script>
 <section class="card border-secondary-subtle mt-4">
   <div class="card-header bg-light">
     <h2 class="h5 mb-0"><i class="bi bi-stars me-2" aria-hidden="true"></i>Carbonatation</h2>
@@ -1155,55 +1536,10 @@
     const grainAbsorption = waterEquipment.absorption * grainWeightKg;
     const preBoilVolume = finalVolume + evaporationLoss + waterEquipment.deadSpace;
     const totalWater = preBoilVolume + grainAbsorption;
-    waterResult.textContent = `${totalWater.toFixed(1)} L`;
+    waterResult.textContent = `${totalWater.toFixed(1).replace(".", ",")} L`;
   }
 
   updateWater();
-</script>
-<script>
-  const fermentationList = document.getElementById("fermentation-steps-list");
-  if (fermentationList) {
-    let draggedStep = null;
-    fermentationList.querySelectorAll("tr[draggable='true']").forEach((row) => {
-      row.addEventListener("dragstart", () => {
-        draggedStep = row;
-        row.classList.add("opacity-50");
-      });
-      row.addEventListener("dragend", () => {
-        row.classList.remove("opacity-50");
-        draggedStep = null;
-      });
-      row.addEventListener("dragover", (event) => {
-        event.preventDefault();
-        if (!draggedStep || draggedStep === row) return;
-        const bounds = row.getBoundingClientRect();
-        const after = event.clientY > bounds.top + bounds.height / 2;
-        fermentationList.insertBefore(draggedStep, after ? row.nextSibling : row);
-      });
-    });
-    fermentationList.addEventListener("drop", () => {
-      const form = document.createElement("form");
-      form.method = "post";
-      form.action = "{% url 'recipes:fermentation_reorder' recipe.pk %}";
-      const csrf = document.querySelector("input[name='csrfmiddlewaretoken']");
-      if (csrf) {
-        const token = document.createElement("input");
-        token.type = "hidden";
-        token.name = "csrfmiddlewaretoken";
-        token.value = csrf.value;
-        form.appendChild(token);
-      }
-      fermentationList.querySelectorAll("tr[data-step-id]").forEach((row) => {
-        const input = document.createElement("input");
-        input.type = "hidden";
-        input.name = "step_order";
-        input.value = row.dataset.stepId;
-        form.appendChild(input);
-      });
-      document.body.appendChild(form);
-      form.submit();
-    });
-  }
 </script>
 <script>
   (() => {

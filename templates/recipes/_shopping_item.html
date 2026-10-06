@@ -7,49 +7,57 @@
       </button>
     </form>
     <span class="flex-grow-1">{{ item.name }}{% if item.planned_quantity %}<small class="d-block text-secondary">Prévu : {{ item.planned_quantity }} {{ item.unit }}</small>{% endif %}{% if item.received_quantity %}<small class="d-block {% if item.is_ordered %}text-success{% else %}text-warning{% endif %}"><i class="bi bi-box-seam me-1" aria-hidden="true"></i>Reçu : {{ item.received_quantity }}{% if item.unit %} {{ item.unit }}{% endif %}{% if item.planned_quantity and not item.is_ordered %} · Reste : {{ item.remaining_quantity }} {{ item.unit }}{% endif %}</small>{% endif %}{% if item.source_brews.all %}<small class="d-block text-secondary"><i class="bi bi-beer me-1" aria-hidden="true"></i>Pour : {% for brew in item.source_brews.all %}<a href="{% url 'recipes:brew_detail' brew.pk %}">{{ brew.recipe_name }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}</small>{% endif %}</span>
-    {% if item.is_received or item.received_quantity %}<button class="btn btn-sm btn-outline-success" type="button" data-bs-toggle="collapse" data-bs-target="#receive-{{ item.pk }}" aria-expanded="false" aria-controls="receive-{{ item.pk }}" aria-label="Intégrer {{ item.name }} au stock" title="Intégrer au stock"><i class="bi bi-box-arrow-in-down" aria-hidden="true"></i></button>{% elif item.is_ordered %}<form method="post" action="{% url 'recipes:shopping_item_mark_received' item.pk %}" class="m-0">{% csrf_token %}<button class="btn btn-sm btn-outline-primary" type="submit" aria-label="Marquer {{ item.name }} comme reçu" title="Marquer comme reçu"><i class="bi bi-box-seam" aria-hidden="true"></i></button></form>{% else %}<button class="btn btn-sm btn-outline-secondary" type="button" disabled aria-label="Marquez d’abord {{ item.name }} comme commandé"><i class="bi bi-box-seam" aria-hidden="true"></i></button>{% endif %}
+    {% if item.is_received or item.received_quantity %}<button class="btn btn-sm btn-outline-success" type="button" data-bs-toggle="modal" data-bs-target="#receive-modal-{{ item.pk }}" aria-label="Intégrer {{ item.name }} au stock" title="Intégrer au stock"><i class="bi bi-box-arrow-in-down" aria-hidden="true"></i></button>{% elif item.is_ordered %}<form method="post" action="{% url 'recipes:shopping_item_mark_received' item.pk %}" class="m-0">{% csrf_token %}<button class="btn btn-sm btn-outline-primary" type="submit" aria-label="Marquer {{ item.name }} comme reçu" title="Marquer comme reçu"><i class="bi bi-box-seam" aria-hidden="true"></i></button></form>{% else %}<button class="btn btn-sm btn-outline-secondary" type="button" disabled aria-label="Marquez d’abord {{ item.name }} comme commandé"><i class="bi bi-box-seam" aria-hidden="true"></i></button>{% endif %}
     <form method="post" action="{% url 'recipes:shopping_item_delete' item.pk %}" class="m-0" onsubmit="return confirm('Supprimer {{ item.name|escapejs }} de la liste de courses ?');">
       {% csrf_token %}
       <button class="btn btn-sm btn-outline-danger" type="submit" aria-label="Supprimer {{ item.name }}" title="Supprimer"><i class="bi bi-trash" aria-hidden="true"></i></button>
     </form>
   </div>
   {% if item.is_received or item.received_quantity %}
-  <form id="receive-{{ item.pk }}" class="collapse border-top mt-3 pt-3" method="post" action="{% url 'recipes:shopping_item_receive' item.pk %}" data-integration-form data-catalog-kind="{% if item.catalog_match %}{{ item.catalog_match.kind }}{% endif %}">
-    {% csrf_token %}
-    <div class="row g-2 align-items-end">
-      {% if item.catalog_match %}
-      <input type="hidden" name="catalog_id" value="{{ item.catalog_match.pk }}">
-      <div class="col-12 col-md-7">
-        <span class="form-label small d-block mb-1">Fiche de stock</span>
-        <div class="form-control form-control-sm bg-light">{{ item.catalog_match.name }}</div>
-      </div>
-      {% else %}
-      <input type="hidden" name="catalog_id" value="new">
-      <div class="col-12 col-md-7">
-        <span class="form-label small d-block mb-1">Nouvelle fiche de stock</span>
-        <div class="form-control form-control-sm bg-light">{{ item.name }}</div>
-      </div>
-      <div class="col-12 col-md-5">
-        <label class="form-label small mb-1" for="new-kind-{{ item.pk }}">Type de fiche</label>
-        <select class="form-select form-select-sm" id="new-kind-{{ item.pk }}" name="new_kind" data-new-kind required>
-          <option value="">Sélectionner un type</option>
-          {% for kind_value, kind_label in catalog_kinds %}<option value="{{ kind_value }}" data-kind="{{ kind_value }}">{{ kind_label }}</option>{% endfor %}
-        </select>
-      </div>
-      {% endif %}
-      <div class="col-12 col-md-7">
-        <label class="form-label small mb-1" for="quantity-{{ item.pk }}">Quantité reçue</label>
-        <div class="input-group input-group-sm">
-          <input class="form-control" id="quantity-{{ item.pk }}" type="number" name="quantity" min="1" step="1" value="{{ item.planned_quantity|default:'' }}" placeholder="Quantité" required>
-          <select class="form-select d-none" data-quantity-preset aria-label="Quantité usuelle">
-            <option value="">Quantité usuelle</option>
-          </select>
-        </div>
-      </div>
-      <div class="col-12 col-md-5">
-        <button class="btn btn-success btn-sm w-100" type="submit"><i class="bi bi-box-arrow-in-down me-1" aria-hidden="true"></i>Intégrer au stock</button>
+  <div class="modal fade" id="receive-modal-{{ item.pk }}" tabindex="-1" aria-labelledby="receive-modal-title-{{ item.pk }}" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <form method="post" action="{% url 'recipes:shopping_item_receive' item.pk %}" data-integration-form data-catalog-kind="{% if item.catalog_match %}{{ item.catalog_match.kind }}{% endif %}">
+          {% csrf_token %}
+          <div class="modal-header bg-success-subtle">
+            <h2 class="modal-title h5" id="receive-modal-title-{{ item.pk }}">Réceptionner {{ item.name }}</h2>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+          </div>
+          <div class="modal-body">
+            {% if item.catalog_match %}
+            <input type="hidden" name="catalog_id" value="{{ item.catalog_match.pk }}">
+            <div class="mb-3"><span class="form-label small d-block mb-1">Fiche de stock</span><div class="form-control bg-light">{{ item.catalog_match.name }}</div></div>
+            {% else %}
+            <input type="hidden" name="catalog_id" value="new">
+            <div class="mb-3"><span class="form-label small d-block mb-1">Nouvelle fiche de stock</span><div class="form-control bg-light">{{ item.name }}</div></div>
+            <div class="mb-3">
+              <label class="form-label small mb-1" for="new-kind-{{ item.pk }}">Type de fiche</label>
+              <select class="form-select" id="new-kind-{{ item.pk }}" name="new_kind" data-new-kind required>
+                <option value="">Sélectionner un type</option>
+                {% for kind_value, kind_label in catalog_kinds %}<option value="{{ kind_value }}" data-kind="{{ kind_value }}">{{ kind_label }}</option>{% endfor %}
+              </select>
+            </div>
+            {% endif %}
+            <div class="mb-3">
+              <label class="form-label small mb-1" for="quantity-{{ item.pk }}">Quantité reçue</label>
+              <div class="input-group">
+                <input class="form-control" id="quantity-{{ item.pk }}" type="number" name="quantity" min="1" step="1" value="{{ item.received_quantity|default:item.planned_quantity|default:'' }}" placeholder="Quantité" required>
+                <select class="form-select d-none" data-quantity-preset aria-label="Quantité usuelle"><option value="">Quantité usuelle</option></select>
+              </div>
+            </div>
+            <div>
+              <label class="form-label small mb-1" for="total-price-{{ item.pk }}">Prix total payé (€) <span class="text-secondary">— facultatif</span></label>
+              <input class="form-control" id="total-price-{{ item.pk }}" type="number" name="total_price" min="0" step="0.01" placeholder="Ex. 12,50" data-total-price>
+              <div class="form-text">Le coût unitaire sera calculé à partir de la quantité reçue. <span data-unit-cost-preview></span></div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">Annuler</button>
+            <button class="btn btn-success" type="submit"><i class="bi bi-box-arrow-in-down me-1" aria-hidden="true"></i>Intégrer au stock</button>
+          </div>
+        </form>
       </div>
     </div>
-  </form>
+  </div>
   {% endif %}
 </div>

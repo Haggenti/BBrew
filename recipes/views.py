@@ -1,5 +1,6 @@
 from django.contrib import messages
 from django.conf import settings
+from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Max
 from django.http import HttpResponse
@@ -17,9 +18,9 @@ from decimal import Decimal
 from decimal import ROUND_CEILING, ROUND_FLOOR
 from django.utils import timezone
 
-from .forms import BackupUploadForm, BeerCategoryForm, BeerXMLUploadForm, BoilSettingsForm, BrewForm, CatalogConsumableForm, CatalogHopForm, CatalogMaltForm, CatalogOtherForm, CatalogYeastForm, CatalogForm, EquipmentSettingsForm, FermentationStepForm, HopForm, IngredientCostForm, MaltForm, MashGraphSettingsForm, MashStepForm, OtherForm, RecipeCategoryForm, RecipeEfficiencyForm, RecipeForm, RecipeNameForm, RecipeNotesForm, RecipeTastingForm, ScaleForm, ShoppingItemForm, YeastForm
-from .models import BeerCategory, Brew, EquipmentSettings, FermentationStep, Ingredient, IngredientCatalog, MashStep, Recipe, RecipeVersion, ShoppingItem
-from .signals import save_version, suspend_versioning
+from .forms import BackupUploadForm, BeerCategoryForm, BeerXMLUploadForm, BoilSettingsForm, BrewForm, CatalogConsumableForm, CatalogHopForm, CatalogMaltForm, CatalogOtherForm, CatalogYeastForm, CatalogForm, EquipmentSettingsForm, FermentationStepForm, HopForm, MaltForm, MashGraphSettingsForm, MashStepForm, OtherForm, RecipeCategoryForm, RecipeEfficiencyForm, RecipeForm, RecipeNameForm, RecipeNotesForm, RecipeTastingForm, ScaleForm, ShoppingItemForm, YeastForm
+from .models import ActivityEvent, BeerCategory, Brew, EquipmentSettings, FermentationStep, Ingredient, IngredientCatalog, MashStep, Recipe, RecipeVersion, ShoppingItem
+from .signals import log_activity, save_version, suspend_versioning
 from .versioning import describe_version_change
 from .backup import create_backup, restore_backup
 from .catalog_rules import CATALOG_KIND_RULES
@@ -322,6 +323,16 @@ def shopping_item_receive(request, pk):
     if quantity <= 0:
         messages.error(request, "La quantité reçue doit être un nombre entier positif.")
         return redirect("recipes:shopping_list")
+    raw_total_price = request.POST.get("total_price", "").strip()
+    total_price = None
+    if raw_total_price:
+        try:
+            total_price = Decimal(raw_total_price)
+        except (TypeError, ValueError, ArithmeticError):
+            total_price = None
+        if total_price is None or not total_price.is_finite() or total_price < 0:
+            messages.error(request, "Le prix total doit être un montant positif ou nul.")
+            return redirect("recipes:shopping_list")
 
     catalog_id = request.POST.get("catalog_id")
     catalog = item.catalog
@@ -342,16 +353,31 @@ def shopping_item_receive(request, pk):
 
     with transaction.atomic():
         if catalog_id == "new":
-            catalog = IngredientCatalog.objects.create(
-                name=item.name.strip(),
-                kind=kind,
-                quantity_available=0,
-            )
+            quantity_in_unit = Decimal(quantity)
+            if kind == IngredientCatalog.Kind.MALT:
+                quantity_in_unit /= Decimal("1000")
+            catalog_data = {
+                "name": item.name.strip(),
+                "kind": kind,
+                "quantity_available": quantity,
+            }
+            if total_price is not None:
+                catalog_data["unit_cost"] = (
+                    total_price / quantity_in_unit
+                ).quantize(Decimal("0.0001"))
+            catalog = IngredientCatalog.objects.create(**catalog_data)
             created_catalog = True
         else:
             catalog = IngredientCatalog.objects.select_for_update().get(pk=catalog.pk)
-        catalog.quantity_available += quantity
-        catalog.save(update_fields=["quantity_available"])
+            catalog.quantity_available += quantity
+            update_fields = ["quantity_available"]
+            if total_price is not None:
+                quantity_in_unit = Decimal(quantity)
+                if catalog.kind == IngredientCatalog.Kind.MALT:
+                    quantity_in_unit /= Decimal("1000")
+                catalog.unit_cost = (total_price / quantity_in_unit).quantize(Decimal("0.0001"))
+                update_fields.append("unit_cost")
+            catalog.save(update_fields=update_fields)
         item.delete()
     suffix = " (nouvelle fiche créée)" if created_catalog else ""
     messages.success(request, f"{quantity} unité(s) de « {item.name} » ajoutée(s) au stock{suffix}.")
@@ -711,8 +737,32 @@ def equipment_settings(request):
     return render(
         request,
         "recipes/equipment_settings.html",
-        {"form": form, "backup_form": BackupUploadForm()},
+        {
+            "form": form,
+            "backup_form": BackupUploadForm(),
+            "activity_event_count": ActivityEvent.objects.count(),
+        },
     )
+
+
+def activity_log(request):
+    query = request.GET.get("q", "").strip()[:120]
+    events = ActivityEvent.objects.all()
+    if query:
+        events = events.filter(description__icontains=query)
+    page = Paginator(events, 100).get_page(request.GET.get("page"))
+    return render(
+        request,
+        "recipes/activity_log.html",
+        {"page": page, "query": query, "event_count": ActivityEvent.objects.count()},
+    )
+
+
+@require_POST
+def activity_log_clear(request):
+    ActivityEvent.objects.all().delete()
+    messages.success(request, "Le journal des événements a été vidé.")
+    return redirect("recipes:activity_log")
 
 
 @require_POST
@@ -995,6 +1045,14 @@ def catalog_edit(request, pk):
             updated_ingredients = 0
             if item.name != previous_name:
                 updated_ingredients = Ingredient.objects.filter(catalog_id=item.pk).update(name=item.name)
+                if updated_ingredients:
+                    log_activity(
+                        ActivityEvent.EventType.UPDATE,
+                        f"Modification — ingrédients de recette : nom remplacé par « {item.name} » "
+                        f"({updated_ingredients} élément(s))",
+                        "ingrédients de recette",
+                        item.pk,
+                    )
         suffix = (
             f" et propagé à {updated_ingredients} ingrédient(s) de recette"
             if updated_ingredients
@@ -1040,18 +1098,25 @@ def recipe_detail(request, pk, edit_forms=None):
             recipe.save(update_fields=["category"])
     equipment = EquipmentSettings.objects.first() or EquipmentSettings()
     cost_tracking_enabled = equipment.cost_management_enabled
-    ingredient_costs = [
-        ingredient.cost_total
-        for ingredient in recipe.ingredients.all()
-        if ingredient.cost_total is not None
+    cost_rows = list(recipe.ingredients.select_related("catalog"))
+    stock_costs_by_kind = {}
+    stock_costs_by_ingredient = {}
+    for ingredient in cost_rows:
+        stock_cost = None
+        if ingredient.catalog and ingredient.catalog.unit_cost is not None:
+            quantity = Decimal(str(ingredient.amount_g))
+            if ingredient.kind == Ingredient.Kind.MALT:
+                quantity /= Decimal("1000")
+            stock_cost = (quantity * ingredient.catalog.unit_cost).quantize(Decimal("0.01"))
+            stock_costs_by_kind[ingredient.kind] = (
+                stock_costs_by_kind.get(ingredient.kind, Decimal("0")) + stock_cost
+            )
+        stock_costs_by_ingredient[ingredient.pk] = stock_cost
+    known_stock_costs = [
+        cost for cost in stock_costs_by_ingredient.values() if cost is not None
     ]
-    ingredient_count = recipe.ingredients.count()
-    known_cost_count = len(ingredient_costs)
-    estimated_recipe_cost = sum(ingredient_costs, Decimal("0")) if known_cost_count else None
-    estimated_cost_per_liter = (
-        estimated_recipe_cost / Decimal(recipe.batch_size_l)
-        if estimated_recipe_cost is not None and recipe.batch_size_l
-        else None
+    estimated_recipe_cost = (
+        sum(known_stock_costs, Decimal("0")) if known_stock_costs else None
     )
     edit_forms = edit_forms or {}
     malts = recipe.ingredients.filter(kind="malt")
@@ -1102,7 +1167,9 @@ def recipe_detail(request, pk, edit_forms=None):
         ("Styles incompatibles", [(category.pk, str(category)) for category in incompatible_categories]),
     ]
 
-    def style_indicator(label, value, minimum, maximum, unit, tick_size, absolute_minimum):
+    def style_indicator(
+        label, value, minimum, maximum, unit, tick_size, absolute_minimum, precision=3
+    ):
         if value is None or minimum is None or maximum is None:
             return None
         value = float(value)
@@ -1132,6 +1199,7 @@ def recipe_detail(request, pk, edit_forms=None):
         style_end = scale_position(maximum)
         return {
             "label": label,
+            "precision": precision,
             "value": value,
             "minimum": minimum,
             "maximum": maximum,
@@ -1151,7 +1219,16 @@ def recipe_detail(request, pk, edit_forms=None):
             style_indicator("DF", final_gravity, recipe.category.fg_min, recipe.category.fg_max, "", 0.005, 0.9),
             style_indicator("Couleur", ebc, recipe.category.ebc_min, recipe.category.ebc_max, " EBC", 5, 0),
             style_indicator("Amertume", ibu, recipe.category.ibu_min, recipe.category.ibu_max, " IBU", 5, 0),
-            style_indicator("Alcool", abv, recipe.category.abv_min, recipe.category.abv_max, " %", 0.5, 0),
+            style_indicator(
+                "Alcool",
+                abv,
+                recipe.category.abv_min,
+                recipe.category.abv_max,
+                " %",
+                0.5,
+                0,
+                precision=1,
+            ),
         ):
             if indicator:
                 style_indicators.append(indicator)
@@ -1190,6 +1267,37 @@ def recipe_detail(request, pk, edit_forms=None):
         }
         for step in mash_steps
     ]
+    fermentation_edit_points = [
+        {
+            "id": step.pk,
+            "phase": step.phase,
+            "temperature": float(step.temperature_c),
+            "duration": step.duration_days,
+            "action": step.action,
+        }
+        for step in recipe.fermentation_steps.all()
+    ]
+    fermentation_temperature_fill_color = "rgba(255, 235, 140, 0.4)"
+    fermentation_temperature_zones = []
+    seen_yeast_catalog_ids = set()
+    for yeast in yeasts.filter(for_bottling=False).select_related("catalog"):
+        catalog = yeast.catalog
+        if (
+            catalog is None
+            or catalog.pk in seen_yeast_catalog_ids
+            or catalog.fermentation_temperature_min_c is None
+            or catalog.fermentation_temperature_max_c is None
+        ):
+            continue
+        seen_yeast_catalog_ids.add(catalog.pk)
+        fermentation_temperature_zones.append(
+            {
+                "name": catalog.name,
+                "min": float(catalog.fermentation_temperature_min_c),
+                "max": float(catalog.fermentation_temperature_max_c),
+                "fill_color": fermentation_temperature_fill_color,
+            }
+        )
 
     def inline_form(form, form_id):
         for field in form.fields.values():
@@ -1199,6 +1307,7 @@ def recipe_detail(request, pk, edit_forms=None):
     malt_rows = [
         {
             "ingredient": malt,
+            "stock_cost": stock_costs_by_ingredient[malt.pk],
             "proportion": round(float(malt.amount_g) / malt_total * 100, 1) if malt_total else 0,
             "edit_form": inline_form(
                 edit_forms.get(
@@ -1213,6 +1322,7 @@ def recipe_detail(request, pk, edit_forms=None):
     hop_rows = [
         {
             "ingredient": hop,
+            "stock_cost": stock_costs_by_ingredient[hop.pk],
             "ibu": tinseth_ibu([hop], float(recipe.batch_size_l), og or float(recipe.target_og)),
             "edit_form": inline_form(
                 edit_forms.get(
@@ -1230,7 +1340,10 @@ def recipe_detail(request, pk, edit_forms=None):
         if row["ingredient"].addition in ("", "Ébullition")
     ]
     boil_other_rows = [
-        {"ingredient": other}
+        {
+            "ingredient": other,
+            "stock_cost": stock_costs_by_ingredient[other.pk],
+        }
         for other in others
         if other.addition == "Ébullition"
     ]
@@ -1326,10 +1439,10 @@ def recipe_detail(request, pk, edit_forms=None):
             "other_form": OtherForm(cost_tracking_enabled=cost_tracking_enabled),
             "cost_tracking_enabled": cost_tracking_enabled,
             "estimated_recipe_cost": estimated_recipe_cost,
-            "estimated_cost_per_liter": estimated_cost_per_liter,
-            "known_cost_count": known_cost_count,
-            "ingredient_count": ingredient_count,
-            "cost_rows": recipe.ingredients.all(),
+            "malt_cost_total": stock_costs_by_kind.get(Ingredient.Kind.MALT),
+            "hop_cost_total": stock_costs_by_kind.get(Ingredient.Kind.HOP),
+            "yeast_cost_total": stock_costs_by_kind.get(Ingredient.Kind.YEAST),
+            "other_cost_total": stock_costs_by_kind.get(Ingredient.Kind.OTHER),
             "malt_rows": malt_rows,
             "malt_total_g": malt_total,
             "mash_chart_points": mash_chart_points,
@@ -1346,6 +1459,7 @@ def recipe_detail(request, pk, edit_forms=None):
             "yeast_rows": [
                 {
                     "ingredient": yeast,
+                    "stock_cost": stock_costs_by_ingredient[yeast.pk],
                     "edit_form": inline_form(
                         edit_forms.get(
                             yeast.pk,
@@ -1359,6 +1473,7 @@ def recipe_detail(request, pk, edit_forms=None):
             "other_rows": [
                 {
                     "ingredient": other,
+                    "stock_cost": stock_costs_by_ingredient[other.pk],
                     "edit_form": inline_form(
                         edit_forms.get(
                             other.pk,
@@ -1376,11 +1491,12 @@ def recipe_detail(request, pk, edit_forms=None):
             ],
             "mash_graph_settings_form": MashGraphSettingsForm(instance=recipe),
             "fermentation_steps": recipe.fermentation_steps.all(),
+            "fermentation_edit_points": fermentation_edit_points,
+            "fermentation_temperature_zones": fermentation_temperature_zones,
             "fermentation_rows": [
                 {"step": step, "edit_form": FermentationStepForm(instance=step)}
                 for step in recipe.fermentation_steps.all()
             ],
-            "fermentation_form": FermentationStepForm(),
             "catalog_data": [
                 {
                     "id": item.pk,
@@ -1595,11 +1711,92 @@ def fermentation_reorder(request, pk):
         return redirect("recipes:detail", pk=recipe.pk)
     steps_by_id = {str(step.pk): step for step in steps}
     with transaction.atomic():
+        changed = False
         for position, step_id in enumerate(step_ids, start=1):
             step = steps_by_id[step_id]
             if step.position != position:
                 FermentationStep.objects.filter(pk=step.pk).update(position=position)
+                changed = True
+        if changed:
+            log_activity(
+                ActivityEvent.EventType.UPDATE,
+                f"Modification — ordre des paliers de fermentation de la recette « {recipe.name} »",
+                "paliers de fermentation",
+                recipe.pk,
+            )
     messages.success(request, "L’ordre des phases de fermentation a été enregistré.")
+    return redirect("recipes:detail", pk=recipe.pk)
+
+
+@require_POST
+def fermentation_graph_update(request, pk):
+    recipe = get_object_or_404(Recipe, pk=pk)
+    step_ids = request.POST.getlist("step_id")
+    phases = request.POST.getlist("step_phase")
+    temperatures = request.POST.getlist("step_temperature")
+    durations = request.POST.getlist("step_duration")
+    actions = request.POST.getlist("step_action")
+    if not (len(step_ids) == len(phases) == len(temperatures) == len(durations) == len(actions)):
+        messages.error(request, "Les données des paliers de fermentation sont incomplètes.")
+        return redirect("recipes:detail", pk=recipe.pk)
+
+    existing = {
+        str(step.pk): step
+        for step in recipe.fermentation_steps.all()
+    }
+    parsed = []
+    seen_ids = set()
+    try:
+        for step_id, phase, raw_temperature, raw_duration, action in zip(
+            step_ids,
+            phases,
+            temperatures,
+            durations,
+            actions,
+        ):
+            phase = phase.strip()
+            action = action.strip()
+            temperature = Decimal(raw_temperature)
+            duration = int(raw_duration)
+            if step_id.startswith("new-"):
+                step_id = ""
+            if (
+                not phase
+                or len(phase) > 60
+                or len(action) > 200
+                or not Decimal("-2") <= temperature <= Decimal("30")
+                or temperature != temperature.to_integral_value()
+                or duration < 1
+            ):
+                raise ValueError
+            if step_id and step_id not in existing:
+                raise ValueError
+            if step_id and step_id in seen_ids:
+                raise ValueError
+            seen_ids.add(step_id)
+            parsed.append((step_id, phase, temperature, duration, action))
+    except (TypeError, ValueError, ArithmeticError):
+        messages.error(
+            request,
+            "Chaque palier doit avoir un nom, une température entre -2 et 30 °C, une durée d’au moins un jour et un commentaire de 200 caractères maximum.",
+        )
+        return redirect("recipes:detail", pk=recipe.pk)
+
+    with transaction.atomic():
+        kept_ids = [int(step_id) for step_id, _, _, _, _ in parsed if step_id]
+        recipe.fermentation_steps.exclude(pk__in=kept_ids).delete()
+        for position, (step_id, phase, temperature, duration, action) in enumerate(parsed, start=1):
+            step = existing.get(step_id) if step_id else FermentationStep(
+                recipe=recipe,
+                phase=phase,
+            )
+            step.phase = phase
+            step.temperature_c = temperature
+            step.duration_days = duration
+            step.action = action
+            step.position = position
+            step.save()
+    messages.success(request, "Les paliers de fermentation ont été enregistrés.")
     return redirect("recipes:detail", pk=recipe.pk)
 
 
@@ -1929,27 +2126,6 @@ def ingredient_edit(request, pk):
         messages.success(request, f"{ingredient.name} a été modifié.")
         return redirect("recipes:detail", pk=ingredient.recipe_id)
     return recipe_detail(request, ingredient.recipe_id, {ingredient.pk: form})
-
-
-@require_POST
-def ingredient_cost_update(request, pk):
-    ingredient = get_object_or_404(Ingredient, pk=pk)
-    recipe_id = ingredient.recipe_id
-    cost_tracking_enabled = (
-        EquipmentSettings.objects.values_list("cost_management_enabled", flat=True).first()
-        or False
-    )
-    if not cost_tracking_enabled:
-        messages.error(request, "Activez d’abord la gestion des coûts dans les paramètres.")
-    else:
-        form = IngredientCostForm(request.POST)
-        if form.is_valid():
-            ingredient.cost_total = form.cleaned_data["cost_total"]
-            ingredient.save(update_fields=["cost_total"])
-            messages.success(request, f"Le coût de {ingredient.name} a été mis à jour.")
-        else:
-            messages.error(request, "Le coût doit être un montant positif ou laissé vide.")
-    return redirect("recipes:detail", pk=recipe_id)
 
 
 @require_POST

@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError
 from django.db import models
 
 
@@ -289,6 +290,27 @@ class IngredientCatalog(models.Model):
     potential_yield = models.DecimalField("rendement potentiel (%)", max_digits=5, decimal_places=1, default=80)
     alpha_acid = models.DecimalField("acides alpha (%)", max_digits=5, decimal_places=2, default=5)
     attenuation = models.DecimalField("atténuation (%)", max_digits=5, decimal_places=2, default=78)
+    unit_cost = models.DecimalField(
+        "coût unitaire (€)",
+        max_digits=10,
+        decimal_places=4,
+        null=True,
+        blank=True,
+    )
+    fermentation_temperature_min_c = models.DecimalField(
+        "température de fermentation minimale (°C)",
+        max_digits=5,
+        decimal_places=1,
+        null=True,
+        blank=True,
+    )
+    fermentation_temperature_max_c = models.DecimalField(
+        "température de fermentation maximale (°C)",
+        max_digits=5,
+        decimal_places=1,
+        null=True,
+        blank=True,
+    )
 
     class Meta:
         ordering = ["kind", "name"]
@@ -299,10 +321,61 @@ class IngredientCatalog(models.Model):
                 condition=models.Q(quantity_available__gte=0),
                 name="catalog_quantity_nonnegative",
             ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(
+                        fermentation_temperature_min_c__isnull=True,
+                        fermentation_temperature_max_c__isnull=True,
+                    )
+                    | (
+                        models.Q(
+                            fermentation_temperature_min_c__isnull=False,
+                            fermentation_temperature_max_c__isnull=False,
+                        )
+                        & models.Q(
+                            fermentation_temperature_min_c__lte=models.F(
+                                "fermentation_temperature_max_c"
+                            )
+                        )
+                    )
+                ),
+                name="catalog_yeast_fermentation_temperature_order",
+            ),
         ]
+
+    def clean(self):
+        super().clean()
+        has_minimum = self.fermentation_temperature_min_c is not None
+        has_maximum = self.fermentation_temperature_max_c is not None
+        if has_minimum != has_maximum:
+            raise ValidationError(
+                "Renseignez les deux bornes de température de fermentation, ou laissez-les vides."
+            )
+        if (
+            has_minimum
+            and has_maximum
+            and self.fermentation_temperature_min_c > self.fermentation_temperature_max_c
+        ):
+            raise ValidationError(
+                {
+                    "fermentation_temperature_max_c": (
+                        "La température maximale doit être supérieure ou égale à la température minimale."
+                    )
+                }
+            )
 
     def __str__(self):
         return f"{self.name} ({self.get_kind_display()})"
+
+    @property
+    def cost_unit_label(self):
+        return {
+            self.Kind.MALT: "€/kg",
+            self.Kind.HOP: "€/g",
+            self.Kind.YEAST: "€/paquet",
+            self.Kind.OTHER: "€/unité",
+            self.Kind.CONSUMABLE: "€/unité",
+        }.get(self.kind, "€/unité")
 
 
 class Ingredient(models.Model):
@@ -395,3 +468,25 @@ class FermentationStep(models.Model):
 
     class Meta:
         ordering = ["position", "id"]
+
+
+class ActivityEvent(models.Model):
+    class EventType(models.TextChoices):
+        CREATE = "create", "Création"
+        UPDATE = "update", "Modification"
+        DELETE = "delete", "Suppression"
+        SYSTEM = "system", "Système"
+
+    event_type = models.CharField("type d’événement", max_length=10, choices=EventType.choices)
+    description = models.CharField("description", max_length=300)
+    model_name = models.CharField("type de donnée", max_length=80, blank=True)
+    object_id = models.CharField("identifiant", max_length=80, blank=True)
+    created_at = models.DateTimeField("date et heure", auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at", "-pk"]
+        verbose_name = "événement"
+        verbose_name_plural = "événements"
+
+    def __str__(self):
+        return self.description
