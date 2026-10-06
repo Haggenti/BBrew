@@ -479,6 +479,7 @@ class ActivityEvent(models.Model):
 
     event_type = models.CharField("type d’événement", max_length=10, choices=EventType.choices)
     description = models.CharField("description", max_length=300)
+    details = models.TextField("détails", blank=True)
     model_name = models.CharField("type de donnée", max_length=80, blank=True)
     object_id = models.CharField("identifiant", max_length=80, blank=True)
     created_at = models.DateTimeField("date et heure", auto_now_add=True, db_index=True)

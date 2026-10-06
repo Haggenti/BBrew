@@ -35,7 +35,10 @@
             {% elif event.event_type == "delete" %}<span class="badge text-bg-danger">Suppression</span>
             {% else %}<span class="badge text-bg-secondary">Système</span>{% endif %}
           </td>
-          <td>{{ event.description }}</td>
+          <td>
+            <div>{{ event.description }}</div>
+            {% if event.details %}<div class="small text-secondary mt-1" style="white-space: pre-line">{{ event.details }}</div>{% endif %}
+          </td>
         </tr>
         {% empty %}
         <tr><td class="text-center text-secondary py-5" colspan="3">{% if query %}Aucun événement ne correspond à « {{ query }} ».{% else %}Le journal est vide. Les prochaines actions apparaîtront ici.{% endif %}</td></tr>

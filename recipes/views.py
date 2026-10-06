@@ -2,7 +2,7 @@ from django.contrib import messages
 from django.conf import settings
 from django.core.paginator import Paginator
 from django.db import transaction
-from django.db.models import Max
+from django.db.models import Max, Q
 from django.http import HttpResponse
 from django.views.decorators.http import require_POST
 from django.shortcuts import get_object_or_404, redirect, render
@@ -749,7 +749,7 @@ def activity_log(request):
     query = request.GET.get("q", "").strip()[:120]
     events = ActivityEvent.objects.all()
     if query:
-        events = events.filter(description__icontains=query)
+        events = events.filter(Q(description__icontains=query) | Q(details__icontains=query))
     page = Paginator(events, 100).get_page(request.GET.get("page"))
     return render(
         request,

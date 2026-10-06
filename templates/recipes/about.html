@@ -129,13 +129,14 @@
     </div>
   </section>
   <div class="d-flex justify-content-center align-items-center flex-wrap gap-3 mt-4 text-secondary small font-monospace">
-    <span>PRE-RELEASE VERSION {{ version }}</span>
+    <div> <span> PRE-RELEASE </span>
+     <span> VERSION {{ version }}</span></div>
     <span aria-hidden="true">·</span>
     <a href="{{ repository_url }}" target="_blank" rel="noopener noreferrer">
       <i class="bi bi-github me-1" aria-hidden="true"></i>Code source sur GitHub
       <span class="visually-hidden">(ouvre un nouvel onglet)</span>
     </a>
   </div>
-  <p class="text-center text-secondary small mt-4 mb-0 font-monospace">EOF</p>
+  <p class="text-center text-secondary small mt-4 mb-0 font-monospace">EOT</p>
 </div>
 {% endblock %}

@@ -657,26 +657,31 @@ class RecipeWorkflowTests(TestCase):
 
     def test_activity_log_records_model_creation_updates_and_deletions(self):
         recipe = Recipe.objects.create(name="Journal Ale")
-        self.assertTrue(
-            ActivityEvent.objects.filter(
-                event_type=ActivityEvent.EventType.CREATE,
-                description="Création — recette : Journal Ale",
-            ).exists()
+        creation_event = ActivityEvent.objects.get(
+            event_type=ActivityEvent.EventType.CREATE,
+            description="Création — recette : Journal Ale",
         )
+        self.assertIn("Nom : Journal Ale", creation_event.details)
 
         recipe.name = "Journal IPA"
-        recipe.save(update_fields=["name"])
-        self.assertTrue(
-            ActivityEvent.objects.filter(
-                event_type=ActivityEvent.EventType.UPDATE,
-                description="Modification — recette : Journal IPA",
-            ).exists()
+        recipe.efficiency = Decimal("80")
+        recipe.notes = "Texte privé des notes"
+        recipe.save(update_fields=["name", "efficiency", "notes"])
+        update_event = ActivityEvent.objects.get(
+            event_type=ActivityEvent.EventType.UPDATE,
+            description="Modification — recette : Journal IPA",
         )
+        self.assertIn("Nom : Journal Ale → Journal IPA", update_event.details)
+        self.assertIn("Rendement (%) : 75 → 80", update_event.details)
+        self.assertIn("Notes : contenu modifié (non journalisé)", update_event.details)
+        self.assertNotIn("Volume final", update_event.details)
+        self.assertNotIn("Texte privé des notes", update_event.details)
 
         response = self.client.get("/parametres/journal/?q=Journal+IPA")
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Modification — recette : Journal IPA")
         self.assertNotContains(response, "Création — recette : Journal Ale")
+        self.assertContains(self.client.get("/parametres/journal/?q=Journal+Ale"), "Nom : Journal Ale")
         self.assertContains(self.client.get("/parametres/"), "Ouvrir le journal")
 
         recipe.delete()

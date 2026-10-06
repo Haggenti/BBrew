@@ -75,6 +75,85 @@ def log_activity(event_type, description, model_name="", object_id="", using="de
     )
 
 
+def _audit_fields(instance):
+    excluded = {"created_at", "snapshot", "stock_consumed_items"}
+    return [
+        field
+        for field in instance._meta.concrete_fields
+        if field.name not in excluded and not field.primary_key and not field.auto_created
+    ]
+
+
+def _capture_audit_state(sender, instance, using, **kwargs):
+    if sender not in AUDITED_MODELS:
+        return
+    if instance._state.adding or instance.pk is None:
+        instance._activity_before = None
+        return
+
+    fields = _audit_fields(instance)
+    instance._activity_before = sender.objects.using(using).filter(pk=instance.pk).values(
+        *(field.attname for field in fields)
+    ).first()
+
+
+@receiver(pre_save)
+def capture_model_state_for_activity(sender, instance, using, **kwargs):
+    _capture_audit_state(sender, instance, using, **kwargs)
+
+
+def _display_audit_value(instance, field, value, using):
+    if value is None:
+        return "non renseigné"
+    if field.name in {"notes", "tasting_notes", "action", "description"}:
+        return "renseigné" if value else "vide"
+    if field.get_internal_type() in {"TextField", "JSONField"}:
+        return "renseigné" if value else "vide"
+    if field.choices:
+        return dict(field.flatchoices).get(value, str(value))
+    if field.is_relation:
+        related = field.related_model.objects.using(using).filter(pk=value).first()
+        return str(related) if related is not None else f"#{value}"
+    if isinstance(value, bool):
+        return "oui" if value else "non"
+    if isinstance(value, Decimal):
+        return f"{value.normalize():f}"
+    return str(value)
+
+
+def _activity_details(instance, before, using, update_fields=None):
+    details = []
+    included_fields = set(update_fields) if update_fields is not None else None
+    for field in _audit_fields(instance):
+        if included_fields is not None and field.name not in included_fields and field.attname not in included_fields:
+            continue
+        previous = before.get(field.attname) if before is not None else None
+        current = getattr(instance, field.attname)
+        if before is not None and previous == current:
+            continue
+
+        label = str(field.verbose_name).capitalize()
+        if before is None:
+            value = _display_audit_value(instance, field, current, using)
+            details.append(f"{label} : {value}")
+        elif (
+            field.name in {"notes", "tasting_notes", "action", "description"}
+            or field.get_internal_type() in {"TextField", "JSONField"}
+        ):
+            details.append(f"{label} : contenu modifié (non journalisé)")
+        else:
+            old_value = _display_audit_value(instance, field, previous, using)
+            new_value = _display_audit_value(instance, field, current, using)
+            details.append(f"{label} : {old_value} → {new_value}")
+
+    if not details:
+        return ""
+    if len(details) > 8:
+        remaining = len(details) - 8
+        details = details[:8] + [f"et {remaining} autre(s) champ(s)"]
+    return "\n".join(details)
+
+
 def _audit_subject(instance):
     model_name, subject_getter = AUDITED_MODELS[type(instance)]
     return model_name, str(subject_getter(instance))[:180]
@@ -87,7 +166,19 @@ def log_model_save(sender, instance, created, using, **kwargs):
     model_name, subject = _audit_subject(instance)
     event_type = ActivityEvent.EventType.CREATE if created else ActivityEvent.EventType.UPDATE
     action = "Création" if created else "Modification"
-    log_activity(event_type, f"{action} — {model_name} : {subject}", model_name, instance.pk, using)
+    details = _activity_details(
+        instance,
+        None if created else getattr(instance, "_activity_before", None),
+        using,
+        kwargs.get("update_fields"),
+    )
+    ActivityEvent.objects.using(using).create(
+        event_type=event_type,
+        description=f"{action} — {model_name} : {subject}"[:300],
+        details=details,
+        model_name=model_name[:80],
+        object_id=str(instance.pk)[:80],
+    )
 
 
 @receiver(post_delete)
@@ -95,12 +186,12 @@ def log_model_delete(sender, instance, using, **kwargs):
     if sender not in AUDITED_MODELS:
         return
     model_name, subject = _audit_subject(instance)
-    log_activity(
-        ActivityEvent.EventType.DELETE,
-        f"Suppression — {model_name} : {subject}",
-        model_name,
-        instance.pk,
-        using,
+    ActivityEvent.objects.using(using).create(
+        event_type=ActivityEvent.EventType.DELETE,
+        description=f"Suppression — {model_name} : {subject}"[:300],
+        details=_activity_details(instance, None, using),
+        model_name=model_name[:80],
+        object_id=str(instance.pk)[:80],
     )
 
 
