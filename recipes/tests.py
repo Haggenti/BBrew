@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.contrib.sessions.models import Session
+from django.db import connection
 from django.test import TestCase, override_settings
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import translation
@@ -377,6 +378,30 @@ class RecipeWorkflowTests(TestCase):
         self.assertEqual(middle_day["brew_spans"][0]["brew"], brew)
         self.assertFalse(middle_day["brew_spans"][0]["starts"])
         self.assertFalse(middle_day["brew_spans"][0]["ends"])
+
+    def test_brew_number_restarts_at_one_when_all_brews_are_deleted(self):
+        first = Brew.objects.create(recipe_name="Premier brassin")
+        second = Brew.objects.create(recipe_name="Deuxième brassin")
+        first.delete()
+
+        next_brew = Brew.objects.create(recipe_name="Brassin suivant")
+        self.assertEqual(next_brew.pk, second.pk + 1)
+
+        Brew.objects.all().delete()
+
+        restarted_brew = Brew.objects.create(recipe_name="Nouvelle série")
+        self.assertEqual(restarted_brew.pk, 1)
+
+    def test_empty_brew_table_starts_at_one_even_with_a_stale_sequence(self):
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "INSERT OR REPLACE INTO sqlite_sequence (name, seq) VALUES (%s, %s)",
+                [Brew._meta.db_table, 42],
+            )
+
+        brew = Brew.objects.create(recipe_name="Premier brassin")
+
+        self.assertEqual(brew.pk, 1)
 
     def test_catalog_groups_stock_deficits_by_planned_brew(self):
         malt = IngredientCatalog.objects.create(

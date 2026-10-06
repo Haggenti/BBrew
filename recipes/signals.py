@@ -1,11 +1,12 @@
 from decimal import Decimal
 from contextlib import contextmanager
 
+from django.db import connections
 from django.db.models import Max
-from django.db.models.signals import post_delete, post_save, pre_delete
+from django.db.models.signals import post_delete, post_save, pre_delete, pre_save
 from django.dispatch import receiver
 
-from .models import FermentationStep, Ingredient, MashStep, Recipe, RecipeVersion
+from .models import Brew, FermentationStep, Ingredient, MashStep, Recipe, RecipeVersion
 from .versioning import recipe_snapshot
 
 _deleting_recipe_ids = set()
@@ -72,3 +73,27 @@ def recipe_deleting(sender, instance, **kwargs):
 @receiver(post_delete, sender=Recipe)
 def recipe_deleted(sender, instance, **kwargs):
     _deleting_recipe_ids.discard(instance.pk)
+
+
+def _reset_brew_sequence_if_empty(sender, using):
+    if sender.objects.using(using).exists():
+        return
+
+    connection = connections[using]
+    if connection.vendor == "sqlite":
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM sqlite_sequence WHERE name = %s",
+                [sender._meta.db_table],
+            )
+
+
+@receiver(pre_save, sender=Brew)
+def reset_brew_number_before_first_brew(sender, instance, using, **kwargs):
+    if instance._state.adding:
+        _reset_brew_sequence_if_empty(sender, using)
+
+
+@receiver(post_delete, sender=Brew)
+def reset_brew_number_when_empty(sender, instance, using, **kwargs):
+    _reset_brew_sequence_if_empty(sender, using)
