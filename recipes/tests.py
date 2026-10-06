@@ -864,7 +864,14 @@ class RecipeWorkflowTests(TestCase):
         self.assertContains(response, "water-result")
         self.assertNotContains(response, "water-preboil")
         self.assertNotContains(response, "water-capacity-warning")
+        self.assertContains(response, "beer-color-card")
+        self.assertContains(response, ".beer-glass-preview.ebc-preview { width: 6rem; height: 8rem;")
         self.assertContains(response, "beer-glass-preview")
+        profile_section = response.content.decode().split(
+            '<h2 class="h5 mb-0">Profil</h2>',
+            1,
+        )[1].split("</section>", 1)[0]
+        self.assertNotIn("beer-glass-preview", profile_section)
         self.assertIsNotNone(response.context["estimated_ebc_color"])
         self.assertIsNotNone(response.context["estimated_og"])
         self.assertIsNotNone(response.context["estimated_ibu"])

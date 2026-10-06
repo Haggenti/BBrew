@@ -182,6 +182,13 @@
   </div>
 </div>
 <div class="row g-3 mb-4 align-items-stretch">
+  <div class="col-lg-auto">
+    <section class="card card-body p-2 h-100 d-flex flex-column align-items-center justify-content-center beer-color-card">
+      <div class="beer-glass-preview ebc-preview mx-auto" style="--beer-color: {% if estimated_ebc_color %}{{ estimated_ebc_color }}{% else %}transparent{% endif %}" role="img" aria-label="{% if estimated_ebc is not None %}Couleur estimée de la bière : {{ estimated_ebc }} EBC{% else %}Couleur de la bière non disponible{% endif %}" title="Couleur estimée de la bière">
+        <span></span><img src="{% static 'recipes/mousse.svg' %}" alt="" aria-hidden="true"><img src="{% static 'recipes/verre.png' %}" alt="" aria-hidden="true"><img src="{% static 'recipes/reflets_verre.png' %}" alt="" aria-hidden="true">
+      </div>
+    </section>
+  </div>
   {% if recipe.category %}
     <div class="col-lg-4">
       <section class="card card-body h-100 border-info-subtle">
@@ -205,15 +212,10 @@
             </div>
           </div>
         {% endfor %}
-        <div class="text-center mt-2">
-          <div class="beer-glass-preview ebc-preview mx-auto" style="--beer-color: {% if estimated_ebc_color %}{{ estimated_ebc_color }}{% else %}transparent{% endif %}" role="img" aria-label="{% if estimated_ebc is not None %}Couleur estimée de la bière : {{ estimated_ebc }} EBC{% else %}Couleur de la bière non disponible{% endif %}" title="Couleur estimée de la bière">
-            <span></span><img src="{% static 'recipes/mousse.svg' %}" alt="" aria-hidden="true"><img src="{% static 'recipes/verre.png' %}" alt="" aria-hidden="true"><img src="{% static 'recipes/reflets_verre.png' %}" alt="" aria-hidden="true">
-          </div>
-        </div>
       </section>
     </div>
   {% endif %}
-  <div class="{% if recipe.category %}col-lg-8{% else %}col-12{% endif %}"><div class="row g-3 align-items-stretch"><div class="col-12"><section class="card card-body"><div class="d-flex justify-content-between align-items-start gap-3 mb-3 flex-wrap"><h2 class="h5 mb-0">Caractéristiques</h2><div></div></div><div class="row g-0">
+  <div class="col"><div class="row g-3 align-items-stretch"><div class="col-12"><section class="card card-body"><div class="d-flex justify-content-between align-items-start gap-3 mb-3 flex-wrap"><h2 class="h5 mb-0">Caractéristiques</h2><div></div></div><div class="row g-0">
     <div class="col-sm-6 border-bottom border-end-sm p-3"><small class="text-secondary d-block">DI estimée</small><strong class="fs-4">{% if estimated_og %}{{ estimated_og }} <small>/ {{ estimated_plato }} °P</small>{% else %}—{% endif %}</strong></div>
     <div class="col-sm-6 border-bottom p-3"><small class="text-secondary d-block">DF estimée</small><strong class="fs-4">{% if estimated_final_gravity is not None %}{{ estimated_final_gravity }} <small>/ {{ estimated_final_plato }} °P</small>{% else %}—{% endif %}</strong></div>
     <div class="col-sm-6 border-bottom border-end-sm p-3"><small class="text-secondary d-block">ABV estimé</small><strong class="fs-4">{% if estimated_abv is not None %}{{ estimated_abv }} %{% else %}—{% endif %}</strong></div>
