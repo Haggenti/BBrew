@@ -910,6 +910,22 @@ class RecipeWorkflowTests(TestCase):
         self.assertNotContains(response, "recipe-chart-data")
         self.assertContains(response, "Carbonatation")
         self.assertContains(response, "carb-result")
+        self.assertContains(response, 'data-bs-target="#carbonation-settings-modal"')
+        self.assertContains(response, 'id="carbonation-settings-modal"')
+        self.assertContains(response, "Réglages de carbonatation")
+        rendered_detail = response.content.decode()
+        carbonation_controls = rendered_detail.split(
+            'id="carbonation-settings-modal"',
+            1,
+        )[1].split("</div>\n</div>\n<script>", 1)[0]
+        self.assertIn('id="carb-result"', rendered_detail.split(
+            'id="carbonation-settings-modal"',
+            1,
+        )[0])
+        self.assertIn('id="carb-volume"', carbonation_controls)
+        self.assertIn('id="carb-target"', carbonation_controls)
+        self.assertIn('id="carb-temperature"', carbonation_controls)
+        self.assertIn('id="carb-sugar"', carbonation_controls)
         self.assertContains(response, "Eau de départ nécessaire")
         self.assertContains(response, "water-result")
         self.assertNotContains(response, "water-preboil")
@@ -1930,6 +1946,9 @@ class RecipeWorkflowTests(TestCase):
 
         events = response.context["boil_events"]
         self.assertContains(response, ".boil-event { position: relative; z-index: 1; display: flex; flex: 0 1 10rem;")
+        self.assertContains(response, ".boil-event:not(:last-child)::after { content: \"→\"; position: absolute; top: 50%;")
+        self.assertContains(response, "font-weight: 700;")
+        self.assertContains(response, "transform: translateY(-50%);")
         self.assertContains(response, ".boil-event-start, .boil-event-cool { background: rgba(220, 53, 69, .06); }")
         self.assertContains(response, 'class="boil-event boil-event-start"')
         self.assertContains(response, 'class="boil-event boil-event-timer"')
@@ -2080,6 +2099,7 @@ class RecipeWorkflowTests(TestCase):
         self.assertRedirects(response, f"/recettes/{recipe.pk}/brassage/")
         detail_response = self.client.get(f"/recettes/{recipe.pk}/")
         self.assertContains(detail_response, "Paliers de brassage BIAB")
+        self.assertNotContains(detail_response, "<th>Palier</th>")
         self.assertContains(detail_response, "Palier principal")
         self.assertNotContains(detail_response, f'href="/paliers/{step.pk}/modifier/"')
 

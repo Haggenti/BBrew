@@ -38,6 +38,9 @@
   .inline-setting.is-editing .inline-setting-display { display: none; }
   .inline-setting.is-editing .inline-setting-edit { display: block; }
   .bottle-result-card { flex: 0 1 19rem; width: 19rem; max-width: 100%; }
+  .carbonation-field { width: max-content; }
+  .carbonation-field label { white-space: nowrap; }
+  .carbonation-field input { width: 7rem; }
   .mash-editor-layout { flex-wrap: nowrap; }
   .mash-table-column { flex: 0 1 auto; width: 35%; max-width: 55%; min-width: 25%; resize: horizontal; overflow: auto; }
   .mash-chart-column { flex: 1 1 auto; min-width: 0; }
@@ -420,8 +423,8 @@
     {% if mash_steps %}
     <div class="row g-4 align-items-start mash-editor-layout" data-mash-layout>
       <div class="mash-table-column">
-        <div class="table-responsive"><table class="table table-sm align-middle mb-0"><thead><tr><th>#</th><th>Palier</th><th>Température</th><th>Durée</th></tr></thead><tbody>
-          {% for step in mash_steps %}<tr><td>{{ step.position }}</td><td>{{ step.name }}</td><td>{{ step.temperature_c }} °C</td><td>{{ step.duration_min }} min</td></tr>{% endfor %}
+        <div class="table-responsive"><table class="table table-sm align-middle mb-0"><thead><tr><th>#</th><th>Température</th><th>Durée</th></tr></thead><tbody>
+          {% for step in mash_steps %}<tr><td>{{ step.position }}</td><td>{{ step.temperature_c }} °C</td><td>{{ step.duration_min }} min</td></tr>{% endfor %}
         </tbody></table></div>
       </div>
       <div class="mash-chart-column">
@@ -740,7 +743,7 @@
       .boil-event-start, .boil-event-cool { background: rgba(220, 53, 69, .06); }
       .boil-event-timer { background: rgba(13, 202, 240, .08); }
       .boil-event-hop, .boil-event-cooling-hop { background: rgba(25, 135, 84, .07); }
-      .boil-event:not(:last-child)::after { content: "→"; position: absolute; top: .4rem; right: -1.25rem; color: var(--bs-secondary-color); font-size: 1.25rem; line-height: 1.75rem; }
+      .boil-event:not(:last-child)::after { content: "→"; position: absolute; top: 50%; right: -1.25rem; color: var(--bs-secondary-color); font-size: 1.4rem; font-weight: 700; line-height: 1.75rem; transform: translateY(-50%); }
       .boil-event-icon { width: 1.75rem; height: 1.75rem; flex: 0 0 1.75rem; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; color: #fff; }
       .boil-event-icon.start, .boil-event-icon.cool { background: var(--bs-danger); }
       .boil-event-icon.timer { background: var(--bs-info); }
@@ -803,32 +806,16 @@
     <h2 class="h5 mb-0"><i class="bi bi-stars me-2" aria-hidden="true"></i>Carbonatation</h2>
   </div>
   <div class="card-body">
-    <div class="row g-3 align-items-end">
-      <div class="col-sm-6 col-lg-3">
-        <label class="form-label small" for="carb-volume">Volume de bière (L)</label>
-        <input id="carb-volume" class="form-control" type="number" min="1" step="0.1" value="{{ recipe.batch_size_l }}">
-      </div>
-      <div class="col-sm-6 col-lg-3">
-        <label class="form-label small" for="carb-target">Niveau cible (vol. CO₂)</label>
-        <input id="carb-target" class="form-control" type="number" min="0" max="6" step="0.1" value="{{ recipe.target_carbonation|unlocalize }}">
-      </div>
-      <div class="col-sm-6 col-lg-3">
-        <label class="form-label small" for="carb-temperature">Température maximale (°C)</label>
-        <input id="carb-temperature" class="form-control" type="number" min="0" max="40" step="0.5" value="20">
-      </div>
-      <div class="col-sm-6 col-lg-3">
-        <label class="form-label small" for="carb-sugar">Sucre</label>
-        <select id="carb-sugar" class="form-select">
-          <option value="3.86">Sucre blanc (saccharose)</option>
-          <option value="4.26">Dextrose / glucose</option>
-        </select>
-      </div>
-    </div>
-    <div class="d-flex flex-wrap align-items-start gap-3 mt-3">
-      <div class="alert alert-primary d-inline-block px-3 py-2 mb-0" data-bs-toggle="tooltip" data-bs-placement="top" title="Estimation basée sur le CO₂ résiduel lié à la température maximale de fermentation. Mesure toujours la densité finale avant l’embouteillage.">
-        <span class="small text-secondary">Quantité recommandée</span>
-        <strong id="carb-result" class="fs-4 d-block">— g</strong>
-        <span id="carb-detail" class="small text-secondary"></span>
+    <div class="d-flex flex-wrap align-items-end gap-3 mt-3">
+      <div class="d-flex flex-column align-items-start">
+        <button class="btn btn-sm btn-outline-primary mb-2" type="button" data-bs-toggle="modal" data-bs-target="#carbonation-settings-modal">
+          <i class="bi bi-sliders me-1" aria-hidden="true"></i>Réglages de carbonatation
+        </button>
+        <div class="alert alert-primary d-inline-block px-3 py-2 mb-0" data-bs-toggle="tooltip" data-bs-placement="top" title="Estimation basée sur le CO₂ résiduel lié à la température maximale de fermentation. Mesure toujours la densité finale avant l’embouteillage.">
+          <span class="small text-secondary">Quantité recommandée</span>
+          <strong id="carb-result" class="fs-4 d-block">— g</strong>
+          <span id="carb-detail" class="small text-secondary"></span>
+        </div>
       </div>
       <div class="bottle-result-card bg-success-subtle border border-success-subtle rounded px-3 py-2">
         <div class="small fw-semibold text-success-emphasis mb-2"><i class="bi bi-box-seam me-1" aria-hidden="true"></i>Conditionnement</div>
@@ -849,6 +836,42 @@
     </div>
   </div>
 </section>
+<div class="modal fade" id="carbonation-settings-modal" tabindex="-1" aria-labelledby="carbonation-settings-title" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title h5" id="carbonation-settings-title">Réglages de carbonatation</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3 align-items-end">
+          <div class="col-12 carbonation-field">
+            <label class="form-label small" for="carb-volume">Volume de bière (L)</label>
+            <input id="carb-volume" class="form-control" type="number" min="1" step="0.1" value="{{ recipe.batch_size_l }}">
+          </div>
+          <div class="col-12 carbonation-field">
+            <label class="form-label small" for="carb-target">Niveau cible (vol. CO₂)</label>
+            <input id="carb-target" class="form-control" type="number" min="0" max="6" step="0.1" value="{{ recipe.target_carbonation|unlocalize }}">
+          </div>
+          <div class="col-12 carbonation-field">
+            <label class="form-label small" for="carb-temperature">Température maximale (°C)</label>
+            <input id="carb-temperature" class="form-control" type="number" min="0" max="40" step="0.5" value="20">
+          </div>
+          <div class="col-12">
+            <label class="form-label small" for="carb-sugar">Sucre</label>
+            <select id="carb-sugar" class="form-select">
+              <option value="3.86">Sucre blanc (saccharose)</option>
+              <option value="4.26">Dextrose / glucose</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" type="button" data-bs-dismiss="modal">Terminé</button>
+      </div>
+    </div>
+  </div>
+</div>
 <script>
   document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach((element) => new bootstrap.Tooltip(element));
 </script>
@@ -1107,7 +1130,8 @@
     carbonationDetail.textContent = `${gramsPerLiter.toFixed(1)} g/L · environ ${residual.toFixed(2)} vol. de CO₂ déjà dissous`;
   }
 
-  carbonationFields.forEach((field) => field.addEventListener("input", updateCarbonation));
+  carbonationFields.slice(0, 3).forEach((field) => field.addEventListener("input", updateCarbonation));
+  carbonationFields[3].addEventListener("change", updateCarbonation);
   bottleSize.addEventListener("input", updateCarbonation);
   updateCarbonation();
 </script>
