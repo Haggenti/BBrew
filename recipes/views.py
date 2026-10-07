@@ -4,6 +4,7 @@ from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Max, Q
 from django.http import HttpResponse
+from django.template.loader import render_to_string
 from django.views.decorators.http import require_POST
 from django.shortcuts import get_object_or_404, redirect, render
 from xml.etree import ElementTree
@@ -1632,6 +1633,18 @@ def mash_graph_update(request, pk):
             step.duration_min = duration
             step.position = position
             step.save()
+    if request.headers.get("HX-Request") == "true":
+        summary = render_to_string(
+            "recipes/_mash_summary.html",
+            {
+                "mash_steps": recipe.mash_steps.order_by("position"),
+                "mash_summary_oob": True,
+            },
+            request=request,
+        )
+        return HttpResponse(
+            f'<div class="alert alert-success alert-dismissible fade show shadow-sm mb-0" data-auto-dismiss="true" role="status">Les paliers de brassage ont été enregistrés.</div>{summary}'
+        )
     messages.success(request, "Les paliers de brassage ont été enregistrés.")
     return redirect("recipes:detail", pk=recipe.pk)
 
@@ -1796,6 +1809,21 @@ def fermentation_graph_update(request, pk):
             step.action = action
             step.position = position
             step.save()
+    if request.headers.get("HX-Request") == "true":
+        summary = render_to_string(
+            "recipes/_fermentation_summary.html",
+            {
+                "fermentation_rows": [
+                    {"step": step, "edit_form": FermentationStepForm(instance=step)}
+                    for step in recipe.fermentation_steps.all()
+                ],
+                "fermentation_summary_oob": True,
+            },
+            request=request,
+        )
+        return HttpResponse(
+            f'<div class="alert alert-success alert-dismissible fade show shadow-sm mb-0" data-auto-dismiss="true" role="status">Les paliers de fermentation ont été enregistrés.</div>{summary}'
+        )
     messages.success(request, "Les paliers de fermentation ont été enregistrés.")
     return redirect("recipes:detail", pk=recipe.pk)
 
@@ -1923,6 +1951,10 @@ def recipe_notes_update(request, pk):
     form = RecipeNotesForm(request.POST or None, instance=recipe)
     if request.method == "POST" and form.is_valid():
         form.save()
+        if request.headers.get("HX-Request") == "true":
+            return HttpResponse(
+                '<div class="alert alert-success alert-dismissible fade show shadow-sm mb-0" data-auto-dismiss="true" role="status">Les notes de la recette ont été enregistrées.</div>'
+            )
         messages.success(request, "Les notes de la recette ont été enregistrées.")
     return redirect("recipes:detail", pk=recipe.pk)
 

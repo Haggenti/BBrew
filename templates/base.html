@@ -45,6 +45,7 @@
         {{ message }}
       </div>
       {% endfor %}
+      <div id="notification-container" class="position-fixed top-0 end-0 p-3" style="z-index: 1080" aria-live="polite" aria-atomic="true"></div>
       {% block content %}{% endblock %}
     </div>
   </main>
@@ -79,6 +80,22 @@
       .sidebar-link { justify-content: center; padding-left: .75rem; padding-right: .75rem; }
     }
   </style>
+  <script>
+    (() => {
+      const dismissNotifications = (root = document) => {
+        root.querySelectorAll("[data-auto-dismiss]").forEach((notification) => {
+          if (notification.dataset.dismissScheduled) return;
+          notification.dataset.dismissScheduled = "true";
+          window.setTimeout(() => {
+            notification.classList.remove("show");
+            window.setTimeout(() => notification.remove(), 300);
+          }, 2500);
+        });
+      };
+      dismissNotifications();
+      document.body.addEventListener("htmx:afterSwap", (event) => dismissNotifications(event.detail.target));
+    })();
+  </script>
   <script>
     (() => {
       const sidebar = document.getElementById("app-sidebar");

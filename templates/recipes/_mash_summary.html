@@ -1,0 +1,12 @@
+<div id="mash-summary-column" class="mash-table-column"{% if mash_summary_oob %} hx-swap-oob="outerHTML"{% endif %}>
+  {% if mash_steps %}
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead><tr><th>#</th><th>Température</th><th>Durée</th></tr></thead>
+      <tbody id="mash-steps-list">
+        {% for step in mash_steps %}<tr><td>{{ step.position }}</td><td>{{ step.temperature_c }} °C</td><td>{{ step.duration_min }} min</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}<p class="text-secondary text-nowrap mb-0">Aucun palier défini.</p>{% endif %}
+</div>

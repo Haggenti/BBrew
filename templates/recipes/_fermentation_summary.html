@@ -1,0 +1,28 @@
+<div id="fermentation-summary-column" class="fermentation-summary-column"{% if fermentation_summary_oob %} hx-swap-oob="outerHTML"{% endif %}>
+  {% if fermentation_rows %}
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0 fermentation-summary-table">
+      <tbody id="fermentation-steps-list">
+        {% for row in fermentation_rows %}
+        <tr data-inline-row="edit-fermentation-{{ row.step.pk }}">
+          <td class="text-secondary text-nowrap">{{ row.step.position }}.</td>
+          <td>
+            <div class="ingredient-display fw-semibold">{{ row.step.get_phase_display }}</div>
+            <div class="ingredient-edit d-none">{{ row.edit_form.phase }}</div>
+            <div class="ingredient-display small text-secondary">{{ row.step.temperature_c }} °C · {{ row.step.duration_days }} j</div>
+            <div class="ingredient-edit d-none d-flex gap-1">{{ row.edit_form.temperature_c }}{{ row.edit_form.duration_days }}</div>
+            <div class="ingredient-display small text-secondary text-break">{{ row.step.action|default:"" }}</div>
+            <div class="ingredient-edit d-none">{{ row.edit_form.action }}</div>
+          </td>
+          <td class="text-nowrap">
+            <span class="ingredient-display"><button class="btn btn-sm btn-outline-secondary" type="button" data-inline-edit="edit-fermentation-{{ row.step.pk }}" aria-label="Modifier le palier" title="Modifier"><i class="bi bi-pencil" aria-hidden="true"></i></button></span>
+            <span class="ingredient-edit d-none"><button class="btn btn-sm btn-outline-primary" type="submit" form="edit-fermentation-{{ row.step.pk }}" aria-label="Enregistrer" title="Enregistrer"><i class="bi bi-check-lg" aria-hidden="true"></i></button> <button class="btn btn-sm btn-outline-secondary" type="button" data-inline-cancel="edit-fermentation-{{ row.step.pk }}" aria-label="Annuler" title="Annuler"><i class="bi bi-x-lg" aria-hidden="true"></i></button></span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% for row in fermentation_rows %}<form id="edit-fermentation-{{ row.step.pk }}" method="post" action="{% url 'recipes:fermentation_edit' row.step.pk %}">{% csrf_token %}</form>{% endfor %}
+  {% else %}<p class="small text-secondary mb-0">Aucun palier de fermentation défini.</p>{% endif %}
+</div>

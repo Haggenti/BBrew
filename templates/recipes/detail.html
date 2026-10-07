@@ -198,10 +198,12 @@
   </div>
   <div class="col-12 col-lg-8">
     <section class="card card-body h-100">
-      <h2 class="h5"><i class="bi bi-sticky me-2" aria-hidden="true"></i>Notes</h2>
-      <form method="post" action="{% url 'recipes:notes_update' recipe.pk %}">
+      <div class="d-flex justify-content-between align-items-center gap-2 mb-3">
+        <h2 class="h5 mb-0"><i class="bi bi-sticky me-2" aria-hidden="true"></i>Notes</h2>
+        <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="modal" data-bs-target="#tasting-profile-modal"><i class="bi bi-diagram-3 me-1" aria-hidden="true"></i>Profil de dégustation</button>
+      </div>
+      <form method="post" action="{% url 'recipes:notes_update' recipe.pk %}" hx-post="{% url 'recipes:notes_update' recipe.pk %}" hx-target="#notification-container" hx-swap="innerHTML">
         {% csrf_token %}{{ notes_form.notes }}<button class="btn btn-outline-primary mt-3" type="submit">Enregistrer les notes</button>
-        <button class="btn btn-outline-primary mt-3 ms-2" type="button" data-bs-toggle="modal" data-bs-target="#tasting-profile-modal"><i class="bi bi-diagram-3 me-1" aria-hidden="true"></i>Profil de dégustation</button>
       </form>
     </section>
   </div>
@@ -249,7 +251,7 @@
     <div class="col-sm-6 p-3"><small class="text-secondary d-block">Ratio IBU / DF</small><strong class="fs-4">{% if ibu_df_ratio is not None %}{{ ibu_df_ratio }}{% else %}—{% endif %}</strong>{% if ibu_df_comment %}<small class="text-secondary d-block mt-1">{{ ibu_df_comment|capfirst }}</small>{% endif %}</div>
     <div class="col-sm-6 border-top p-3"><small class="text-secondary d-block">Eau de départ nécessaire</small><strong id="water-result" class="fs-4" data-bs-toggle="tooltip" data-bs-placement="top" title="Calculée selon le volume et l’équipement">— L</strong></div>
     <div class="col-sm-6 border-top p-3"><small class="text-secondary d-block">Volume de la recette</small><strong class="fs-4">{{ recipe.batch_size_l|floatformat:"-2" }} L</strong></div>
-    {% if cost_tracking_enabled %}<div class="col-sm-6 border-top p-3"><small class="text-secondary d-block">Coût total estimé des ingrédients</small><strong id="estimated-recipe-cost" class="fs-4"{% if estimated_recipe_cost is not None %} data-total-cost="{{ estimated_recipe_cost|unlocalize }}" data-bs-toggle="tooltip" data-bs-placement="top"{% endif %}>{% if estimated_recipe_cost is not None %}{{ estimated_recipe_cost|floatformat:2 }} €{% else %}À renseigner dans le stock{% endif %}</strong></div>{% endif %}
+    {% if cost_tracking_enabled %}<div class="col-sm-6 border-top p-3"><small class="text-secondary d-block">Coût total estimé des ingrédients</small><strong id="estimated-recipe-cost" class="fs-4"{% if estimated_recipe_cost is not None %} data-total-cost="{{ estimated_recipe_cost|unlocalize }}" data-bs-toggle="tooltip" data-bs-placement="top"{% endif %}>{% if estimated_recipe_cost is not None %}{{ estimated_recipe_cost|floatformat:2 }} €{% else %}À renseigner dans le stock{% endif %}</strong>{% if estimated_recipe_cost is not None %}<small id="estimated-recipe-cost-per-bottle" class="d-block text-secondary d-none" aria-live="polite"></small>{% endif %}</div>{% endif %}
 
   </div></section></div>
   </div></div></div>
@@ -407,24 +409,26 @@
 <section class="card border-secondary-subtle">
   <div class="card-header bg-light d-flex justify-content-between align-items-center">
     <h2 class="h5 mb-0"><img src="{% static 'recipes/icons/paddles.svg' %}" width="22" height="22" class="me-2" alt="" aria-hidden="true">Paliers de brassage BIAB</h2>
-    <button class="btn btn-sm btn-primary" type="submit" form="mash-graph-form"><i class="bi bi-save me-1" aria-hidden="true"></i>Enregistrer les paliers</button>
+    <div class="d-flex align-items-center gap-2">
+      <button class="btn btn-sm btn-primary" type="submit" form="mash-graph-form"><i class="bi bi-save me-1" aria-hidden="true"></i>Enregistrer les paliers</button>
+    </div>
   </div>
   <div class="card-body">
     {% if mash_steps %}
     <div class="row g-4 align-items-start mash-editor-layout" data-mash-layout>
-      <div class="mash-table-column">
-        <div class="table-responsive"><table class="table table-sm align-middle mb-0"><thead><tr><th>#</th><th>Température</th><th>Durée</th></tr></thead><tbody>
-          {% for step in mash_steps %}<tr><td>{{ step.position }}</td><td>{{ step.temperature_c }} °C</td><td>{{ step.duration_min }} min</td></tr>{% endfor %}
-        </tbody></table></div>
-      </div>
+      {% include "recipes/_mash_summary.html" %}
       <div class="mash-chart-column">
         <div class="border rounded bg-light-subtle p-2">
           <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
-            <div><div class="small text-secondary">Profil de température</div><div class="text-secondary" style="font-size: .75rem">Double-cliquez pour ajouter · clic droit pour supprimer · déplacez le début d’un palier pour décaler les suivants · premier point : température uniquement · dernier point : durée du dernier palier</div></div>
+            <div>
+              <div class="small text-secondary">Profil de température</div>
+              <div class="text-secondary" style="font-size: .75rem">Double-cliquez pour ajouter · clic droit pour supprimer.</div>
+              <div class="text-secondary" style="font-size: .75rem">déplacez le début d’un palier pour décaler les suivants.</div>
+            </div>
             <div class="d-flex gap-2"><button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#mash-zones-settings" title="Choisir les zones brassicoles" aria-label="Choisir les zones brassicoles"><i class="bi bi-layers" aria-hidden="true"></i></button><button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#mash-graph-settings" title="Réglages du graphique" aria-label="Régler les axes et le quadrillage"><i class="bi bi-sliders" aria-hidden="true"></i></button></div>
           </div>
           <div style="height: 300px"><canvas id="mash-profile-chart" aria-label="Profil de température des paliers" role="img"></canvas></div>
-          <form id="mash-graph-form" method="post" action="{% url 'recipes:mash_graph_update' recipe.pk %}">
+          <form id="mash-graph-form" method="post" action="{% url 'recipes:mash_graph_update' recipe.pk %}" hx-post="{% url 'recipes:mash_graph_update' recipe.pk %}" hx-target="#notification-container" hx-swap="innerHTML">
             {% csrf_token %}
             <div id="mash-graph-inputs">{% for step in mash_steps %}<input type="hidden" name="step_id" value="{{ step.pk }}"><input type="hidden" name="step_name" value="{{ step.name }}"><input type="hidden" name="step_temperature" value="{{ step.temperature_c }}"><input type="hidden" name="step_duration" value="{{ step.duration_min }}">{% endfor %}</div>
           </form>
@@ -626,6 +630,7 @@
       });
       chart.update("none");
     };
+    document.getElementById("mash-graph-form").addEventListener("submit", syncGraph);
     const updateDraggedPoint = (event) => {
       if (!draggedStepId) return;
       const position = canvasPosition(event);
@@ -806,44 +811,20 @@
 <section class="card border-secondary-subtle mt-4">
   <div class="card-header bg-light d-flex justify-content-between align-items-center">
     <h2 class="h5 mb-0"><i class="bi bi-thermometer-snow me-2" aria-hidden="true"></i>Fermentation</h2>
-    <button class="btn btn-sm btn-primary" type="submit" form="fermentation-graph-form"><i class="bi bi-save me-1" aria-hidden="true"></i>Enregistrer les paliers</button>
+    <div class="d-flex align-items-center gap-2">
+      <button class="btn btn-sm btn-primary" type="submit" form="fermentation-graph-form"><i class="bi bi-save me-1" aria-hidden="true"></i>Enregistrer les paliers</button>
+    </div>
   </div>
   <div class="card-body">
     <div class="fermentation-layout">
-      <div class="fermentation-summary-column">
-        {% if fermentation_rows %}
-        <div class="table-responsive">
-          <table class="table table-sm align-middle mb-0 fermentation-summary-table">
-            <tbody id="fermentation-steps-list">
-              {% for row in fermentation_rows %}
-              <tr data-inline-row="edit-fermentation-{{ row.step.pk }}">
-                <td class="text-secondary text-nowrap">{{ row.step.position }}.</td>
-                <td>
-                  <div class="ingredient-display fw-semibold">{{ row.step.get_phase_display }}</div>
-                  <div class="ingredient-edit d-none">{{ row.edit_form.phase }}</div>
-                  <div class="ingredient-display small text-secondary">{{ row.step.temperature_c }} °C · {{ row.step.duration_days }} j</div>
-                  <div class="ingredient-edit d-none d-flex gap-1">{{ row.edit_form.temperature_c }}{{ row.edit_form.duration_days }}</div>
-                  <div class="ingredient-display small text-secondary text-break">{{ row.step.action|default:"" }}</div>
-                  <div class="ingredient-edit d-none">{{ row.edit_form.action }}</div>
-                </td>
-                <td class="text-nowrap">
-                  <span class="ingredient-display"><button class="btn btn-sm btn-outline-secondary" type="button" data-inline-edit="edit-fermentation-{{ row.step.pk }}" aria-label="Modifier le palier" title="Modifier"><i class="bi bi-pencil" aria-hidden="true"></i></button></span>
-                  <span class="ingredient-edit d-none"><button class="btn btn-sm btn-outline-primary" type="submit" form="edit-fermentation-{{ row.step.pk }}" aria-label="Enregistrer" title="Enregistrer"><i class="bi bi-check-lg" aria-hidden="true"></i></button> <button class="btn btn-sm btn-outline-secondary" type="button" data-inline-cancel="edit-fermentation-{{ row.step.pk }}" aria-label="Annuler" title="Annuler"><i class="bi bi-x-lg" aria-hidden="true"></i></button></span>
-                </td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-        {% for row in fermentation_rows %}<form id="edit-fermentation-{{ row.step.pk }}" method="post" action="{% url 'recipes:fermentation_edit' row.step.pk %}">{% csrf_token %}</form>{% endfor %}
-        {% else %}<p class="small text-secondary mb-0">Aucun palier de fermentation défini.</p>{% endif %}
-      </div>
+      {% include "recipes/_fermentation_summary.html" %}
       <div class="col-12 col-lg fermentation-chart-column">
     <div class="border rounded bg-light-subtle p-2">
       <div class="d-flex justify-content-between align-items-center gap-2 mb-2 flex-wrap">
         <div>
           <div class="small text-secondary">Profil de fermentation</div>
-          <div class="text-secondary" style="font-size: .75rem">Double-cliquez pour ajouter · déplacez le début d’un palier pour décaler les suivants · premier point : température uniquement · dernier point : durée du dernier palier · clic droit pour supprimer · points orange : action à température constante</div>
+          <div class="text-secondary" style="font-size: .75rem">Double-cliquez pour ajouter · clic droit pour supprimer.</div>
+          <div class="text-secondary" style="font-size: .75rem">déplacez le début d’un palier pour décaler les suivants · les points orange indiquent une action à température constante.</div>
         </div>
       </div>
       {% if fermentation_temperature_zones %}
@@ -854,7 +835,7 @@
       </div>
       {% endif %}
       <div style="height: 440px"><canvas id="fermentation-profile-chart" aria-label="Profil de température et durée de fermentation" role="img"></canvas></div>
-      <form id="fermentation-graph-form" method="post" action="{% url 'recipes:fermentation_graph_update' recipe.pk %}">
+      <form id="fermentation-graph-form" method="post" action="{% url 'recipes:fermentation_graph_update' recipe.pk %}" hx-post="{% url 'recipes:fermentation_graph_update' recipe.pk %}" hx-target="#notification-container" hx-swap="innerHTML">
         {% csrf_token %}
         <div id="fermentation-graph-inputs"></div>
       </form>
@@ -1208,9 +1189,12 @@
           <i class="bi bi-sliders me-1" aria-hidden="true"></i>Réglages de carbonatation
         </button>
         <div class="alert alert-primary d-inline-block px-3 py-2 mb-0" data-bs-toggle="tooltip" data-bs-placement="top" title="Estimation basée sur le CO₂ résiduel lié à la température maximale de fermentation. Mesure toujours la densité finale avant l’embouteillage.">
-          <span class="small text-secondary">Quantité recommandée</span>
+          <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+            <span class="small text-secondary">Sucre à ajouter</span>
+            <span class="badge text-bg-light text-primary-emphasis border border-primary-subtle" id="carb-target-display">Cible : <strong>—</strong> vol. CO₂</span>
+          </div>
           <strong id="carb-result" class="fs-4 d-block">— g</strong>
-          <span id="carb-detail" class="small text-secondary"></span>
+          <span id="carb-detail" class="small text-secondary">Quantité recommandée</span>
         </div>
       </div>
       <div class="bottle-result-card bg-success-subtle border border-success-subtle rounded px-3 py-2">
@@ -1458,9 +1442,11 @@
     .map((id) => document.getElementById(id));
   const carbonationResult = document.getElementById("carb-result");
   const carbonationDetail = document.getElementById("carb-detail");
+  const carbonationTargetDisplay = document.getElementById("carb-target-display");
   const bottleSize = document.getElementById("bottle-size");
   const bottleCount = document.getElementById("bottle-count");
   const estimatedRecipeCost = document.getElementById("estimated-recipe-cost");
+  const estimatedRecipeCostPerBottle = document.getElementById("estimated-recipe-cost-per-bottle");
 
   function updateRecipeCostTooltip(count, size) {
     if (!estimatedRecipeCost) return;
@@ -1468,23 +1454,31 @@
     if (!Number.isFinite(totalCost) || count < 1 || size <= 0) {
       estimatedRecipeCost.removeAttribute("title");
       estimatedRecipeCost.removeAttribute("data-bs-original-title");
+      estimatedRecipeCostPerBottle?.classList.add("d-none");
       return;
     }
     const costPerBottle = (totalCost / count).toFixed(2).replace(".", ",");
-    const title = `${costPerBottle} € par bouteille · format ${size.toFixed(2).replace(".", ",")} L · ${count} bouteille${count > 1 ? "s" : ""}`;
+    const bottleLabel = `${count} bouteille${count > 1 ? "s" : ""}`;
+    const title = `${costPerBottle} € par bouteille · format ${size.toFixed(2).replace(".", ",")} L · ${bottleLabel}`;
     estimatedRecipeCost.setAttribute("title", title);
     estimatedRecipeCost.setAttribute("data-bs-original-title", title);
+    if (estimatedRecipeCostPerBottle) {
+      estimatedRecipeCostPerBottle.textContent = `≈ ${costPerBottle} € / bouteille · ${size.toFixed(2).replace(".", ",")} L · ${bottleLabel}`;
+      estimatedRecipeCostPerBottle.classList.remove("d-none");
+    }
   }
 
   function updateCarbonation() {
     const [volume, target, temperature, sugarFactor] = carbonationFields.map((field) => Number(field.value));
     if (!volume || target < 0 || !Number.isFinite(temperature)) {
       carbonationResult.textContent = "— g";
-      carbonationDetail.textContent = "";
+      carbonationDetail.textContent = "Quantité recommandée";
+      carbonationTargetDisplay.innerHTML = "Cible : <strong>—</strong> vol. CO₂";
       bottleCount.textContent = "—";
       updateRecipeCostTooltip(0, 0);
       return;
     }
+    carbonationTargetDisplay.innerHTML = `Cible : <strong>${target.toFixed(1).replace(".", ",")}</strong> vol. CO₂`;
     const size = Number(bottleSize.value);
     const count = size > 0 ? Math.floor(volume / size) : 0;
     bottleCount.textContent = count || "—";

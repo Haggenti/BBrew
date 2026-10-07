@@ -778,6 +778,7 @@ class RecipeWorkflowTests(TestCase):
         self.assertContains(response, "Coût total estimé des ingrédients")
         self.assertContains(response, "25,00 €")
         self.assertContains(response, 'id="estimated-recipe-cost"')
+        self.assertContains(response, 'id="estimated-recipe-cost-per-bottle"')
         self.assertContains(response, 'data-total-cost="25.00"')
         self.assertContains(response, "par bouteille")
         self.assertContains(
@@ -1020,6 +1021,7 @@ class RecipeWorkflowTests(TestCase):
         self.assertNotContains(detail_response, 'data-bs-target="#add-fermentation"')
         self.assertContains(detail_response, 'form="fermentation-graph-form"')
         self.assertContains(detail_response, 'form="mash-graph-form"')
+        self.assertContains(detail_response, 'hx-target="#notification-container"')
         summary_markup = rendered.split('id="fermentation-steps-list"', 1)[1].split("</tbody>", 1)[0]
         self.assertNotIn('draggable="true"', summary_markup)
         self.assertNotIn("/supprimer/", summary_markup)
@@ -1047,6 +1049,25 @@ class RecipeWorkflowTests(TestCase):
         self.assertEqual(second.phase, FermentationStep.Phase.COLD_CRASH)
         self.assertEqual(second.action, "Refroidissement")
 
+        response = self.client.post(
+            f"/recettes/{recipe.pk}/fermentation/graphique/",
+            {
+                "step_id": [str(first.pk), str(second.pk)],
+                "step_phase": ["Fermentation primaire", "Cold crash"],
+                "step_temperature": ["21", "3"],
+                "step_duration": ["7", "3"],
+                "step_action": ["Contrôler la densité", "Refroidissement"],
+            },
+            HTTP_HX_REQUEST="true",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Les paliers de fermentation ont été enregistrés.")
+        self.assertContains(response, 'data-auto-dismiss="true"')
+        self.assertContains(response, 'hx-swap-oob="outerHTML"')
+        self.assertContains(response, "21,0 °C")
+        first.refresh_from_db()
+        self.assertEqual((first.temperature_c, first.duration_days), (21, 7))
+
     def test_fermentation_graph_can_add_and_remove_steps(self):
         recipe = Recipe.objects.create(name="Graphique vide")
 
@@ -1055,6 +1076,8 @@ class RecipeWorkflowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "fermentation-profile-chart")
         self.assertContains(response, "fermentation-graph-form")
+        self.assertContains(response, "Double-cliquez pour ajouter · clic droit pour supprimer.")
+        self.assertContains(response, "les points orange indiquent une action à température constante.")
         response = self.client.post(
             f"/recettes/{recipe.pk}/fermentation/graphique/",
             {
@@ -1184,6 +1207,9 @@ class RecipeWorkflowTests(TestCase):
         )
         self.assertIn('<div class="col-12 col-lg-8">\n    <section class="card card-body h-100">', rendered_detail)
         self.assertContains(response, "carb-result")
+        self.assertContains(response, "carb-target-display")
+        self.assertContains(response, "Cible :")
+        self.assertContains(response, "Sucre à ajouter")
         self.assertContains(response, 'data-bs-target="#carbonation-settings-modal"')
         self.assertContains(response, 'id="carbonation-settings-modal"')
         self.assertContains(response, "Réglages de carbonatation")
@@ -1220,8 +1246,6 @@ class RecipeWorkflowTests(TestCase):
         self.assertContains(response, 'id="tasting-profile-modal"')
         self.assertContains(response, "data-tasting-stars")
         self.assertEqual(len(response.context["tasting_stars"]), 5)
-        notes_section = response.content.decode().split('action="/recettes/%s/notes/"' % recipe.pk, 1)[1]
-        self.assertIn('data-bs-target="#tasting-profile-modal"', notes_section.split("</form>", 1)[0])
         self.assertContains(response, "Non noté")
         self.assertContains(response, "Cliquez ou faites glisser sur un axe")
         self.assertNotContains(response, 'data-tasting-range')
@@ -2432,6 +2456,17 @@ class RecipeWorkflowTests(TestCase):
         self.assertEqual(recipe.name, "Nouveau nom")
         self.assertEqual(recipe.notes, "Empâtage à surveiller.")
 
+        response = self.client.post(
+            f"/recettes/{recipe.pk}/notes/",
+            {"notes": "Notes enregistrées sans rechargement."},
+            HTTP_HX_REQUEST="true",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Les notes de la recette ont été enregistrées.")
+        self.assertContains(response, 'data-auto-dismiss="true"')
+        recipe.refresh_from_db()
+        self.assertEqual(recipe.notes, "Notes enregistrées sans rechargement.")
+
     def test_scale_adjusts_ingredient_amounts_and_volume(self):
         recipe = Recipe.objects.create(name="Scaled Ale", batch_size_l=20)
         ingredient = Ingredient.objects.create(
@@ -2673,6 +2708,7 @@ class RecipeWorkflowTests(TestCase):
         self.assertContains(detail_response, "step.duration = clampDuration(requestedElapsed - previousElapsed, timeMax - previousElapsed)")
         self.assertContains(detail_response, "if (draggedMashEndpoint)")
         self.assertContains(detail_response, "if (!draggedMashEndpoint && stepIndex > 0)")
+        self.assertContains(detail_response, 'hx-target="#notification-container"')
 
         response = self.client.post(
             f"/recettes/{recipe.pk}/brassage/graphique/",
@@ -2695,6 +2731,24 @@ class RecipeWorkflowTests(TestCase):
             list(MashStep.objects.filter(recipe=recipe).order_by("position").values_list("name", flat=True)),
             ["Palier modifié", "Palier ajouté"],
         )
+
+        response = self.client.post(
+            f"/recettes/{recipe.pk}/brassage/graphique/",
+            {
+                "step_id": [str(first.pk), "new-2"],
+                "step_name": ["Palier modifié", "Palier ajouté 2"],
+                "step_temperature": ["65", "73"],
+                "step_duration": ["45", "15"],
+            },
+            HTTP_HX_REQUEST="true",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Les paliers de brassage ont été enregistrés.")
+        self.assertContains(response, 'data-auto-dismiss="true"')
+        self.assertContains(response, 'hx-swap-oob="outerHTML"')
+        self.assertContains(response, "65,0 °C")
+        first.refresh_from_db()
+        self.assertEqual((first.temperature_c, first.duration_min), (65, 45))
 
     def test_mash_graph_settings_can_be_updated(self):
         recipe = Recipe.objects.create(name="Réglages du profil")
