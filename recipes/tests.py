@@ -2433,6 +2433,50 @@ class RecipeWorkflowTests(TestCase):
         self.assertEqual(ingredient.amount_g, 6250)
         self.assertEqual(ingredient.cost_total, 12.50)
 
+    def test_scale_rounds_ingredients_by_category(self):
+        recipe = Recipe.objects.create(name="Arrondie Ale", batch_size_l=20)
+        malt = Ingredient.objects.create(
+            recipe=recipe,
+            name="Malt",
+            kind=Ingredient.Kind.MALT,
+            amount_g=1552,
+        )
+        malt_lower = Ingredient.objects.create(
+            recipe=recipe,
+            name="Autre malt",
+            kind=Ingredient.Kind.MALT,
+            amount_g=1536,
+        )
+        hop = Ingredient.objects.create(
+            recipe=recipe,
+            name="Houblon",
+            kind=Ingredient.Kind.HOP,
+            amount_g=153,
+        )
+        spice = Ingredient.objects.create(
+            recipe=recipe,
+            name="Épice",
+            kind=Ingredient.Kind.OTHER,
+            amount_g=153,
+        )
+        yeast = Ingredient.objects.create(
+            recipe=recipe,
+            name="Levure",
+            kind=Ingredient.Kind.YEAST,
+            amount_g=1,
+        )
+
+        response = self.client.post(f"/recettes/{recipe.pk}/scale/", {"batch_size_l": "2.5"})
+
+        self.assertRedirects(response, f"/recettes/{recipe.pk}/")
+        for ingredient in (malt, malt_lower, hop, spice, yeast):
+            ingredient.refresh_from_db()
+        self.assertEqual(malt.amount_g, Decimal("195"))
+        self.assertEqual(malt_lower.amount_g, Decimal("190"))
+        self.assertEqual(hop.amount_g, Decimal("19"))
+        self.assertEqual(spice.amount_g, Decimal("19"))
+        self.assertEqual(yeast.amount_g, Decimal("1"))
+
     def test_recipe_volume_can_change_without_scaling_ingredients(self):
         recipe = Recipe.objects.create(name="Volume seul", batch_size_l=20)
         ingredient = Ingredient.objects.create(

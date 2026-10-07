@@ -15,7 +15,7 @@ from datetime import date, timedelta
 from .calculations import average_mash_temperature, ebc_color_rgb, estimated_abv, estimated_color_ebc, estimated_efficiency, estimated_final_gravity, estimated_og, ibu_final_gravity_comment, ibu_final_gravity_ratio, plato_from_gravity, tinseth_ibu
 from .beerxml import export_recipe, import_recipe
 from decimal import Decimal
-from decimal import ROUND_CEILING, ROUND_FLOOR
+from decimal import ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP
 from django.utils import timezone
 
 from .forms import BackupUploadForm, BeerCategoryForm, BeerXMLUploadForm, BoilSettingsForm, BrewForm, CatalogConsumableForm, CatalogHopForm, CatalogMaltForm, CatalogOtherForm, CatalogYeastForm, CatalogForm, EquipmentSettingsForm, FermentationStepForm, HopForm, IngredientQuantityAdjustmentForm, MaltForm, MashGraphSettingsForm, MashStepForm, OtherForm, RecipeBrewingSettingsForm, RecipeCategoryForm, RecipeEfficiencyForm, RecipeForm, RecipeNameForm, RecipeNotesForm, RecipeTastingForm, ScaleForm, ShoppingItemForm, YeastForm
@@ -1897,8 +1897,16 @@ def recipe_scale(request, pk):
         ratio = new_volume / old_volume
         with transaction.atomic():
             for ingredient in recipe.ingredients.all():
-                precision = Decimal("1") if ingredient.kind in (Ingredient.Kind.MALT, Ingredient.Kind.YEAST) else Decimal("0.1")
-                ingredient.amount_g = (Decimal(ingredient.amount_g) * ratio).quantize(precision)
+                scaled_amount = Decimal(ingredient.amount_g) * ratio
+                if ingredient.kind == Ingredient.Kind.MALT:
+                    ingredient.amount_g = (
+                        (scaled_amount / Decimal("5")).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+                        * Decimal("5")
+                    )
+                elif ingredient.kind == Ingredient.Kind.YEAST:
+                    ingredient.amount_g = Decimal("1")
+                else:
+                    ingredient.amount_g = scaled_amount.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
                 update_fields = ["amount_g"]
                 if ingredient.cost_total is not None:
                     ingredient.cost_total = (ingredient.cost_total * ratio).quantize(Decimal("0.01"))
