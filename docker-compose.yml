@@ -12,12 +12,12 @@ services:
       BBREW_DATA_DIR: /data
       DJANGO_DEBUG: "0"
       DJANGO_SECRET_KEY: "REPLACE_WITH_A_RANDOM_SECRET_BEFORE_FIRST_START"
-      DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1,odroid-hc4,192.168.1.XX"
-      DJANGO_CSRF_TRUSTED_ORIGINS: "http://odroid-hc4:8000,http://192.168.1.XX:8000"
+      DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1,192.168.1.XX"
+      DJANGO_CSRF_TRUSTED_ORIGINS: "http://192.168.1.XX:8086"
       DJANGO_SECURE_COOKIES: "0"
       DJANGO_SECURE_PROXY_SSL_HEADER: "0"
     ports:
-      - "8000:8000"
+      - "8086:8000"
     volumes:
       - ./data:/data
     security_opt:

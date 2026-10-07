@@ -60,17 +60,17 @@ La page **Paramètres** permet de télécharger une sauvegarde JSON complète et
 de restaurer une sauvegarde existante. Une restauration remplace les données
 actuelles : téléchargez une sauvegarde avant toute opération de ce type.
 
-## Déploiement Docker sur Odroid HC4 (DietPi)
+## Déploiement Docker
 
 L'image utilise Python 3.13 sur Debian Bookworm (image officielle multi-architecture,
-dont ARM64), Gunicorn et WhiteNoise. SQLite reste dans un dossier persistant du NAS ;
-le conteneur effectue les migrations au démarrage et sert les fichiers statiques
-collectés dans l'image.
+dont ARM64), Gunicorn et WhiteNoise. SQLite reste dans un dossier persistant sur
+l'hôte Docker ; le conteneur effectue les migrations au démarrage et sert les
+fichiers statiques collectés dans l'image.
 
 ### Première installation
 
-1. Sur le NAS, vérifiez que Docker Engine est installé et que `docker compose version`
-   fonctionne, puis clonez le dépôt :
+1. Sur la machine qui hébergera l'application, installez Docker Engine et vérifiez
+   que `docker compose version` fonctionne, puis clonez le dépôt :
 
    ```sh
    git clone https://github.com/Haggenti/BBrew.git
@@ -78,18 +78,19 @@ collectés dans l'image.
    ```
 
 2. Générez une clé secrète et modifiez les valeurs de personnalisation directement
-   dans `docker-compose.yml`. Vous pouvez générer la clé sur le NAS ou sur un autre
-   ordinateur :
+   dans `docker-compose.yml`. Vous pouvez générer la clé sur l'hôte Docker ou sur un
+   autre ordinateur :
 
    ```sh
    openssl rand -hex 50
    ```
 
-   Remplacez `DJANGO_SECRET_KEY`, puis renseignez le nom/IP du NAS dans
-   `DJANGO_ALLOWED_HOSTS` et `DJANGO_CSRF_TRUSTED_ORIGINS`. La base est écrite dans
-   le répertoire `./data` à côté du fichier Compose, hors du conteneur. Docker le
-   crée automatiquement et le conteneur règle ses permissions au démarrage.
-   Vous pouvez également modifier le port publié (`8000:8000`).
+   Remplacez `DJANGO_SECRET_KEY`, puis renseignez le nom de domaine ou l'adresse
+   utilisée pour accéder à l'application dans `DJANGO_ALLOWED_HOSTS` et
+   `DJANGO_CSRF_TRUSTED_ORIGINS`. La base est écrite dans le répertoire `./data`
+   à côté du fichier Compose, sur l'hôte et hors du conteneur. Docker le crée
+   automatiquement et le conteneur règle ses permissions au démarrage.
+   Le port publié par défaut est `8086` (`8086:8000`) ; vous pouvez le modifier.
 3. Depuis le dossier `BBrew`, construisez et démarrez l'application :
 
    ```sh
@@ -97,9 +98,10 @@ collectés dans l'image.
    ```
 
    Compose construit l'image, crée le stockage persistant et lance les migrations.
-   L'application est disponible sur `http://<adresse-du-nas>:8000/`. Connectez-vous
-   avec `brewer` / `brewer` uniquement sur un réseau de confiance, puis changez
-   immédiatement le mot de passe depuis le menu **Mot de passe**.
+   L'application est disponible sur
+   `http://<adresse-de-la-machine>:8086/`. Connectez-vous avec `brewer` / `brewer`
+   uniquement sur un réseau de confiance, puis changez immédiatement le mot de
+   passe depuis le menu **Mot de passe**.
 
    Les connexions sont conservées dans un cookie de session de navigateur, supprimé
    à la fermeture du navigateur. Toutes les sessions enregistrées sont également
@@ -108,15 +110,15 @@ collectés dans l'image.
 
 ### Accès et opérations courantes
 
-- Ne transférez pas le port 8000 directement depuis Internet. Pour un accès extérieur,
+- Ne transférez pas le port 8086 directement depuis Internet. Pour un accès extérieur,
   privilégiez un VPN. Si vous utilisez un reverse proxy HTTPS, réglez
   `DJANGO_SECURE_COOKIES` et `DJANGO_SECURE_PROXY_SSL_HEADER` à `1`, indiquez l'origine
   `https://...` dans `DJANGO_CSRF_TRUSTED_ORIGINS` et empêchez les accès directs qui
   contourneraient le proxy.
 - Gardez une seule instance BBS active : SQLite ne convient pas à plusieurs
   réplicas applicatifs concurrents.
-- Le répertoire `data/` contient la base SQLite directement sur le NAS, hors du
-  conteneur. Il est exclu de Git ; sauvegardez-le régulièrement, ainsi que les
+- Le répertoire `data/` contient la base SQLite sur l'hôte, hors du conteneur.
+  Il est exclu de Git ; sauvegardez-le régulièrement, ainsi que les
   sauvegardes générées dans BBS, vers un autre emplacement.
 - Pour mettre à jour : sauvegardez les données, mettez le code à jour, puis lancez
   `git pull`, `set -x BBS_VERSION (git rev-parse HEAD)` et
