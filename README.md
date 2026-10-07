@@ -141,8 +141,8 @@ fichiers statiques collectés dans l'image.
 - Le répertoire `data/` contient la base SQLite sur l'hôte, hors du conteneur.
   Il est exclu de Git ; sauvegardez-le régulièrement, ainsi que les
   sauvegardes générées dans BBS, vers un autre emplacement.
-- Pour mettre à jour : sauvegardez les données, mettez le code à jour, puis lancez
-  `git pull` puis `docker compose up --build`. Les migrations sont exécutées au
+- Pour mettre à jour : sauvegardez les données, lancez `git pull`
+  puis `docker compose up --build`. Les migrations sont exécutées au
   démarrage et le hash du commit courant est détecté automatiquement pendant la
   construction de l'image.
 - Pour arrêter : `docker compose down`. Ce répertoire reste en place lors de la
