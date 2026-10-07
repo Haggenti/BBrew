@@ -98,20 +98,40 @@ fichiers statiques collectés dans l'image.
    cd BBrew
    ```
 
-2. Générez une clé secrète et modifiez les valeurs de personnalisation directement
-   dans `docker-compose.yml`. Vous pouvez générer la clé sur l'hôte Docker ou sur un
-   autre ordinateur :
+2. Générez une clé secrète. Les réglages propres à votre installation doivent être
+   placés dans un fichier local `docker-compose.override.yml`, et non directement
+   dans `docker-compose.yml` :
 
    ```sh
    openssl rand -hex 50
    ```
 
-   Remplacez `DJANGO_SECRET_KEY`, puis renseignez le nom de domaine ou l'adresse
-   utilisée pour accéder à l'application dans `DJANGO_ALLOWED_HOSTS` et
-   `DJANGO_CSRF_TRUSTED_ORIGINS`. La base est écrite dans le répertoire `./data`
-   à côté du fichier Compose, sur l'hôte et hors du conteneur. Docker le crée
-   automatiquement et le conteneur règle ses permissions au démarrage.
-   Le port publié par défaut est `8086` (`8086:8000`) ; vous pouvez le modifier.
+   Par exemple :
+
+   ```yaml
+   services:
+     bbrew:
+       environment:
+         DJANGO_SECRET_KEY: "remplacez-cette-valeur"
+         DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1,192.168.1.105"
+         DJANGO_CSRF_TRUSTED_ORIGINS: "http://192.168.1.105:8086"
+       ports:
+         - "192.168.1.105:8086:8000"
+   ```
+
+   Docker Compose charge automatiquement ce fichier en complément de
+   `docker-compose.yml`. Il permet de conserver vos réglages locaux lors des
+   mises à jour Git. Ajoutez-le aux exclusions Git locales pour qu'il ne soit
+   jamais proposé au commit :
+
+   ```sh
+   printf '%s\n' 'docker-compose.override.yml' >> .git/info/exclude
+   ```
+
+   La base est écrite dans le répertoire `./data` à côté du fichier Compose, sur
+   l'hôte et hors du conteneur. Docker le crée automatiquement et le conteneur
+   règle ses permissions au démarrage. Le port publié par défaut est `8086`
+   (`8086:8000`) ; vous pouvez le modifier dans le fichier override.
 3. Depuis le dossier `BBrew`, construisez et démarrez l'application :
 
    ```sh
@@ -138,7 +158,7 @@ fichiers statiques collectés dans l'image.
   Traefik ou Nginx) devant le conteneur. Le navigateur se connecte alors en HTTPS
   au proxy, qui transmet les requêtes à BBS sur le réseau Docker.
 - Avec un reverse proxy HTTPS, configurez les variables suivantes dans
-  `docker-compose.yml` :
+  `docker-compose.override.yml` :
   - `DJANGO_ALLOWED_HOSTS` : le nom d'hôte public, par exemple
     `bbs.exemple.fr` (sans `https://` ni chemin).
   - `DJANGO_CSRF_TRUSTED_ORIGINS` : l'origine publique complète, par exemple
@@ -164,9 +184,10 @@ fichiers statiques collectés dans l'image.
   Il est exclu de Git ; sauvegardez-le régulièrement, ainsi que les
   sauvegardes générées dans BBS, vers un autre emplacement.
 - Pour mettre à jour : sauvegardez les données, lancez `git pull`
-  puis `docker compose up --build`. Les migrations sont exécutées au
-  démarrage et le hash du commit courant est détecté automatiquement pendant la
-  construction de l'image.
+  puis `docker compose up --build`. Le fichier `docker-compose.override.yml`
+  n'est pas modifié par Git et conserve vos réglages locaux. Les migrations sont
+  exécutées au démarrage et le hash du commit courant est détecté automatiquement
+  pendant la construction de l'image.
 - Pour arrêter : `docker compose down`. Ce répertoire reste en place lors de la
   suppression ou de la reconstruction du conteneur ; sauvegardez-le avant toute
   opération de nettoyage manuelle.
