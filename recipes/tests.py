@@ -1418,7 +1418,7 @@ class RecipeWorkflowTests(TestCase):
         self.assertContains(response, "recipe-sort:")
         self.assertContains(response, "window.localStorage.setItem")
         self.assertContains(response, 'data-bs-target="#adjust-ingredient-')
-        self.assertContains(response, 'name="quantity_delta"')
+        self.assertContains(response, 'name="quantity"')
         self.assertNotContains(response, 'quantityCell.addEventListener("dblclick"')
         self.assertContains(response, "recipe-scroll:")
         self.assertContains(response, "window.scrollTo(0, Number(savedScroll))")
@@ -1482,7 +1482,7 @@ class RecipeWorkflowTests(TestCase):
         malt = saved_ingredients[0]
         response = self.client.post(
             f"/ingredients/{malt.pk}/quantite/",
-            {"quantity_delta": "250"},
+            {"quantity": "1250"},
         )
         self.assertRedirects(response, f"/recettes/{recipe.pk}/")
         malt.refresh_from_db()
@@ -1490,14 +1490,14 @@ class RecipeWorkflowTests(TestCase):
 
         self.client.post(
             f"/ingredients/{malt.pk}/quantite/",
-            {"quantity_delta": "-500"},
+            {"quantity": "750"},
         )
         malt.refresh_from_db()
         self.assertEqual(malt.amount_g, Decimal("750.0"))
 
         self.client.post(
             f"/ingredients/{malt.pk}/quantite/",
-            {"quantity_delta": "-1000"},
+            {"quantity": "-250"},
             follow=True,
         )
         malt.refresh_from_db()
@@ -1505,7 +1505,7 @@ class RecipeWorkflowTests(TestCase):
 
         self.client.post(
             f"/ingredients/{malt.pk}/quantite/",
-            {"quantity_delta": "1.5"},
+            {"quantity": "750.5"},
             follow=True,
         )
         malt.refresh_from_db()
@@ -1514,10 +1514,39 @@ class RecipeWorkflowTests(TestCase):
         other = saved_ingredients[-1]
         self.client.post(
             f"/ingredients/{other.pk}/quantite/",
-            {"quantity_delta": "0.5"},
+            {"quantity": "11.0"},
         )
         other.refresh_from_db()
         self.assertEqual(other.amount_g, Decimal("11.0"))
+
+    def test_hop_boiling_time_can_be_adjusted_from_recipe_detail(self):
+        recipe = Recipe.objects.create(name="Temps de houblon ajustable")
+        hop = Ingredient.objects.create(
+            recipe=recipe,
+            name="Cascade",
+            kind=Ingredient.Kind.HOP,
+            amount_g=25,
+            boil_minutes=60,
+        )
+
+        response = self.client.get(f"/recettes/{recipe.pk}/")
+        self.assertContains(response, f'id="adjust-hop-time-{hop.pk}"')
+        self.assertContains(response, f'action="/ingredients/{hop.pk}/temps/"')
+
+        response = self.client.post(
+            f"/ingredients/{hop.pk}/temps/",
+            {"boil_minutes": "45"},
+        )
+        self.assertRedirects(response, f"/recettes/{recipe.pk}/")
+        hop.refresh_from_db()
+        self.assertEqual(hop.boil_minutes, 45)
+
+        self.client.post(
+            f"/ingredients/{hop.pk}/temps/",
+            {"boil_minutes": "61"},
+        )
+        hop.refresh_from_db()
+        self.assertEqual(hop.boil_minutes, 45)
 
     def test_invalid_ingredient_edit_stays_inline_on_recipe_detail(self):
         recipe = Recipe.objects.create(name="Invalid edit")
@@ -2148,7 +2177,7 @@ class RecipeWorkflowTests(TestCase):
         self.assertFalse(ShoppingItem.objects.filter(name="Reçu").exists())
         self.assertTrue(ShoppingItem.objects.filter(name="À acheter").exists())
 
-    def test_catalog_quantity_can_be_added_without_editing_item(self):
+    def test_catalog_quantity_can_be_replaced_without_editing_item(self):
         item = IngredientCatalog.objects.create(
             name="Pilsen",
             kind=IngredientCatalog.Kind.MALT,
@@ -2157,7 +2186,7 @@ class RecipeWorkflowTests(TestCase):
 
         response = self.client.post(
             f"/catalogue/{item.pk}/ajouter-quantite/",
-            {"quantity": "500"},
+            {"quantity": "1500"},
         )
 
         self.assertRedirects(response, "/catalogue/")
@@ -2166,7 +2195,7 @@ class RecipeWorkflowTests(TestCase):
 
         response = self.client.post(
             f"/catalogue/{item.pk}/ajouter-quantite/",
-            {"quantity": "-200"},
+            {"quantity": "1300"},
         )
 
         self.assertRedirects(response, "/catalogue/")

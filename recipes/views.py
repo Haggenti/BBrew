@@ -19,7 +19,7 @@ from decimal import Decimal
 from decimal import ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP
 from django.utils import timezone
 
-from .forms import BackupUploadForm, BeerCategoryForm, BeerXMLUploadForm, BoilSettingsForm, BrewForm, CatalogConsumableForm, CatalogHopForm, CatalogMaltForm, CatalogOtherForm, CatalogYeastForm, CatalogForm, EquipmentSettingsForm, FermentationStepForm, HopForm, IngredientQuantityAdjustmentForm, MaltForm, MashGraphSettingsForm, MashStepForm, OtherForm, RecipeBrewingSettingsForm, RecipeCategoryForm, RecipeEfficiencyForm, RecipeForm, RecipeNameForm, RecipeNotesForm, RecipeTastingForm, ScaleForm, ShoppingItemForm, YeastForm
+from .forms import BackupUploadForm, BeerCategoryForm, BeerXMLUploadForm, BoilSettingsForm, BrewForm, CatalogConsumableForm, CatalogHopForm, CatalogMaltForm, CatalogOtherForm, CatalogYeastForm, CatalogForm, EquipmentSettingsForm, FermentationStepForm, HopForm, IngredientQuantityForm, IngredientTimeForm, MaltForm, MashGraphSettingsForm, MashStepForm, OtherForm, RecipeBrewingSettingsForm, RecipeCategoryForm, RecipeEfficiencyForm, RecipeForm, RecipeNameForm, RecipeNotesForm, RecipeTastingForm, ScaleForm, ShoppingItemForm, YeastForm
 from .models import ActivityEvent, BeerCategory, Brew, EquipmentSettings, FermentationStep, Ingredient, IngredientCatalog, MashStep, Recipe, RecipeVersion, ShoppingItem
 from .signals import log_activity, save_version, suspend_versioning
 from .versioning import describe_version_change
@@ -1079,14 +1079,13 @@ def catalog_add_quantity(request, pk):
     try:
         quantity = int(request.POST.get("quantity", ""))
     except (TypeError, ValueError):
-        quantity = 0
-    if quantity == 0:
-        messages.error(request, "La quantité doit être un nombre entier différent de zéro.")
+        quantity = None
+    if quantity is None or quantity < 0:
+        messages.error(request, "La quantité doit être un nombre entier positif ou nul.")
     else:
-        item.quantity_available += quantity
+        item.quantity_available = quantity
         item.save(update_fields=["quantity_available"])
-        action = "ajoutée(s) au stock" if quantity > 0 else "retirée(s) du stock"
-        messages.success(request, f"{abs(quantity)} unité(s) {action} de {item.name}.")
+        messages.success(request, f"Quantité de {item.name} mise à jour.")
     return redirect("recipes:catalog")
 
 
@@ -2158,33 +2157,42 @@ def ingredient_create(request, pk):
 @require_POST
 def ingredient_quantity_update(request, pk):
     ingredient = get_object_or_404(Ingredient, pk=pk)
-    form = IngredientQuantityAdjustmentForm(request.POST)
+    form = IngredientQuantityForm(request.POST)
     if form.is_valid():
-        quantity_delta = form.cleaned_data["quantity_delta"]
-        if ingredient.kind != Ingredient.Kind.OTHER and quantity_delta != quantity_delta.to_integral_value():
+        quantity = form.cleaned_data["quantity"]
+        if ingredient.kind != Ingredient.Kind.OTHER and quantity != quantity.to_integral_value():
             messages.error(request, "La quantité doit être un nombre entier pour cet ingrédient.")
         else:
-            quantity = ingredient.amount_g + quantity_delta
-            if quantity < 0:
-                messages.error(request, "La quantité ne peut pas devenir négative.")
-            elif quantity > Decimal("9999999.9"):
+            if quantity > Decimal("9999999.9"):
                 messages.error(request, "La quantité dépasse la valeur maximale autorisée.")
             else:
                 ingredient.amount_g = quantity
                 ingredient.save(update_fields=["amount_g"])
-                unit = {
-                    Ingredient.Kind.MALT: "g",
-                    Ingredient.Kind.HOP: "g",
-                    Ingredient.Kind.YEAST: "paquet(s)",
-                    Ingredient.Kind.OTHER: "unité(s)",
-                }[ingredient.kind]
-                action = "ajoutée à" if quantity_delta > 0 else "retirée de"
-                messages.success(
-                    request,
-                    f"Quantité de {abs(quantity_delta):g} {unit} {action} {ingredient.name}.",
-                )
+                messages.success(request, f"Quantité de {ingredient.name} mise à jour.")
     else:
-        messages.error(request, form.errors.get("quantity_delta", ["La quantité indiquée est invalide."])[0])
+        messages.error(request, form.errors.get("quantity", ["La quantité indiquée est invalide."])[0])
+    return redirect("recipes:detail", pk=ingredient.recipe_id)
+
+
+@require_POST
+def ingredient_time_update(request, pk):
+    ingredient = get_object_or_404(Ingredient, pk=pk)
+    form = IngredientTimeForm(request.POST)
+    if ingredient.kind != Ingredient.Kind.HOP:
+        messages.error(request, "Seuls les houblons ont une durée d’ébullition.")
+    elif form.is_valid():
+        boil_minutes = form.cleaned_data["boil_minutes"]
+        if boil_minutes > ingredient.recipe.boil_time_min:
+            messages.error(
+                request,
+                f"Le temps du houblon ne peut pas dépasser le temps d’ébullition ({ingredient.recipe.boil_time_min} min).",
+            )
+        else:
+            ingredient.boil_minutes = boil_minutes
+            ingredient.save(update_fields=["boil_minutes"])
+            messages.success(request, f"Temps d’ébullition de {ingredient.name} mis à jour.")
+    else:
+        messages.error(request, form.errors.get("boil_minutes", ["La durée indiquée est invalide."])[0])
     return redirect("recipes:detail", pk=ingredient.recipe_id)
 
 
@@ -2207,9 +2215,19 @@ def ingredient_edit(request, pk):
         cost_tracking_enabled=cost_tracking_enabled,
     )
     if request.method == "POST" and form.is_valid():
-        form.save()
-        messages.success(request, f"{ingredient.name} a été modifié.")
-        return redirect("recipes:detail", pk=ingredient.recipe_id)
+        if (
+            ingredient.kind == Ingredient.Kind.HOP
+            and form.cleaned_data.get("boil_minutes") is not None
+            and form.cleaned_data["boil_minutes"] > ingredient.recipe.boil_time_min
+        ):
+            form.add_error(
+                "boil_minutes",
+                f"Le temps du houblon ne peut pas dépasser le temps d’ébullition ({ingredient.recipe.boil_time_min} min).",
+            )
+        else:
+            form.save()
+            messages.success(request, f"{ingredient.name} a été modifié.")
+            return redirect("recipes:detail", pk=ingredient.recipe_id)
     return recipe_detail(request, ingredient.recipe_id, {ingredient.pk: form})
 
 

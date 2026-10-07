@@ -495,19 +495,21 @@ class IngredientForm(StyledModelForm):
         }
 
 
-class IngredientQuantityAdjustmentForm(forms.Form):
-    quantity_delta = forms.DecimalField(
-        label="Quantité à ajouter ou retirer",
+class IngredientQuantityForm(forms.Form):
+    quantity = forms.DecimalField(
+        label="Quantité",
         max_digits=8,
         decimal_places=1,
-        widget=forms.NumberInput(attrs={"class": "form-control", "step": "1"}),
+        min_value=0,
+        widget=forms.NumberInput(attrs={"class": "form-control", "step": "0.1", "min": "0"}),
     )
 
-    def clean_quantity_delta(self):
-        quantity_delta = self.cleaned_data["quantity_delta"]
-        if quantity_delta == 0:
-            raise forms.ValidationError("Indiquez une quantité différente de zéro.")
-        return quantity_delta
+class IngredientTimeForm(forms.Form):
+    boil_minutes = forms.IntegerField(
+        label="Temps d’ébullition",
+        min_value=0,
+        widget=forms.NumberInput(attrs={"class": "form-control", "step": "1", "min": "0"}),
+    )
 
 
 class CatalogIngredientForm(StyledModelForm):
