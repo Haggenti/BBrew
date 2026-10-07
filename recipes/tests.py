@@ -777,6 +777,9 @@ class RecipeWorkflowTests(TestCase):
         self.assertContains(response, "12,00 €")
         self.assertContains(response, "Coût total estimé des ingrédients")
         self.assertContains(response, "25,00 €")
+        self.assertContains(response, 'id="estimated-recipe-cost"')
+        self.assertContains(response, 'data-total-cost="25.00"')
+        self.assertContains(response, "par bouteille")
         self.assertContains(
             response,
             '<small class="ingredient-display d-block text-secondary">6,00 €</small>',
@@ -990,6 +993,7 @@ class RecipeWorkflowTests(TestCase):
         self.assertContains(detail_response, 'ctx.setLineDash([4, 4])')
         self.assertContains(detail_response, 'ctx.strokeStyle = "#dc3545"')
         self.assertContains(detail_response, "chart.tooltip.setActiveElements(activeTooltipElement")
+        self.assertContains(detail_response, "duration: index ? steps[index - 1].duration : 0")
         self.assertContains(detail_response, "chart.update(\"none\")")
         self.assertContains(detail_response, "steps[stepIndex - 1].duration = boundedElapsed - previousStart")
         self.assertContains(detail_response, "remainingDays = steps.slice(stepIndex).reduce")
@@ -2663,7 +2667,7 @@ class RecipeWorkflowTests(TestCase):
 
         detail_response = self.client.get(f"/recettes/{recipe.pk}/")
         self.assertContains(detail_response, "déplacez le début d’un palier")
-        self.assertContains(detail_response, "const point = { x: elapsed, y: step.temperature")
+        self.assertContains(detail_response, "duration: index ? steps[index - 1].duration : 0")
         self.assertContains(detail_response, "steps[stepIndex - 1].duration = clampDuration")
         self.assertContains(detail_response, "endpoint: true")
         self.assertContains(detail_response, "step.duration = clampDuration(requestedElapsed - previousElapsed, timeMax - previousElapsed)")

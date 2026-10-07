@@ -249,7 +249,7 @@
     <div class="col-sm-6 p-3"><small class="text-secondary d-block">Ratio IBU / DF</small><strong class="fs-4">{% if ibu_df_ratio is not None %}{{ ibu_df_ratio }}{% else %}—{% endif %}</strong>{% if ibu_df_comment %}<small class="text-secondary d-block mt-1">{{ ibu_df_comment|capfirst }}</small>{% endif %}</div>
     <div class="col-sm-6 border-top p-3"><small class="text-secondary d-block">Eau de départ nécessaire</small><strong id="water-result" class="fs-4" data-bs-toggle="tooltip" data-bs-placement="top" title="Calculée selon le volume et l’équipement">— L</strong></div>
     <div class="col-sm-6 border-top p-3"><small class="text-secondary d-block">Volume de la recette</small><strong class="fs-4">{{ recipe.batch_size_l|floatformat:"-2" }} L</strong></div>
-    {% if cost_tracking_enabled %}<div class="col-sm-6 border-top p-3"><small class="text-secondary d-block">Coût total estimé des ingrédients</small><strong class="fs-4">{% if estimated_recipe_cost is not None %}{{ estimated_recipe_cost|floatformat:2 }} €{% else %}À renseigner dans le stock{% endif %}</strong></div>{% endif %}
+    {% if cost_tracking_enabled %}<div class="col-sm-6 border-top p-3"><small class="text-secondary d-block">Coût total estimé des ingrédients</small><strong id="estimated-recipe-cost" class="fs-4"{% if estimated_recipe_cost is not None %} data-total-cost="{{ estimated_recipe_cost|unlocalize }}" data-bs-toggle="tooltip" data-bs-placement="top"{% endif %}>{% if estimated_recipe_cost is not None %}{{ estimated_recipe_cost|floatformat:2 }} €{% else %}À renseigner dans le stock{% endif %}</strong></div>{% endif %}
 
   </div></section></div>
   </div></div></div>
@@ -496,8 +496,13 @@
     };
     const handlePoints = () => {
       let elapsed = 0;
-      const points = steps.map((step) => {
-        const point = { x: elapsed, y: step.temperature, step_id: step.id, duration: step.duration };
+      const points = steps.map((step, index) => {
+        const point = {
+          x: elapsed,
+          y: step.temperature,
+          step_id: step.id,
+          duration: index ? steps[index - 1].duration : 0
+        };
         elapsed += step.duration;
         return point;
       });
@@ -922,7 +927,7 @@
           x: elapsed,
           y: step.temperature,
           step_id: step.id,
-          duration: step.duration,
+          duration: index ? steps[index - 1].duration : 0,
           phase: step.phase,
           action: step.action,
           actionPoint: index + 1 < steps.length && step.temperature === steps[index + 1].temperature
@@ -1455,6 +1460,21 @@
   const carbonationDetail = document.getElementById("carb-detail");
   const bottleSize = document.getElementById("bottle-size");
   const bottleCount = document.getElementById("bottle-count");
+  const estimatedRecipeCost = document.getElementById("estimated-recipe-cost");
+
+  function updateRecipeCostTooltip(count, size) {
+    if (!estimatedRecipeCost) return;
+    const totalCost = Number(estimatedRecipeCost.dataset.totalCost);
+    if (!Number.isFinite(totalCost) || count < 1 || size <= 0) {
+      estimatedRecipeCost.removeAttribute("title");
+      estimatedRecipeCost.removeAttribute("data-bs-original-title");
+      return;
+    }
+    const costPerBottle = (totalCost / count).toFixed(2).replace(".", ",");
+    const title = `${costPerBottle} € par bouteille · format ${size.toFixed(2).replace(".", ",")} L · ${count} bouteille${count > 1 ? "s" : ""}`;
+    estimatedRecipeCost.setAttribute("title", title);
+    estimatedRecipeCost.setAttribute("data-bs-original-title", title);
+  }
 
   function updateCarbonation() {
     const [volume, target, temperature, sugarFactor] = carbonationFields.map((field) => Number(field.value));
@@ -1462,10 +1482,13 @@
       carbonationResult.textContent = "— g";
       carbonationDetail.textContent = "";
       bottleCount.textContent = "—";
+      updateRecipeCostTooltip(0, 0);
       return;
     }
     const size = Number(bottleSize.value);
-    bottleCount.textContent = size > 0 ? Math.floor(volume / size) : "—";
+    const count = size > 0 ? Math.floor(volume / size) : 0;
+    bottleCount.textContent = count || "—";
+    updateRecipeCostTooltip(count, size);
     const temperatureF = (temperature * 9 / 5) + 32;
     const residual = Math.max(0, 3.0378 - (0.050062 * temperatureF) + (0.00026555 * temperatureF ** 2));
     const requiredVolumes = Math.max(0, target - residual);
