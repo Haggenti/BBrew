@@ -11,10 +11,38 @@
     </div>
   </div>
 </div>
-<div class="row g-3" aria-label="Résumé de l'activité">
-  <div class="col-6 col-lg-3"><a class="card h-100 text-decoration-none shadow-sm" href="{% url 'recipes:list' %}"><div class="card-body"><div class="small text-secondary">Recettes</div><div class="display-6 text-dark">{{ dashboard.recipe_count }}</div></div></a></div>
-  <div class="col-6 col-lg-3"><a class="card h-100 text-decoration-none shadow-sm" href="{% url 'recipes:brews' %}"><div class="card-body"><div class="small text-secondary">Brassins à venir</div><div class="display-6 text-dark">{{ dashboard.upcoming_brew_count }}</div></div></a></div>
-  <div class="col-6 col-lg-3"><a class="card h-100 text-decoration-none shadow-sm" href="{% url 'recipes:shopping_list' %}?status=todo"><div class="card-body"><div class="small text-secondary">Articles à acheter</div><div class="display-6 text-dark">{{ dashboard.shopping_count }}</div></div></a></div>
-  <div class="col-6 col-lg-3"><a class="card h-100 text-decoration-none shadow-sm" href="{% url 'recipes:catalog' %}?alerts=1"><div class="card-body"><div class="small text-secondary">Alertes de stock</div><div class="display-6 {% if dashboard.stock_alert_count %}text-danger{% else %}text-success{% endif %}">{{ dashboard.stock_alert_count }}</div></div></a></div>
+<style>
+  .dashboard-kpi { border: 0; overflow: hidden; }
+  .dashboard-kpi .card-body { position: relative; min-height: 8rem; }
+  .dashboard-kpi .kpi-icon { width: 3rem; height: 3rem; display: inline-flex; align-items: center; justify-content: center; border-radius: 1rem; font-size: 1.35rem; }
+  .dashboard-kpi .kpi-value { font-size: 2.25rem; line-height: 1; font-weight: 700; }
+  .dashboard-kpi .kpi-link { color: inherit; text-decoration: none; }
+  .dashboard-kpi .kpi-link:hover .kpi-value { color: var(--bs-primary) !important; }
+  .dashboard-panel { border: 0; }
+  .dashboard-panel .list-group-item { border-left: 0; border-right: 0; }
+  .dashboard-panel .list-group-item:first-child { border-top: 0; }
+</style>
+<div class="row g-3 mb-4" aria-label="Résumé de l'activité">
+  <div class="col-6 col-lg-3"><a class="card dashboard-kpi shadow-sm h-100 kpi-link" href="{% url 'recipes:list' %}"><div class="card-body"><div class="d-flex justify-content-between align-items-start"><span class="kpi-icon bg-primary-subtle text-primary"><i class="bi bi-journal-richtext" aria-hidden="true"></i></span><span class="kpi-value text-dark">{{ dashboard.recipe_count }}</span></div><div class="small text-secondary mt-3">Recettes enregistrées</div></div></a></div>
+  <div class="col-6 col-lg-3"><a class="card dashboard-kpi shadow-sm h-100 kpi-link" href="{% url 'recipes:brews' %}"><div class="card-body"><div class="d-flex justify-content-between align-items-start"><span class="kpi-icon bg-success-subtle text-success"><i class="bi bi-calendar2-check" aria-hidden="true"></i></span><span class="kpi-value text-dark">{{ dashboard.upcoming_brew_count }}</span></div><div class="small text-secondary mt-3">Brassins à venir</div></div></a></div>
+  <div class="col-6 col-lg-3"><a class="card dashboard-kpi shadow-sm h-100 kpi-link" href="{% url 'recipes:shopping_list' %}?status=todo"><div class="card-body"><div class="d-flex justify-content-between align-items-start"><span class="kpi-icon bg-warning-subtle text-warning-emphasis"><i class="bi bi-cart3" aria-hidden="true"></i></span><span class="kpi-value text-dark">{{ dashboard.shopping_count }}</span></div><div class="small text-secondary mt-3">Articles à acheter</div></div></a></div>
+  <div class="col-6 col-lg-3"><a class="card dashboard-kpi shadow-sm h-100 kpi-link" href="{% url 'recipes:catalog' %}?alerts=1"><div class="card-body"><div class="d-flex justify-content-between align-items-start"><span class="kpi-icon {% if dashboard.stock_alert_count %}bg-danger-subtle text-danger{% else %}bg-success-subtle text-success{% endif %}"><i class="bi bi-box-seam" aria-hidden="true"></i></span><span class="kpi-value {% if dashboard.stock_alert_count %}text-danger{% else %}text-success{% endif %}">{{ dashboard.stock_alert_count }}</span></div><div class="small text-secondary mt-3">Alertes de stock</div></div></a></div>
+</div>
+<div class="row g-4">
+  <div class="col-lg-7">
+    <section class="card dashboard-panel shadow-sm h-100">
+      <div class="card-header bg-light d-flex justify-content-between align-items-center"><h2 class="h5 mb-0"><i class="bi bi-exclamation-circle me-2" aria-hidden="true"></i>À surveiller</h2><a class="btn btn-sm btn-outline-secondary" href="{% url 'recipes:catalog' %}?alerts=1">Voir le stock</a></div>
+      {% if dashboard.stock_alert_items %}
+      <div class="list-group list-group-flush">{% for item in dashboard.stock_alert_items %}<div class="list-group-item py-3"><div class="d-flex justify-content-between gap-3"><div><strong>{{ item.name }}</strong><small class="d-block text-secondary">Besoin de {{ item.planned_required }}{% if item.planned_unit %} {{ item.planned_unit }}{% endif %} pour les prochains brassins</small></div><span class="badge text-bg-danger align-self-start">−{{ item.planned_deficit }}{% if item.planned_unit %} {{ item.planned_unit }}{% endif %}</span></div></div>{% endfor %}</div>
+      {% else %}<div class="card-body text-center py-5"><i class="bi bi-check-circle text-success display-6" aria-hidden="true"></i><p class="mb-0 mt-3">Aucune alerte de stock pour le moment.</p><small class="text-secondary">Les besoins des brassins planifiés sont couverts.</small></div>{% endif %}
+    </section>
+  </div>
+  <div class="col-lg-5">
+    <section class="card dashboard-panel shadow-sm h-100">
+      <div class="card-header bg-light d-flex justify-content-between align-items-center"><h2 class="h5 mb-0"><i class="bi bi-clock-history me-2" aria-hidden="true"></i>Dernières recettes</h2><a class="btn btn-sm btn-outline-secondary" href="{% url 'recipes:list' %}">Voir tout</a></div>
+      {% if dashboard.recent_recipes %}<div class="list-group list-group-flush">{% for recipe in dashboard.recent_recipes %}<a class="list-group-item list-group-item-action py-3" href="{% url 'recipes:detail' recipe.pk %}"><strong>{{ recipe.name }}</strong><small class="d-block text-secondary">{{ recipe.batch_size_l|floatformat:"1" }} L · {{ recipe.target_ibu }} IBU</small></a>{% endfor %}</div>{% else %}<div class="card-body text-center py-5"><p class="text-secondary mb-0">Aucune recette enregistrée.</p></div>{% endif %}
+    </section>
+  </div>
+</div>
 </div>
 {% endblock %}

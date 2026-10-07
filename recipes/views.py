@@ -95,10 +95,24 @@ def recipe_clone(request, pk):
 def dashboard(request):
     today = timezone.localdate()
     planned_needs = planned_stock_needs()
-    stock_alert_count = sum(
-        1
-        for item in IngredientCatalog.objects.all()
-        if planned_needs.get(item.pk, {}).get("required", 0) > item.quantity_available
+    catalog_items = list(IngredientCatalog.objects.all())
+    stock_alert_items = []
+    for item in catalog_items:
+        need = planned_needs.get(item.pk)
+        if need and need["required"] > item.quantity_available:
+            item.planned_required = need["required"]
+            item.planned_deficit = need["required"] - item.quantity_available
+            item.planned_unit = need["unit"]
+            item.planned_brews = need["brews"]
+            stock_alert_items.append(item)
+    stock_alert_items.sort(key=lambda item: (-item.planned_deficit, item.name.casefold()))
+    upcoming_brews = list(
+        Brew.objects.select_related("recipe")
+        .filter(
+            planned_date__gte=today,
+            status__in=[Brew.Status.PLANNED, Brew.Status.BREWING, Brew.Status.FERMENTING, Brew.Status.CONDITIONING],
+        )
+        .order_by("planned_date", "pk")[:3]
     )
     dashboard = {
         "recipe_count": Recipe.objects.count(),
@@ -106,7 +120,10 @@ def dashboard(request):
             planned_date__gte=today,
         ).exclude(status__in=[Brew.Status.COMPLETED, Brew.Status.CANCELLED]).count(),
         "shopping_count": ShoppingItem.objects.filter(is_ordered=False).count(),
-        "stock_alert_count": stock_alert_count,
+        "stock_alert_count": len(stock_alert_items),
+        "stock_alert_items": stock_alert_items[:5],
+        "upcoming_brews": upcoming_brews,
+        "recent_recipes": Recipe.objects.order_by("-created_at")[:3],
     }
     return render(request, "recipes/dashboard.html", {"dashboard": dashboard})
 
