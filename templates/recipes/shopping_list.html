@@ -15,6 +15,9 @@
         <h2 class="h5 mb-0"><i class="bi bi-cart3 me-2" aria-hidden="true"></i>Liste de courses</h2>
         <div class="d-flex align-items-center gap-2">
           <span class="badge text-bg-secondary">{{ todo_items|length }}</span>
+          <button class="btn btn-sm btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#add-shopping-item-modal">
+            <i class="bi bi-plus-lg me-1" aria-hidden="true"></i>Ajouter
+          </button>
           {% if todo_items %}
           <form method="post" action="{% url 'recipes:shopping_list_clear' %}" onsubmit="return confirm('Vider la liste de courses ?');">
             {% csrf_token %}
@@ -24,29 +27,6 @@
         </div>
       </div>
       <div class="card-body">
-    <form method="post" action="{% url 'recipes:shopping_item_create' %}" class="mb-4">
-      {% csrf_token %}
-      <div class="mb-3">
-        <label class="form-label small mb-1" for="{{ form.name.id_for_label }}">Article à ajouter</label>
-        {{ form.name }}
-        {% for error in form.name.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
-      </div>
-      <div class="row g-2 align-items-end">
-        <div class="col-5">
-          <label class="form-label small mb-1" for="{{ form.planned_quantity.id_for_label }}">Quantité</label>
-          {{ form.planned_quantity }}
-          {% for error in form.planned_quantity.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
-        </div>
-        <div class="col">
-          <label class="form-label small mb-1" for="{{ form.unit.id_for_label }}">Unité</label>
-          {{ form.unit }}
-          {% for error in form.unit.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
-        </div>
-        <div class="col-auto">
-          <button class="btn btn-primary" type="submit"><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>Ajouter</button>
-        </div>
-      </div>
-    </form>
     {% if todo_items %}<div class="list-group">{% for item in todo_items %}{% include "recipes/_shopping_item.html" %}{% endfor %}</div>{% else %}<div class="text-center bg-light border rounded p-4"><p class="text-secondary mb-0">Aucun article à acheter.</p></div>{% endif %}
       </div>
     </section>
@@ -73,6 +53,40 @@
       </div>
     </section>
   </div>
+</div>
+<div class="modal fade" id="add-shopping-item-modal" tabindex="-1" aria-labelledby="add-shopping-item-title" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+    <form method="post" action="{% url 'recipes:shopping_item_create' %}">
+      {% csrf_token %}
+      <div class="modal-header">
+        <h2 class="modal-title h5" id="add-shopping-item-title">Ajouter un article</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label" for="{{ form.name.id_for_label }}">Article à ajouter</label>
+          {{ form.name }}
+          {% for error in form.name.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+        </div>
+        <div class="row g-3">
+          <div class="col-5">
+            <label class="form-label" for="{{ form.planned_quantity.id_for_label }}">Quantité</label>
+            {{ form.planned_quantity }}
+            {% for error in form.planned_quantity.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+          </div>
+          <div class="col">
+            <label class="form-label" for="{{ form.unit.id_for_label }}">Unité</label>
+            {{ form.unit }}
+            {% for error in form.unit.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">Annuler</button>
+        <button class="btn btn-primary" type="submit"><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>Ajouter</button>
+      </div>
+    </form>
+  </div></div>
 </div>
 {{ shopping_quantity_presets|json_script:"shopping-quantity-presets" }}
 <script>

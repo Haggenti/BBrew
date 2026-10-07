@@ -58,6 +58,35 @@ def recipe_list(request):
     return render(request, "recipes/list.html", {"recipes": recipes})
 
 
+@require_POST
+def recipe_clone(request, pk):
+    recipe = get_object_or_404(Recipe, pk=pk)
+    recipe_fields = {
+        field.name: getattr(recipe, field.name)
+        for field in Recipe._meta.concrete_fields
+        if field.name not in {"id", "created_at", "current_version"}
+    }
+    recipe_fields["name"] = f"{recipe.name} (copie)"[:120]
+
+    with transaction.atomic(), suspend_versioning():
+        cloned_recipe = Recipe.objects.create(**recipe_fields)
+        for ingredient in recipe.ingredients.all():
+            ingredient.pk = None
+            ingredient.recipe = cloned_recipe
+            ingredient.save()
+        for mash_step in recipe.mash_steps.all():
+            mash_step.pk = None
+            mash_step.recipe = cloned_recipe
+            mash_step.save()
+        for fermentation_step in recipe.fermentation_steps.all():
+            fermentation_step.pk = None
+            fermentation_step.recipe = cloned_recipe
+            fermentation_step.save()
+
+    messages.success(request, f"La recette « {recipe.name} » a été clonée.")
+    return redirect("recipes:detail", pk=cloned_recipe.pk)
+
+
 def dashboard(request):
     today = timezone.localdate()
     planned_needs = planned_stock_needs()

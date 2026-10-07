@@ -472,6 +472,39 @@ class RecipeWorkflowTests(TestCase):
 
         self.assertFalse(form.is_valid())
         self.assertIn("temperature_c", form.errors)
+
+    def test_recipe_can_be_cloned_with_its_brewing_steps(self):
+        recipe = Recipe.objects.create(name="IPA originale", batch_size_l=20)
+        Ingredient.objects.create(
+            recipe=recipe,
+            name="Pale malt",
+            kind=Ingredient.Kind.MALT,
+            amount_g=5000,
+        )
+        MashStep.objects.create(
+            recipe=recipe,
+            position=1,
+            name="Empâtage",
+            temperature_c=66,
+            duration_min=60,
+        )
+        FermentationStep.objects.create(
+            recipe=recipe,
+            position=1,
+            phase=FermentationStep.Phase.PRIMARY,
+            temperature_c=20,
+            duration_days=7,
+        )
+
+        response = self.client.post(f"/recettes/{recipe.pk}/cloner/")
+
+        cloned_recipe = Recipe.objects.exclude(pk=recipe.pk).get()
+        self.assertRedirects(response, f"/recettes/{cloned_recipe.pk}/")
+        self.assertEqual(cloned_recipe.name, "IPA originale (copie)")
+        self.assertEqual(cloned_recipe.ingredients.count(), 1)
+        self.assertEqual(cloned_recipe.mash_steps.count(), 1)
+        self.assertEqual(cloned_recipe.fermentation_steps.count(), 1)
+
     def test_recipe_category_shows_style_indicators(self):
         category = BeerCategory.objects.get(code="21A")
         category.name = "IPA"
@@ -1963,6 +1996,9 @@ class RecipeWorkflowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Liste de courses")
         self.assertContains(response, "À intégrer au stock")
+        self.assertContains(response, 'id="add-shopping-item-modal"')
+        self.assertContains(response, 'data-bs-target="#add-shopping-item-modal"')
+        self.assertContains(response, 'action="/courses/ajouter/"')
         response = self.client.post("/courses/ajouter/", {"name": "Capsules rouges"})
         self.assertRedirects(response, "/courses/")
         item = ShoppingItem.objects.get()

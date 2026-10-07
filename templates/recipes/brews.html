@@ -198,11 +198,5 @@
     });
   });
 </script>
-{% else %}
-<div class="text-center bg-white border rounded p-5">
-  <h2 class="h4">Aucun brassin</h2>
-  <p class="text-secondary">Créez un brassin à partir d’une recette pour commencer son suivi.</p>
-  <a class="btn btn-primary" href="{% url 'recipes:brew_create' %}">Ajouter un brassin</a>
-</div>
 {% endif %}
 {% endblock %}
