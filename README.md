@@ -131,11 +131,33 @@ fichiers statiques collectés dans l'image.
 
 ### Accès et opérations courantes
 
-- Ne transférez pas le port 8086 directement depuis Internet. Pour un accès extérieur,
-  privilégiez un VPN. Si vous utilisez un reverse proxy HTTPS, réglez
-  `DJANGO_SECURE_COOKIES` et `DJANGO_SECURE_PROXY_SSL_HEADER` à `1`, indiquez l'origine
-  `https://...` dans `DJANGO_CSRF_TRUSTED_ORIGINS` et empêchez les accès directs qui
-  contourneraient le proxy.
+- N'exposez pas directement le port `8086` sur Internet. Pour accéder à BBS depuis
+  l'extérieur, vous pouvez utiliser un VPN : l'utilisateur se connecte d'abord au
+  VPN, puis ouvre l'adresse privée de la machine. Si vous souhaitez plutôt rendre
+  BBS accessible sur le Web, placez un reverse proxy HTTPS (par exemple Caddy,
+  Traefik ou Nginx) devant le conteneur. Le navigateur se connecte alors en HTTPS
+  au proxy, qui transmet les requêtes à BBS sur le réseau Docker.
+- Avec un reverse proxy HTTPS, configurez les variables suivantes dans
+  `docker-compose.yml` :
+  - `DJANGO_ALLOWED_HOSTS` : le nom d'hôte public, par exemple
+    `bbs.exemple.fr` (sans `https://` ni chemin).
+  - `DJANGO_CSRF_TRUSTED_ORIGINS` : l'origine publique complète, par exemple
+    `https://bbs.exemple.fr`. Une origine comprend le protocole, le nom d'hôte
+    et, si nécessaire, le port, mais pas de chemin.
+  - `DJANGO_SECURE_COOKIES: "1"` : indique au navigateur de n'envoyer les cookies
+    de session et de protection CSRF que sur des connexions HTTPS.
+  - `DJANGO_SECURE_PROXY_SSL_HEADER: "1"` : indique à Django de reconnaître
+    `X-Forwarded-Proto: https`, l'en-tête que le proxy doit transmettre pour
+    signaler que la requête originale du navigateur était en HTTPS. Le proxy doit
+    définir ou remplacer cet en-tête lui-même, et ne pas faire confiance à la
+    valeur fournie par le navigateur.
+- Le dernier réglage n'est sûr que si les requêtes vers BBS passent uniquement
+  par votre proxy de confiance : sinon un client pourrait joindre directement
+  le port `8086` et falsifier l'en-tête `X-Forwarded-Proto`. Bloquez donc l'accès
+  direct à ce port avec le pare-feu ou limitez sa publication à la machine locale
+  et configurez le proxy pour joindre le conteneur par un réseau Docker privé.
+  N'activez pas `DJANGO_SECURE_COOKIES` si les utilisateurs accèdent à BBS en
+  HTTP : leur navigateur n'enverra alors plus le cookie de session.
 - Gardez une seule instance BBS active : SQLite ne convient pas à plusieurs
   réplicas applicatifs concurrents.
 - Le répertoire `data/` contient la base SQLite sur l'hôte, hors du conteneur.
