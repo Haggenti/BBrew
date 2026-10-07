@@ -9,7 +9,9 @@ versions, les paliers de brassage, le stock d'ingrédients et de consommables,
 ainsi que la liste de courses. Les recettes peuvent être importées et exportées
 au format BeerXML.
 
-## Installation et lancement avec Fish
+## Installation et lancement en local
+
+### Avec Fish
 
 Depuis la racine du projet :
 
@@ -33,6 +35,25 @@ Pour quitter l'environnement virtuel :
 ```fish
 deactivate
 ```
+
+### Avec un terminal standard (Bash, Zsh ou sh)
+
+Depuis la racine du projet :
+
+```sh
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -r requirements.txt
+python manage.py migrate
+python manage.py runserver
+```
+
+L'application est ensuite disponible à l'adresse
+<http://127.0.0.1:8000/>.
+
+À la première installation, connectez-vous avec `brewer` / `brewer`, puis
+utilisez le lien **Mot de passe** du menu pour remplacer le mot de passe
+initial. Pour quitter l'environnement virtuel, exécutez `deactivate`.
 
 ## Utilisation
 
@@ -121,8 +142,10 @@ fichiers statiques collectés dans l'image.
   Il est exclu de Git ; sauvegardez-le régulièrement, ainsi que les
   sauvegardes générées dans BBS, vers un autre emplacement.
 - Pour mettre à jour : sauvegardez les données, mettez le code à jour, puis lancez
-  `git pull`, `set -x BBS_VERSION (git rev-parse HEAD)` et
-  `docker compose up --build` dans Fish. Les migrations sont exécutées au
+  `git pull`, renseignez `BBS_VERSION` avec le hash du commit, puis lancez
+  `docker compose up --build`. Dans Fish, utilisez `set -x BBS_VERSION (git rev-parse HEAD)` ;
+  dans un terminal standard, utilisez `export BBS_VERSION="$(git rev-parse HEAD)"`.
+  Les migrations sont exécutées au
   démarrage et l'image reçoit le hash du commit déployé.
 - Pour arrêter : `docker compose down`. Ce répertoire reste en place lors de la
   suppression ou de la reconstruction du conteneur ; sauvegardez-le avant toute
@@ -130,13 +153,20 @@ fichiers statiques collectés dans l'image.
 
 ## Configuration
 
-Les paramètres suivants peuvent être définis avec des variables
-d'environnement :
+Dans Fish, les paramètres suivants peuvent être définis dans le terminal :
 
 ```fish
 set -x DJANGO_SECRET_KEY "une-cle-secrete"
 set -x DJANGO_DEBUG 0
 set -x DJANGO_ALLOWED_HOSTS "localhost,127.0.0.1"
+```
+
+Dans un terminal standard (Bash, Zsh ou sh), utilisez `export` :
+
+```sh
+export DJANGO_SECRET_KEY="une-cle-secrete"
+export DJANGO_DEBUG=0
+export DJANGO_ALLOWED_HOSTS="localhost,127.0.0.1"
 ```
 
 En développement, les valeurs par défaut permettent de lancer l'application
@@ -145,10 +175,17 @@ au minimum une clé secrète personnalisée, désactivez `DEBUG` et renseignez
 les hôtes autorisés. La version affichée dans « À propos » est le hash court
 (7 caractères) du commit Git courant. Dans un clone Git, elle est détectée automatiquement.
 Pour construire l'image Docker (où `.git` n'est pas inclus), renseignez le hash
-au moment de la construction :
+au moment de la construction. Dans Fish :
 
 ```fish
 set -x BBS_VERSION (git rev-parse HEAD)
+docker compose up --build
+```
+
+Dans un terminal standard :
+
+```sh
+export BBS_VERSION="$(git rev-parse HEAD)"
 docker compose up --build
 ```
 
@@ -159,5 +196,12 @@ ajoutez-y une entrée à chaque évolution livrée.
 
 ```fish
 source .venv/bin/activate.fish
+python manage.py test
+```
+
+Dans un terminal standard :
+
+```sh
+. .venv/bin/activate
 python manage.py test
 ```
