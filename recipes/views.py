@@ -45,6 +45,11 @@ def recipe_list(request):
             yeasts,
             mash_steps,
         )
+        recipe.estimated_fg_value = estimated_final_gravity(
+            estimated_og_value or float(recipe.target_og),
+            yeasts,
+            mash_steps,
+        )
         recipe.estimated_ebc_value = (
             estimated_color_ebc(malts, float(recipe.batch_size_l))
             if malts

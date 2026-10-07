@@ -1,6 +1,17 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}Recettes · BBS{% endblock %}
 {% block content %}
+<style>
+  .recipe-card-glass { position: relative; width: 6rem; height: 8rem; flex: 0 0 auto; overflow: hidden; align-self: center; }
+  .recipe-card-glass span,
+  .recipe-card-glass img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  .recipe-card-glass span { z-index: 1; }
+  .recipe-card-glass img:nth-of-type(1) { z-index: 2; }
+  .recipe-card-glass img:nth-of-type(2) { z-index: 3; }
+  .recipe-card-glass span { background: var(--beer-color); -webkit-mask: url("{% static 'recipes/liquide.svg' %}") center / contain no-repeat; mask: url("{% static 'recipes/liquide.svg' %}") center / contain no-repeat; }
+  .recipe-stat-badge { background-color: #fff1db; color: #7a4b00; border: 1px solid #f2d19f; }
+</style>
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
   <div><h1 class="h2 mb-1">Recettes</h1><p class="small text-secondary mb-0">Créez, importez et gérez vos recettes de bière.</p></div>
   <div class="btn-toolbar gap-2" role="toolbar" aria-label="Actions des recettes">
@@ -12,15 +23,16 @@
 </div>
 {% if recipes %}
 <div class="row g-3">{% for recipe in recipes %}
-  <div class="col-md-6 col-lg-4"><article class="card h-100 shadow-sm"><div class="card-body">
+  <div class="col-md-6 col-lg-4"><article class="card h-100 shadow-sm"><div class="card-body d-flex gap-3">
+    <div class="flex-grow-1">
     <h2 class="h5 mb-1"><a class="text-decoration-none" href="{% url 'recipes:detail' recipe.pk %}">{{ recipe.name }}</a></h2>
     <div class="small text-secondary">Créée le {{ recipe.created_at|date:"d/m/Y" }}{% if recipe.current_version %} · <span class="badge text-bg-primary">V{{ recipe.current_version.version_number }}</span>{% endif %}</div>
-    <div class="small text-secondary">{{ recipe.batch_size_l }} L · {{ recipe.target_ibu }} IBU</div>
-    <div class="d-flex align-items-center gap-2 mt-2 small">
-      <span class="rounded-circle border" style="width: 1.25rem; height: 1.25rem; background-color: {{ recipe.estimated_ebc_color|default:'#e9ecef' }};" aria-label="Couleur estimée" title="Couleur estimée"></span>
-      <span class="text-secondary">Couleur {% if recipe.estimated_ebc_value is not None %}{{ recipe.estimated_ebc_value }} EBC{% else %}—{% endif %}</span>
+    <div class="d-flex flex-wrap gap-2 mt-3 small" aria-label="Caractéristiques de la recette">
+      <span class="badge recipe-stat-badge">{{ recipe.batch_size_l|floatformat:"1" }} L</span>
+      <span class="badge recipe-stat-badge">{{ recipe.target_ibu }} IBU</span>
+      <span class="badge recipe-stat-badge">{% if recipe.estimated_ebc_value is not None %}{{ recipe.estimated_ebc_value }} EBC{% else %}EBC —{% endif %}</span>
     </div>
-    <div class="mt-3 d-flex gap-2"><span class="badge text-bg-light">DI {% if recipe.estimated_og_value is not None %}{{ recipe.estimated_og_value }}{% else %}—{% endif %}</span><span class="badge text-bg-light">ABV {% if recipe.estimated_abv_value is not None %}~{{ recipe.estimated_abv_value }}{% else %}—{% endif %}%</span></div>
+    <div class="mt-2 d-flex flex-wrap gap-2 small"><span class="badge recipe-stat-badge">DI {% if recipe.estimated_og_value is not None %}{{ recipe.estimated_og_value }}{% else %}—{% endif %}</span><span class="badge recipe-stat-badge">DF {% if recipe.estimated_fg_value is not None %}{{ recipe.estimated_fg_value }}{% else %}—{% endif %}</span><span class="badge recipe-stat-badge">ABV {% if recipe.estimated_abv_value is not None %}~{{ recipe.estimated_abv_value|floatformat:"1" }}{% else %}—{% endif %}%</span></div>
     <div class="mt-3 d-flex flex-wrap gap-2">
       <form class="d-inline" method="post" action="{% url 'recipes:clone' recipe.pk %}">
         {% csrf_token %}
@@ -30,6 +42,10 @@
         {% csrf_token %}
         <button class="btn btn-outline-danger btn-sm" type="submit" aria-label="Supprimer {{ recipe.name }}" title="Supprimer"><i class="bi bi-trash me-1" aria-hidden="true"></i>Supprimer</button>
       </form>
+    </div>
+    </div>
+    <div class="recipe-card-glass" style="--beer-color: {% if recipe.estimated_ebc_color %}{{ recipe.estimated_ebc_color }}{% else %}transparent{% endif %}" role="img" aria-label="{% if recipe.estimated_ebc_value is not None %}Couleur estimée de la bière : {{ recipe.estimated_ebc_value }} EBC{% else %}Couleur de la bière non disponible{% endif %}" title="Couleur estimée de la bière">
+      <span></span><img src="{% static 'recipes/mousse.svg' %}" alt="" aria-hidden="true"><img src="{% static 'recipes/verre.png' %}" alt="" aria-hidden="true"><img src="{% static 'recipes/reflets_verre.png' %}" alt="" aria-hidden="true">
     </div>
   </div></article></div>
 {% endfor %}</div>
