@@ -4,35 +4,18 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
   <h1 class="h2 mb-0">Brassins</h1>
 </div>
-<section class="card mb-4 shadow-sm">
-  <div class="card-header bg-light calendar-header d-flex flex-wrap justify-content-between align-items-center gap-2">
-    <h2 class="h5 mb-0"><i class="bi bi-calendar3 me-2" aria-hidden="true"></i>Calendrier des brassins</h2>
-    <div class="calendar-controls d-flex align-items-center justify-content-end gap-2">
+<section class="card brew-calendar-card mb-4 shadow-sm">
+  <div class="card-header bg-light calendar-header">
+    <div class="calendar-title-row d-flex align-items-center justify-content-between gap-2 mb-2">
+      <h2 class="h5 mb-0"><i class="bi bi-calendar3 me-2" aria-hidden="true"></i>Calendrier</h2>
+      <span class="calendar-current-month text-capitalize fw-semibold">{{ calendar_month }}</span>
+    </div>
+    <div class="calendar-controls d-flex align-items-center justify-content-center flex-wrap gap-2">
       <a class="btn btn-sm btn-outline-secondary" href="?month={{ previous_month }}" aria-label="Mois précédent" title="Mois précédent"><i class="bi bi-chevron-left" aria-hidden="true"></i></a>
-      <div class="dropdown">
-        <button class="btn btn-sm btn-light text-capitalize fw-semibold" type="button" id="calendar-month-picker" data-bs-toggle="dropdown" aria-expanded="false">
-          {{ calendar_month }} <i class="bi bi-chevron-down ms-1 small" aria-hidden="true"></i>
-        </button>
-        <div class="dropdown-menu dropdown-menu-end p-3" aria-labelledby="calendar-month-picker">
-          <form method="get" class="calendar-picker-form">
-            <div class="calendar-picker-fields">
-              <div>
-                <label class="form-label small" for="calendar-month">Mois</label>
-                <select class="form-select form-select-sm text-capitalize" id="calendar-month" name="month_number">
-                  {% for month_number, month_name in calendar_months %}<option value="{{ month_number }}"{% if month_number == calendar_selected_month %} selected{% endif %}>{{ month_name }}</option>{% endfor %}
-                </select>
-              </div>
-              <div>
-                <label class="form-label small" for="calendar-year">Année</label>
-                <select class="form-select form-select-sm" id="calendar-year" name="year">
-                  {% for year in calendar_years %}<option value="{{ year }}"{% if year == calendar_selected_year %} selected{% endif %}>{{ year }}</option>{% endfor %}
-                </select>
-              </div>
-            </div>
-            <button class="btn btn-primary w-100" type="submit">Afficher</button>
-          </form>
-        </div>
-      </div>
+      <form method="get" class="calendar-date-form">
+        <label class="visually-hidden" for="calendar-date">Date à afficher</label>
+        <input class="form-control form-control-sm" type="date" id="calendar-date" name="calendar_date" value="{{ calendar_date|date:'Y-m-d' }}" aria-label="Choisir une date à afficher" onchange="this.form.submit()">
+      </form>
       <a class="btn btn-sm btn-outline-secondary" href="?month={{ next_month }}" aria-label="Mois suivant" title="Mois suivant"><i class="bi bi-chevron-right" aria-hidden="true"></i></a>
       <a class="btn btn-sm btn-outline-primary" href="?month={{ today_month }}">Aujourd’hui</a>
     </div>
@@ -72,14 +55,14 @@
   .brew-status-badge.status-completed { background: var(--bs-success-bg-subtle); color: var(--bs-success-text-emphasis); }
   .brew-status-badge.status-cancelled { background: var(--bs-danger-bg-subtle); color: var(--bs-danger-text-emphasis); }
   .brew-status-badge:hover { filter: brightness(.95); }
-  .calendar-picker-form { min-width: 17rem; }
-  .calendar-picker-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .75fr); gap: .75rem; margin-bottom: .75rem; }
-  .calendar-picker-fields .form-label { margin-bottom: .25rem; }
+  .calendar-date-form { display: flex; align-items: center; gap: .5rem; }
+  .calendar-date-form input { width: 8.5rem; }
   .brew-calendar .calendar-weekday,
   .brew-calendar .calendar-week-column { background-color: #edf4fc !important; }
   .brew-calendar .calendar-weekday { min-width: 5rem; }
   .brew-calendar .calendar-week-column { width: 3.25rem; min-width: 3.25rem; max-width: 3.25rem; padding-left: .25rem; padding-right: .25rem; color: var(--bs-secondary-color); }
-  .brew-calendar-day { height: 4.5rem; vertical-align: top !important; }
+  .brew-calendar-card { max-width: 1120px; margin-left: auto; margin-right: auto; }
+  .brew-calendar-day { height: 6rem; vertical-align: top !important; }
   .brew-calendar-dot { width: .7rem; height: .7rem; border-radius: 50%; display: inline-block; border: 1px solid rgba(0, 0, 0, .15); }
   .brew-calendar-dot.status-planned { background: var(--bs-primary); }
   .brew-calendar-dot.status-brewing { background: var(--bs-warning); }
@@ -112,7 +95,8 @@
   .brew-calendar-span.span-start.span-end::after { left: calc(50% - .275rem); }
   @media (max-width: 575.98px) {
     .calendar-header { align-items: stretch !important; flex-direction: column; }
-    .calendar-controls { justify-content: space-between !important; }
+    .calendar-current-month { position: static; transform: none; align-self: center; order: 2; }
+    .calendar-controls { justify-content: center !important; }
     .calendar-controls .dropdown { flex: 1; }
     .calendar-controls #calendar-month-picker { width: 100%; }
     .calendar-controls > a:last-child { white-space: nowrap; }

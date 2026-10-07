@@ -312,7 +312,9 @@ class RecipeWorkflowTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["calendar_month"], "octobre 2026")
-        self.assertContains(response, 'id="calendar-month-picker"')
+        self.assertContains(response, 'id="calendar-date"')
+        self.assertContains(response, 'name="calendar_date"')
+        self.assertContains(response, "onchange=\"this.form.submit()\"")
         self.assertContains(response, 'aria-label="Mois précédent"')
         self.assertContains(response, 'aria-label="Mois suivant"')
         self.assertContains(
@@ -320,12 +322,11 @@ class RecipeWorkflowTests(TestCase):
             f'href="?month={response.context["today_month"]}">Aujourd’hui</a>',
             html=False,
         )
-        self.assertContains(response, '<option value="10" selected>octobre</option>', html=False)
-        self.assertContains(response, '<option value="2026" selected>2026</option>', html=False)
+        self.assertContains(response, 'value="2026-10-01"', html=False)
 
         selected_response = self.client.get(
             "/brassins/",
-            {"month_number": "3", "year": "2027"},
+            {"calendar_date": "2027-03-15"},
         )
         self.assertEqual(selected_response.context["calendar_month"], "mars 2027")
 

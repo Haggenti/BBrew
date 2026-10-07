@@ -165,7 +165,9 @@ def brew_list(request):
             brew.stock_missing_items = []
     today = timezone.localdate()
     try:
-        if request.GET.get("month"):
+        if request.GET.get("calendar_date"):
+            calendar_date = date.fromisoformat(request.GET["calendar_date"]).replace(day=1)
+        elif request.GET.get("month"):
             calendar_date = date.fromisoformat(f"{request.GET['month']}-01")
         elif "month_number" in request.GET or "year" in request.GET:
             selected_year = request.GET.get("year")
@@ -267,6 +269,7 @@ def brew_list(request):
         {
             "brews": brews,
             "calendar_month": f"{month_names[calendar_date.month - 1]} {calendar_date.year}",
+            "calendar_date": calendar_date,
             "calendar_weekdays": ("Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"),
             "calendar_weeks": calendar_weeks,
             "calendar_span_lanes": calendar_span_lanes,
