@@ -15,7 +15,7 @@ services:
       DJANGO_SECURE_COOKIES: "0"
       DJANGO_SECURE_PROXY_SSL_HEADER: "0"
     ports:
-      - "8086:8000"
+      - "192.168.1.105:8086:8000"
     volumes:
       - ./data:/data
     security_opt:
