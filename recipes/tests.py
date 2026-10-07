@@ -655,6 +655,18 @@ class RecipeWorkflowTests(TestCase):
         self.assertEqual(settings.bag_weight_g, Decimal("1250.0"))
         self.assertTrue(settings.cost_management_enabled)
 
+    def test_new_equipment_settings_use_brewing_defaults(self):
+        settings = EquipmentSettings.objects.create()
+        settings.refresh_from_db()
+
+        self.assertEqual(settings.diameter_cm, Decimal("38"))
+        self.assertEqual(settings.height_cm, Decimal("40"))
+        self.assertEqual(settings.grain_absorption_l_kg, Decimal("0.30"))
+        self.assertEqual(settings.evaporation_l_h, Decimal("5.00"))
+        self.assertEqual(settings.bag_weight_g, Decimal("100.0"))
+        self.assertEqual(settings.style_tolerance_percent, Decimal("30.0"))
+        self.assertEqual(settings.mash_efficiency, Decimal("72.0"))
+
     def test_activity_log_records_model_creation_updates_and_deletions(self):
         recipe = Recipe.objects.create(name="Journal Ale")
         creation_event = ActivityEvent.objects.get(

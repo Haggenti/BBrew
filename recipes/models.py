@@ -202,14 +202,14 @@ class RecipeVersion(models.Model):
 
 
 class EquipmentSettings(models.Model):
-    diameter_cm = models.DecimalField("diamètre de la cuve (cm)", max_digits=6, decimal_places=1, default=40)
-    height_cm = models.DecimalField("hauteur de la cuve (cm)", max_digits=6, decimal_places=1, default=45)
-    bag_weight_g = models.DecimalField("poids du sac (g)", max_digits=7, decimal_places=1, default=0)
-    evaporation_l_h = models.DecimalField("évaporation (L/h)", max_digits=5, decimal_places=2, default=15)
-    grain_absorption_l_kg = models.DecimalField("absorption des grains (L/kg)", max_digits=5, decimal_places=2, default=0.8)
+    diameter_cm = models.DecimalField("diamètre de la cuve (cm)", max_digits=6, decimal_places=1, default=38)
+    height_cm = models.DecimalField("hauteur de la cuve (cm)", max_digits=6, decimal_places=1, default=40)
+    bag_weight_g = models.DecimalField("poids du sac (g)", max_digits=7, decimal_places=1, default=100)
+    evaporation_l_h = models.DecimalField("évaporation (L/h)", max_digits=5, decimal_places=2, default=5)
+    grain_absorption_l_kg = models.DecimalField("absorption des grains (L/kg)", max_digits=5, decimal_places=2, default=0.3)
     dead_space_l = models.DecimalField("volume mort (L)", max_digits=5, decimal_places=2, default=0)
-    mash_efficiency = models.DecimalField("rendement de brassage (%)", max_digits=5, decimal_places=1, default=75)
-    style_tolerance_percent = models.DecimalField("tolérance des styles (%)", max_digits=5, decimal_places=1, default=10)
+    mash_efficiency = models.DecimalField("rendement de brassage (%)", max_digits=5, decimal_places=1, default=72)
+    style_tolerance_percent = models.DecimalField("tolérance des styles (%)", max_digits=5, decimal_places=1, default=30)
     cost_management_enabled = models.BooleanField("gestion des coûts activée", default=False)
 
     def __str__(self):
