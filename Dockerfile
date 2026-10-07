@@ -1,12 +1,20 @@
-FROM python:3.13-slim-bookworm
+FROM alpine:3.22 AS source
 
-ARG BBS_VERSION=indisponible
+RUN apk add --no-cache git
+
+WORKDIR /source
+
+COPY . .
+
+RUN git rev-parse HEAD > /bbs-version \
+    && rm -rf .git
+
+FROM python:3.13-slim-bookworm
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    BBREW_DATA_DIR=/data \
-    BBS_VERSION=${BBS_VERSION}
+    BBREW_DATA_DIR=/data
 
 WORKDIR /app
 
@@ -16,7 +24,8 @@ RUN apt-get update \
     && apt-get clean \
     && pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY --from=source /bbs-version /app/.bbs-version
+COPY --from=source /source/ /app/
 COPY docker/entrypoint.sh /usr/local/bin/bbrew-entrypoint
 
 RUN groupadd --system --gid 10001 bbrew \

@@ -142,11 +142,9 @@ fichiers statiques collectés dans l'image.
   Il est exclu de Git ; sauvegardez-le régulièrement, ainsi que les
   sauvegardes générées dans BBS, vers un autre emplacement.
 - Pour mettre à jour : sauvegardez les données, mettez le code à jour, puis lancez
-  `git pull`, renseignez `BBS_VERSION` avec le hash du commit, puis lancez
-  `docker compose up --build`. Dans Fish, utilisez `set -x BBS_VERSION (git rev-parse HEAD)` ;
-  dans un terminal standard, utilisez `export BBS_VERSION="$(git rev-parse HEAD)"`.
-  Les migrations sont exécutées au
-  démarrage et l'image reçoit le hash du commit déployé.
+  `git pull` puis `docker compose up --build`. Les migrations sont exécutées au
+  démarrage et le hash du commit courant est détecté automatiquement pendant la
+  construction de l'image.
 - Pour arrêter : `docker compose down`. Ce répertoire reste en place lors de la
   suppression ou de la reconstruction du conteneur ; sauvegardez-le avant toute
   opération de nettoyage manuelle.
@@ -173,21 +171,8 @@ En développement, les valeurs par défaut permettent de lancer l'application
 sans configuration supplémentaire. Pour une mise en production, définissez
 au minimum une clé secrète personnalisée, désactivez `DEBUG` et renseignez
 les hôtes autorisés. La version affichée dans « À propos » est le hash court
-(7 caractères) du commit Git courant. Dans un clone Git, elle est détectée automatiquement.
-Pour construire l'image Docker (où `.git` n'est pas inclus), renseignez le hash
-au moment de la construction. Dans Fish :
-
-```fish
-set -x BBS_VERSION (git rev-parse HEAD)
-docker compose up --build
-```
-
-Dans un terminal standard :
-
-```sh
-export BBS_VERSION="$(git rev-parse HEAD)"
-docker compose up --build
-```
+(7 caractères) du commit Git courant. Il est détecté automatiquement dans un
+clone Git et lors de la construction de l'image Docker.
 
 Consultez [changelog.md](./changelog.md) pour l'historique des évolutions ;
 ajoutez-y une entrée à chaque évolution livrée.

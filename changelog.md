@@ -2,8 +2,8 @@
 
 La version du programme est le hash complet (`40` caractères) du commit Git
 courant. Dans un clone Git, la page « À propos » le lit directement depuis
-`HEAD`. Pour une image Docker, qui n'embarque pas `.git`, transmettre le hash
-au build avec `BBS_VERSION` (voir [README.md](./README.md)).
+`HEAD`. Lors de la construction Docker, une étape dédiée lit le hash du dépôt
+et le transmet à l'image finale sans y inclure `.git`.
 
 Le hash ne peut pas être inscrit dans le contenu du commit qui le crée : il
 est calculé à partir de ce contenu. L'entrée ci-dessous indique donc le dernier
@@ -13,6 +13,11 @@ précédent ; après le commit, la version de l'application affichera
 automatiquement le nouveau hash.
 
 ## Historique Git
+
+### 2026-10-07
+
+- `4d50b20` — Détection automatique de la version Git pendant la construction
+  de l'image Docker.
 
 ### 2026-10-06
 
