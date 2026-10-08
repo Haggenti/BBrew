@@ -4,6 +4,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        BBS_VERSION: ${BBS_VERSION:-}
     restart: unless-stopped
     init: true
     environment:

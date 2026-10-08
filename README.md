@@ -138,6 +138,9 @@ fichiers statiques collectés dans l'image.
    docker compose up
    ```
 
+   Lors de la construction, la version est récupérée automatiquement depuis le tag
+   Git courant. Pour un contexte Docker sans historique Git, vous pouvez la fournir
+   explicitement, par exemple `BBS_VERSION=V1.0.1 docker compose up --build`.
    Compose construit l'image, crée le stockage persistant et lance les migrations.
    L'application est disponible sur
    `http://<adresse-de-la-machine>:8086/`. Connectez-vous avec `brewer` / `brewer`

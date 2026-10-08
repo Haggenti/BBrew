@@ -6,7 +6,19 @@ WORKDIR /source
 
 COPY . .
 
-RUN git rev-parse HEAD > /bbs-version \
+ARG BBS_VERSION
+
+RUN version="$BBS_VERSION"; \
+    if [ -z "$version" ]; then \
+        version="$(git describe --tags --exact-match 2>/dev/null || true)"; \
+    fi; \
+    if [ -z "$version" ] && [ -f .bbs-version ]; then \
+        version="$(tr -d '\r\n' < .bbs-version)"; \
+    fi; \
+    if [ -z "$version" ]; then \
+        version="$(git rev-parse --short HEAD)"; \
+    fi; \
+    printf '%s\n' "$version" > /bbs-version \
     && rm -rf .git
 
 FROM python:3.13-slim-bookworm
@@ -24,8 +36,8 @@ RUN apt-get update \
     && apt-get clean \
     && pip install --no-cache-dir -r requirements.txt
 
-COPY --from=source /bbs-version /app/.bbs-version
 COPY --from=source /source/ /app/
+COPY --from=source /bbs-version /app/.bbs-version
 COPY docker/entrypoint.sh /usr/local/bin/bbrew-entrypoint
 
 RUN groupadd --system --gid 10001 bbrew \
