@@ -90,5 +90,15 @@
     });
   });
 </script>
+{% else %}
+<div class="card shadow-sm">
+  <div class="card-body text-center py-5 px-4">
+    <div class="d-inline-flex align-items-center justify-content-center rounded-circle bg-primary-subtle text-primary mb-3" style="width: 4rem; height: 4rem;">
+      <i class="bi bi-beer" style="font-size: 1.8rem;" aria-hidden="true"></i>
+    </div>
+    <h2 class="h5 mb-2">Votre suivi de brassins commencera ici</h2>
+    <p class="text-secondary mb-4">Les brassins que vous planifierez et réaliserez apparaîtront dans cette liste.</p>
+  </div>
+</div>
 {% endif %}
 {% endblock %}

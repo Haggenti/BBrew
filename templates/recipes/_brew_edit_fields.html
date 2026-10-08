@@ -1,0 +1,11 @@
+<style>
+  .brew-edit-form { font-size: .9rem; }
+  .brew-edit-form .form-label { display: block; font-size: .78rem; font-weight: 600; margin-bottom: .25rem; }
+  .brew-edit-form .form-control { max-width: 20rem; min-height: 2.15rem; padding: .3rem .55rem; }
+</style>
+<div class="brew-edit-form">
+  {% for error in form.non_field_errors %}<div class="alert alert-danger py-2 small">{{ error }}</div>{% endfor %}
+  <label class="form-label" for="{{ form.planned_date.id_for_label }}">{{ form.planned_date.label }}</label>
+  {{ form.planned_date }}
+  {% for error in form.planned_date.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+</div>

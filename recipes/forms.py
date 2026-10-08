@@ -260,6 +260,8 @@ class BrewForm(StyledModelForm):
     )
 
     def __init__(self, *args, **kwargs):
+        compact = kwargs.pop("compact", False)
+        lock_brew_fields = kwargs.pop("lock_brew_fields", False)
         super().__init__(*args, **kwargs)
         self.fields["recipe"].label = "Recette"
         self.fields["preboil_volume_mode"] = forms.ChoiceField(
@@ -297,16 +299,24 @@ class BrewForm(StyledModelForm):
         self.fields["capsule_catalog"].queryset = IngredientCatalog.objects.filter(
             kind=IngredientCatalog.Kind.CONSUMABLE
         )
+        if compact:
+            self.fields = {
+                name: self.fields[name]
+                for name in ("recipe", "recipe_version", "planned_date")
+            }
+        elif lock_brew_fields:
+            self.fields = {"planned_date": self.fields["planned_date"]}
 
     def clean(self):
         cleaned_data = super().clean()
         brew_date = cleaned_data.get("planned_date")
-        bottling_date = cleaned_data.get("completed_date")
+        if "completed_date" in self.fields:
+            bottling_date = cleaned_data.get("completed_date")
+        else:
+            bottling_date = self.instance.completed_date
         if brew_date and bottling_date and bottling_date < brew_date:
-            self.add_error(
-                "completed_date",
-                "La date de mise en bouteille ne peut pas être antérieure à la date du brassage.",
-            )
+            error_message = "La date de mise en bouteille ne peut pas être antérieure à la date du brassage."
+            self.add_error("completed_date" if "completed_date" in self.fields else None, error_message)
         equipment = self.equipment_settings or EquipmentSettings.objects.first()
         if equipment is None:
             return cleaned_data
@@ -379,6 +389,28 @@ class BrewForm(StyledModelForm):
         if version and (not recipe or version.recipe_id != recipe.pk):
             raise forms.ValidationError("Cette version n’appartient pas à la recette sélectionnée.")
         return version
+
+
+class BrewNotesForm(StyledModelForm):
+    class Meta:
+        model = Brew
+        fields = ["notes"]
+        widgets = {
+            "notes": forms.Textarea(
+                attrs={"rows": 6, "placeholder": "Ajoutez vos notes sur ce brassin"}
+            )
+        }
+
+
+class BrewMeasurementForm(BrewForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        measurement_fields = (
+            "preboil_volume_mode", "actual_preboil_volume_l", "preboil_headspace_cm",
+            "batch_volume_mode", "actual_batch_size_l", "batch_headspace_cm",
+            "actual_og", "actual_fg", "actual_spent_grains_weight_kg",
+        )
+        self.fields = {name: self.fields[name] for name in measurement_fields}
 
 
 class BeerCategoryForm(StyledModelForm):

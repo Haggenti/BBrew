@@ -35,6 +35,7 @@ AUDITED_MODELS = {
     MashStep: ("palier d’empâtage", lambda item: item.name),
     FermentationStep: ("palier de fermentation", lambda item: item.phase),
 }
+VERSION_SNAPSHOT_MODELS = {Recipe, Ingredient, MashStep, FermentationStep}
 
 
 @contextmanager
@@ -159,6 +160,18 @@ def _audit_subject(instance):
     return model_name, str(subject_getter(instance))[:180]
 
 
+def _sync_current_recipe_version(instance):
+    if _versioning_suspended or type(instance) not in VERSION_SNAPSHOT_MODELS:
+        return
+    recipe_id = instance.pk if isinstance(instance, Recipe) else instance.recipe_id
+    recipe = Recipe.objects.select_related("current_version").filter(pk=recipe_id).first()
+    if recipe is None or recipe.current_version is None:
+        return
+    RecipeVersion.objects.filter(pk=recipe.current_version_id).update(
+        snapshot=recipe_snapshot(recipe),
+    )
+
+
 @receiver(post_save)
 def log_model_save(sender, instance, created, using, **kwargs):
     if sender not in AUDITED_MODELS:
@@ -179,6 +192,7 @@ def log_model_save(sender, instance, created, using, **kwargs):
         model_name=model_name[:80],
         object_id=str(instance.pk)[:80],
     )
+    _sync_current_recipe_version(instance)
 
 
 @receiver(post_delete)
@@ -193,6 +207,7 @@ def log_model_delete(sender, instance, using, **kwargs):
         model_name=model_name[:80],
         object_id=str(instance.pk)[:80],
     )
+    _sync_current_recipe_version(instance)
 
 
 @receiver(m2m_changed, sender=ShoppingItem.source_brews.through)

@@ -8,6 +8,7 @@
   .brew-status-badge.status-fermenting { background: var(--bs-info-bg-subtle); color: var(--bs-info-text-emphasis); }
   .brew-status-badge.status-completed { background: var(--bs-success-bg-subtle); color: var(--bs-success-text-emphasis); }
   .brew-status-badge:hover { filter: brightness(.95); }
+  .brew-date-editor { display: inline-flex; align-items: center; gap: .35rem; }
 </style>
 <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
   <div>
@@ -17,7 +18,8 @@
   </div>
   <div class="brew-actions d-flex flex-wrap justify-content-end gap-2">
     <div class="btn-group" role="group" aria-label="Actions principales du brassin">
-      <a class="btn btn-outline-primary" href="{% url 'recipes:brew_edit' brew.pk %}"><i class="bi bi-pencil me-1" aria-hidden="true"></i>Modifier</a>
+      <button class="btn btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#edit-brew-notes-modal"><i class="bi bi-journal-text me-1" aria-hidden="true"></i>Notes</button>
+      <button class="btn btn-outline-info" type="button" data-bs-toggle="modal" data-bs-target="#measure-brew-modal"><i class="bi bi-eyedropper me-1" aria-hidden="true"></i>Mesurer</button>
     </div>
     {% if brew.stock_consumed_at %}
     <div class="btn-group" role="group" aria-label="Gestion du stock">
@@ -53,6 +55,57 @@
     </div>
   </div>
 </div>
+<div class="modal fade" id="edit-brew-notes-modal" tabindex="-1" aria-labelledby="edit-brew-notes-modal-title" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <form class="modal-content" method="post" action="{% url 'recipes:brew_notes_update' brew.pk %}">
+      {% csrf_token %}
+      <div class="modal-header">
+        <h2 class="modal-title h5" id="edit-brew-notes-modal-title"><i class="bi bi-journal-text me-2" aria-hidden="true"></i>Notes du brassin</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label" for="{{ notes_form.notes.id_for_label }}">Notes</label>
+        {{ notes_form.notes }}
+        {% for error in notes_form.notes.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">Annuler</button>
+        <button class="btn btn-primary" type="submit"><i class="bi bi-check-lg me-1" aria-hidden="true"></i>Enregistrer les notes</button>
+      </div>
+    </form>
+  </div>
+</div>
+<div class="modal fade" id="measure-brew-modal" tabindex="-1" aria-labelledby="measure-brew-modal-title" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered brew-measurement-modal">
+    <form class="modal-content" method="post" action="{% url 'recipes:brew_measurements_update' brew.pk %}">
+      {% csrf_token %}
+      <div class="modal-header">
+        <h2 class="modal-title h5" id="measure-brew-modal-title"><i class="bi bi-eyedropper me-2" aria-hidden="true"></i>Mesurer le brassin</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+      </div>
+      <div class="modal-body">
+        {% with form=measurement_form %}
+          {% include "recipes/_brew_measurement_fields.html" %}
+        {% endwith %}
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">Annuler</button>
+        <button class="btn btn-primary" type="submit"><i class="bi bi-check-lg me-1" aria-hidden="true"></i>Enregistrer les mesures</button>
+      </div>
+    </form>
+  </div>
+</div>
+<style>
+  .brew-measurement-modal {
+    max-width: 680px;
+  }
+  @media (max-width: 767.98px) {
+    .brew-measurement-modal {
+      margin-left: .75rem;
+      margin-right: .75rem;
+    }
+  }
+</style>
 <div class="row g-3">
   <div class="col-lg-7">
     <section class="card h-100">
@@ -69,7 +122,18 @@
           <dt class="col-sm-6 text-secondary">Version brassée</dt>
           <dd class="col-sm-6">{% if brew.recipe_version %}<a href="{% url 'recipes:history' brew.recipe.pk %}">{{ brew.recipe_version_label }}</a>{% else %}{{ brew.recipe_version_label|default:"—" }}{% endif %}</dd>
           <dt class="col-sm-6 text-secondary">Date du brassage</dt>
-          <dd class="col-sm-6">{{ brew.planned_date|date:"d/m/Y"|default:"—" }}</dd>
+          <dd class="col-sm-6">
+            <span class="brew-date-editor">
+              <span id="brew-date-display">{{ brew.planned_date|date:"d/m/Y"|default:"—" }}</span>
+              <button class="btn btn-sm btn-outline-secondary py-0 px-1" type="button" id="edit-brew-date" aria-label="Modifier la date du brassage" title="Modifier la date du brassage"><i class="bi bi-pencil" aria-hidden="true"></i></button>
+              <form class="d-none align-items-center gap-2" id="brew-date-form" method="post" action="{% url 'recipes:brew_edit' brew.pk %}">
+                {% csrf_token %}
+                <input class="form-control form-control-sm" type="date" name="planned_date" value="{{ brew.planned_date|date:'Y-m-d' }}" aria-label="Date du brassage">
+                <button class="btn btn-sm btn-primary" type="submit" aria-label="Enregistrer la date"><i class="bi bi-check-lg" aria-hidden="true"></i></button>
+                <button class="btn btn-sm btn-outline-secondary" type="button" id="cancel-brew-date" aria-label="Annuler"><i class="bi bi-x-lg" aria-hidden="true"></i></button>
+              </form>
+            </span>
+          </dd>
           <dt class="col-sm-6 text-secondary">Date de mise en bouteille</dt>
           <dd class="col-sm-6">{{ brew.completed_date|date:"d/m/Y"|default:"—" }}</dd>
         </dl>
@@ -237,6 +301,30 @@
   </div>
 </div>
 {% endif %}
+<script>
+  (() => {
+    const editButton = document.getElementById("edit-brew-date");
+    const dateDisplay = document.getElementById("brew-date-display");
+    const dateForm = document.getElementById("brew-date-form");
+    const dateInput = dateForm?.querySelector("input[type='date']");
+    const cancelButton = document.getElementById("cancel-brew-date");
+    if (!editButton || !dateDisplay || !dateForm || !dateInput || !cancelButton) return;
+    editButton.addEventListener("click", () => {
+      editButton.classList.add("d-none");
+      dateDisplay.classList.add("d-none");
+      dateForm.classList.remove("d-none");
+      dateForm.classList.add("d-inline-flex");
+      dateInput.focus();
+      if (typeof dateInput.showPicker === "function") dateInput.showPicker();
+    });
+    cancelButton.addEventListener("click", () => {
+      dateForm.classList.add("d-none");
+      dateForm.classList.remove("d-inline-flex");
+      editButton.classList.remove("d-none");
+      dateDisplay.classList.remove("d-none");
+    });
+  })();
+</script>
 <style>
   .brew-actions .btn-group form { display: flex; }
   @media (max-width: 767.98px) {

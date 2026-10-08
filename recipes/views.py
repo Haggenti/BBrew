@@ -19,7 +19,7 @@ from decimal import Decimal
 from decimal import ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP
 from django.utils import timezone
 
-from .forms import BackupUploadForm, BeerCategoryForm, BeerXMLUploadForm, BoilSettingsForm, BrewForm, CatalogConsumableForm, CatalogHopForm, CatalogMaltForm, CatalogOtherForm, CatalogYeastForm, CatalogForm, EquipmentSettingsForm, FermentationStepForm, HopForm, IngredientQuantityForm, IngredientTimeForm, MaltForm, MashGraphSettingsForm, MashStepForm, OtherForm, PurchaseOrderForm, RecipeBrewingSettingsForm, RecipeCategoryForm, RecipeEfficiencyForm, RecipeForm, RecipeNameForm, RecipeNotesForm, RecipeTastingForm, ScaleForm, ShoppingItemForm, YeastForm
+from .forms import BackupUploadForm, BeerCategoryForm, BeerXMLUploadForm, BoilSettingsForm, BrewForm, BrewMeasurementForm, BrewNotesForm, CatalogConsumableForm, CatalogHopForm, CatalogMaltForm, CatalogOtherForm, CatalogYeastForm, CatalogForm, EquipmentSettingsForm, FermentationStepForm, HopForm, IngredientQuantityForm, IngredientTimeForm, MaltForm, MashGraphSettingsForm, MashStepForm, OtherForm, PurchaseOrderForm, RecipeBrewingSettingsForm, RecipeCategoryForm, RecipeEfficiencyForm, RecipeForm, RecipeNameForm, RecipeNotesForm, RecipeTastingForm, ScaleForm, ShoppingItemForm, YeastForm
 from .models import ActivityEvent, BeerCategory, Brew, EquipmentSettings, FermentationStep, Ingredient, IngredientCatalog, MashStep, PurchaseOrder, Recipe, RecipeVersion, ShoppingItem
 from .signals import log_activity, save_version, suspend_versioning
 from .versioning import describe_version_change
@@ -549,13 +549,26 @@ def brew_missing_stock_to_shopping(request, pk):
 
 
 def brew_create(request):
-    initial = {}
+    initial = {
+        "planned_date": timezone.localdate(),
+        "status": Brew.Status.PLANNED,
+    }
     recipe_id = request.GET.get("recipe")
     if request.method == "GET" and recipe_id:
         initial["recipe"] = Recipe.objects.filter(pk=recipe_id).first()
+    legacy_measurement_post = request.method == "POST" and any(
+        field in request.POST
+        for field in (
+            "preboil_volume_mode",
+            "batch_volume_mode",
+            "actual_preboil_volume_l",
+            "actual_batch_size_l",
+        )
+    )
     form = BrewForm(
         request.POST or None,
         initial=initial,
+        compact=not legacy_measurement_post,
         equipment_settings=EquipmentSettings.objects.first(),
     )
     if request.method == "POST" and form.is_valid():
@@ -565,14 +578,38 @@ def brew_create(request):
     return render(request, "recipes/brew_form.html", {"form": form, "latest_versions": _latest_recipe_versions()})
 
 
+@require_POST
+def brew_create_from_recipe(request, recipe_pk):
+    recipe = get_object_or_404(Recipe, pk=recipe_pk)
+    brew = Brew(
+        recipe=recipe,
+        recipe_version=recipe.current_version,
+        planned_date=timezone.localdate(),
+        status=Brew.Status.PLANNED,
+    )
+    BrewForm(
+        instance=brew,
+        equipment_settings=EquipmentSettings.objects.first(),
+    ).save()
+    messages.success(request, f"Le brassin « {brew.recipe_name} » a été créé.")
+    return redirect("recipes:brews")
+
+
 def brew_detail(request, pk):
     brew = get_object_or_404(Brew, pk=pk)
     comparison = _brew_comparison(brew)
+    notes_form = BrewNotesForm(instance=brew)
+    measurement_form = BrewMeasurementForm(
+        instance=brew,
+        equipment_settings=EquipmentSettings.objects.first(),
+    )
     return render(
         request,
         "recipes/brew_detail.html",
         {
             "brew": brew,
+            "notes_form": notes_form,
+            "measurement_form": measurement_form,
             "comparison": comparison,
             "stock_requirements": brew_stock_requirements(brew),
             "capsule_catalogs": IngredientCatalog.objects.filter(
@@ -584,16 +621,61 @@ def brew_detail(request, pk):
 
 def brew_edit(request, pk):
     brew = get_object_or_404(Brew, pk=pk)
-    form = BrewForm(
+    measurement_post = request.method == "POST" and any(
+        field in request.POST
+        for field in (
+            "actual_og",
+            "actual_fg",
+            "actual_preboil_volume_l",
+            "actual_batch_size_l",
+            "actual_spent_grains_weight_kg",
+            "preboil_volume_mode",
+            "batch_volume_mode",
+            "preboil_headspace_cm",
+            "batch_headspace_cm",
+        )
+    )
+    form_class = BrewMeasurementForm if measurement_post else BrewForm
+    form_kwargs = {} if measurement_post else {"lock_brew_fields": True}
+    form = form_class(
         request.POST or None,
         instance=brew,
         equipment_settings=EquipmentSettings.objects.first(),
+        **form_kwargs,
     )
     if request.method == "POST" and form.is_valid():
         form.save()
         messages.success(request, f"Le brassin « {brew.recipe_name} » a été mis à jour.")
         return redirect("recipes:brew_detail", pk=brew.pk)
     return render(request, "recipes/brew_form.html", {"form": form, "brew": brew, "latest_versions": _latest_recipe_versions()})
+
+
+@require_POST
+def brew_notes_update(request, pk):
+    brew = get_object_or_404(Brew, pk=pk)
+    form = BrewNotesForm(request.POST, instance=brew)
+    if form.is_valid():
+        form.save()
+        messages.success(request, "Les notes du brassin ont été mises à jour.")
+    else:
+        messages.error(request, "Impossible de mettre à jour les notes du brassin.")
+    return redirect("recipes:brew_detail", pk=brew.pk)
+
+
+@require_POST
+def brew_measurements_update(request, pk):
+    brew = get_object_or_404(Brew, pk=pk)
+    form = BrewMeasurementForm(
+        request.POST,
+        instance=brew,
+        equipment_settings=EquipmentSettings.objects.first(),
+    )
+    if form.is_valid():
+        form.save()
+        messages.success(request, "Les mesures du brassin ont été mises à jour.")
+    else:
+        messages.error(request, "Impossible de mettre à jour les mesures du brassin. Vérifiez les valeurs saisies.")
+    return redirect("recipes:brew_detail", pk=brew.pk)
 
 
 @require_POST
@@ -1087,6 +1169,20 @@ def recipe_version_create(request, pk):
     version = save_version(recipe, reason or "Version manuelle")
     messages.success(request, f"La version V{version.version_number} de la recette a été créée.")
     return redirect("recipes:detail", pk=recipe.pk)
+
+
+@require_POST
+def recipe_version_update(request, pk, version_pk):
+    recipe = get_object_or_404(Recipe, pk=pk)
+    version = get_object_or_404(RecipeVersion, pk=version_pk, recipe=recipe)
+    reason = (request.POST.get("reason") or "").strip()[:120]
+    if not reason:
+        messages.error(request, "Le commentaire de la version ne peut pas être vide.")
+    else:
+        version.reason = reason
+        version.save(update_fields=["reason"])
+        messages.success(request, f"Le commentaire de la version V{version.version_number} a été mis à jour.")
+    return redirect("recipes:history", pk=recipe.pk)
 
 
 @require_POST
