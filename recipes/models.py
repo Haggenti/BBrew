@@ -187,6 +187,7 @@ class RecipeVersion(models.Model):
     recipe = models.ForeignKey(Recipe, on_delete=models.CASCADE, related_name="versions")
     version_number = models.PositiveIntegerField("numéro de version", default=1)
     created_at = models.DateTimeField(auto_now_add=True)
+    modified_at = models.DateTimeField(auto_now=True)
     reason = models.CharField("modification", max_length=120, default="Modification")
     snapshot = models.JSONField()
 

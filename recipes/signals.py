@@ -5,6 +5,7 @@ from django.db import connections
 from django.db.models import Max
 from django.db.models.signals import m2m_changed, post_delete, post_save, pre_delete, pre_save
 from django.dispatch import receiver
+from django.utils import timezone
 
 from .models import (
     ActivityEvent,
@@ -169,6 +170,7 @@ def _sync_current_recipe_version(instance):
         return
     RecipeVersion.objects.filter(pk=recipe.current_version_id).update(
         snapshot=recipe_snapshot(recipe),
+        modified_at=timezone.now(),
     )
 
 

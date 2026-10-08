@@ -1126,8 +1126,23 @@ def recipe_restore(request, pk, version_pk):
         "target_ibu",
         "boil_time_min",
         "notes",
+        "tasting_malt",
+        "tasting_bitterness",
+        "tasting_hops",
+        "tasting_body",
+        "tasting_alcohol",
+        "tasting_acidity",
+        "tasting_notes",
     ):
-        setattr(recipe, field, recipe_data[field])
+        value = recipe_data.get(field) if field.startswith("tasting_") else recipe_data[field]
+        if field in {"notes", "tasting_notes"} and value is None:
+            value = ""
+        setattr(recipe, field, value)
+    recipe.tasting_rating = (
+        Decimal(recipe_data["tasting_rating"])
+        if recipe_data.get("tasting_rating") is not None
+        else None
+    )
     recipe.target_carbonation = recipe_data.get("target_carbonation", Decimal("2.40"))
     for field, default in (
         ("mash_time_min", 0),
@@ -1180,7 +1195,7 @@ def recipe_version_update(request, pk, version_pk):
         messages.error(request, "Le commentaire de la version ne peut pas être vide.")
     else:
         version.reason = reason
-        version.save(update_fields=["reason"])
+        version.save(update_fields=["reason", "modified_at"])
         messages.success(request, f"Le commentaire de la version V{version.version_number} a été mis à jour.")
     return redirect("recipes:history", pk=recipe.pk)
 
