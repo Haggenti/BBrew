@@ -2,8 +2,8 @@ from django.contrib import messages
 from django.conf import settings
 from django.core.paginator import Paginator
 from django.db import transaction
-from django.db.models import Max, Q
-from django.http import HttpResponse
+from django.db.models import Max, Q, Sum
+from django.http import FileResponse, HttpResponse
 from django.template.loader import render_to_string
 from django.views.decorators.http import require_POST
 from django.shortcuts import get_object_or_404, redirect, render
@@ -19,8 +19,8 @@ from decimal import Decimal
 from decimal import ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP
 from django.utils import timezone
 
-from .forms import BackupUploadForm, BeerCategoryForm, BeerXMLUploadForm, BoilSettingsForm, BrewForm, CatalogConsumableForm, CatalogHopForm, CatalogMaltForm, CatalogOtherForm, CatalogYeastForm, CatalogForm, EquipmentSettingsForm, FermentationStepForm, HopForm, IngredientQuantityForm, IngredientTimeForm, MaltForm, MashGraphSettingsForm, MashStepForm, OtherForm, RecipeBrewingSettingsForm, RecipeCategoryForm, RecipeEfficiencyForm, RecipeForm, RecipeNameForm, RecipeNotesForm, RecipeTastingForm, ScaleForm, ShoppingItemForm, YeastForm
-from .models import ActivityEvent, BeerCategory, Brew, EquipmentSettings, FermentationStep, Ingredient, IngredientCatalog, MashStep, Recipe, RecipeVersion, ShoppingItem
+from .forms import BackupUploadForm, BeerCategoryForm, BeerXMLUploadForm, BoilSettingsForm, BrewForm, CatalogConsumableForm, CatalogHopForm, CatalogMaltForm, CatalogOtherForm, CatalogYeastForm, CatalogForm, EquipmentSettingsForm, FermentationStepForm, HopForm, IngredientQuantityForm, IngredientTimeForm, MaltForm, MashGraphSettingsForm, MashStepForm, OtherForm, PurchaseOrderForm, RecipeBrewingSettingsForm, RecipeCategoryForm, RecipeEfficiencyForm, RecipeForm, RecipeNameForm, RecipeNotesForm, RecipeTastingForm, ScaleForm, ShoppingItemForm, YeastForm
+from .models import ActivityEvent, BeerCategory, Brew, EquipmentSettings, FermentationStep, Ingredient, IngredientCatalog, MashStep, PurchaseOrder, Recipe, RecipeVersion, ShoppingItem
 from .signals import log_activity, save_version, suspend_versioning
 from .versioning import describe_version_change
 from .backup import create_backup, restore_backup
@@ -124,6 +124,10 @@ def dashboard(request):
         "stock_alert_items": stock_alert_items[:5],
         "upcoming_brews": upcoming_brews,
         "recent_recipes": Recipe.objects.select_related("current_version").order_by("-created_at")[:3],
+        "annual_expenses": PurchaseOrder.objects.filter(order_date__year=today.year).aggregate(
+            total=Sum("amount")
+        )["total"] or Decimal("0"),
+        "annual_expenses_year": today.year,
     }
     return render(request, "recipes/dashboard.html", {"dashboard": dashboard})
 
@@ -303,6 +307,9 @@ def shopping_list(request):
             if item.planned_quantity is not None
             else None
         )
+    purchase_orders = list(PurchaseOrder.objects.all())
+    for purchase_order in purchase_orders:
+        purchase_order.edit_form = PurchaseOrderForm(instance=purchase_order)
     return render(
         request,
         "recipes/shopping_list.html",
@@ -318,6 +325,8 @@ def shopping_list(request):
                 if item.is_ordered and (item.is_received or item.received_quantity)
             ],
             "form": ShoppingItemForm(),
+            "purchase_orders": purchase_orders,
+            "purchase_order_form": PurchaseOrderForm(),
             "catalog_items": catalog_items,
             "catalog_kinds": IngredientCatalog.Kind.choices,
             "shopping_quantity_presets": {
@@ -335,6 +344,54 @@ def shopping_item_create(request):
         form.save()
         messages.success(request, "Article ajouté à la liste de courses.")
     return redirect("recipes:shopping_list")
+
+
+@require_POST
+def purchase_order_create(request):
+    form = PurchaseOrderForm(request.POST, request.FILES)
+    if form.is_valid():
+        form.save()
+        messages.success(request, "Commande ajoutée à l’historique.")
+    else:
+        messages.error(request, "Impossible d’ajouter cette commande. Vérifiez les champs saisis.")
+    return redirect("recipes:shopping_list")
+
+
+@require_POST
+def purchase_order_edit(request, pk):
+    order = get_object_or_404(PurchaseOrder, pk=pk)
+    form = PurchaseOrderForm(request.POST, request.FILES, instance=order)
+    if form.is_valid():
+        form.save()
+        if (
+            form.cleaned_data.get("remove_invoice")
+            and not form.cleaned_data.get("invoice_pdf")
+            and order.invoice_pdf
+        ):
+            order.invoice_pdf.delete(save=False)
+            order.invoice_pdf = None
+            order.save(update_fields=["invoice_pdf"])
+        messages.success(request, "Commande mise à jour.")
+    else:
+        messages.error(request, "Impossible de modifier cette commande. Vérifiez les champs saisis.")
+    return redirect("recipes:shopping_list")
+
+
+@require_POST
+def purchase_order_delete(request, pk):
+    order = get_object_or_404(PurchaseOrder, pk=pk)
+    order.delete()
+    messages.success(request, "Commande supprimée de l’historique.")
+    return redirect("recipes:shopping_list")
+
+
+def purchase_order_invoice(request, pk):
+    order = get_object_or_404(PurchaseOrder, pk=pk)
+    if not order.invoice_pdf:
+        return HttpResponse(status=404)
+    response = FileResponse(order.invoice_pdf.open("rb"), content_type="application/pdf")
+    response["Content-Disposition"] = f'inline; filename="{order.invoice_pdf.name.rsplit("/", 1)[-1]}"'
+    return response
 
 
 @require_POST

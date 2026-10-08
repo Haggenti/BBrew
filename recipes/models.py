@@ -1,4 +1,5 @@
 from django.core.exceptions import ValidationError
+from django.core.validators import FileExtensionValidator
 from django.db import models
 
 
@@ -246,6 +247,37 @@ class ShoppingItem(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class PurchaseOrder(models.Model):
+    supplier = models.CharField("fournisseur / magasin", max_length=160)
+    order_date = models.DateField("date de commande")
+    is_received = models.BooleanField("reçue", default=False)
+    received_date = models.DateField("date de réception", null=True, blank=True)
+    amount = models.DecimalField("montant (€)", max_digits=10, decimal_places=2)
+    invoice_pdf = models.FileField(
+        "facture PDF",
+        upload_to="invoices/%Y/%m/",
+        null=True,
+        blank=True,
+        validators=[FileExtensionValidator(["pdf"])],
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-order_date", "-id"]
+        verbose_name = "commande"
+        verbose_name_plural = "historique des commandes"
+
+    def clean(self):
+        super().clean()
+        if self.amount is not None and self.amount < 0:
+            raise ValidationError({"amount": "Le montant ne peut pas être négatif."})
+        if self.invoice_pdf and not self.invoice_pdf.name.lower().endswith(".pdf"):
+            raise ValidationError({"invoice_pdf": "La pièce jointe doit être un fichier PDF."})
+
+    def __str__(self):
+        return f"{self.supplier} · {self.order_date:%d/%m/%Y}"
 
 
 class BeerCategory(models.Model):

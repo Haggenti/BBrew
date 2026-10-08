@@ -2,8 +2,9 @@ from decimal import Decimal
 import math
 
 from django import forms
+from django.utils import timezone
 
-from .models import BeerCategory, Brew, EquipmentSettings, FermentationStep, Ingredient, IngredientCatalog, MashStep, Recipe, RecipeVersion, ShoppingItem
+from .models import BeerCategory, Brew, EquipmentSettings, FermentationStep, Ingredient, IngredientCatalog, MashStep, PurchaseOrder, Recipe, RecipeVersion, ShoppingItem
 
 MALT_FORMS = [
     ("Grains", "Grains"),
@@ -172,6 +173,51 @@ class ShoppingItemForm(StyledModelForm):
             "planned_quantity": forms.NumberInput(attrs={"min": "1", "step": "1", "placeholder": "Quantité"}),
             "unit": forms.TextInput(attrs={"placeholder": "g, paquets, unités"}),
         }
+
+
+class PurchaseOrderForm(StyledModelForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not self.is_bound and not self.instance.pk:
+            self.initial["order_date"] = timezone.localdate().isoformat()
+        self.fields["remove_invoice"] = forms.BooleanField(
+            label="Supprimer la facture actuelle",
+            required=False,
+            widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+        )
+
+    class Meta:
+        model = PurchaseOrder
+        fields = ["supplier", "order_date", "is_received", "received_date", "amount", "invoice_pdf"]
+        widgets = {
+            "supplier": forms.TextInput(attrs={"placeholder": "Ex. Malt & Houblon"}),
+            "order_date": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"}),
+            "received_date": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"}),
+            "amount": forms.NumberInput(attrs={"min": "0", "step": "0.01", "placeholder": "Ex. 125,50"}),
+            "invoice_pdf": forms.FileInput(attrs={"accept": "application/pdf"}),
+        }
+
+    def clean_amount(self):
+        amount = self.cleaned_data["amount"]
+        if amount < 0:
+            raise forms.ValidationError("Le montant ne peut pas être négatif.")
+        return amount
+
+    def clean_invoice_pdf(self):
+        invoice = self.cleaned_data.get("invoice_pdf")
+        if invoice and not invoice.name.lower().endswith(".pdf"):
+            raise forms.ValidationError("La pièce jointe doit être un fichier PDF.")
+        return invoice
+
+    def clean(self):
+        cleaned_data = super().clean()
+        is_received = cleaned_data.get("is_received")
+        received_date = cleaned_data.get("received_date")
+        if is_received and not received_date:
+            self.add_error("received_date", "Indiquez la date de réception.")
+        if not is_received and received_date:
+            self.add_error("received_date", "Décochez « reçue » ou retirez la date de réception.")
+        return cleaned_data
 
 
 class BackupUploadForm(forms.Form):

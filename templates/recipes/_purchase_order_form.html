@@ -1,0 +1,33 @@
+<form method="post" enctype="multipart/form-data" action="{% if edit_mode %}{% url 'recipes:purchase_order_edit' order.pk %}{% else %}{% url 'recipes:purchase_order_create' %}{% endif %}">
+  {% csrf_token %}
+  <div class="modal-header">
+    <h2 class="modal-title h5" id="{% if edit_mode %}edit{% else %}add{% endif %}-purchase-order-title">{% if edit_mode %}Modifier la commande{% else %}Ajouter une commande{% endif %}</h2>
+    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+  </div>
+  <div class="modal-body">
+    <div class="mb-3"><label class="form-label" for="{{ form.supplier.id_for_label }}">Fournisseur / magasin</label>{{ form.supplier }}</div>
+    <div class="row g-3 mb-3">
+      <div class="col"><label class="form-label" for="{{ form.order_date.id_for_label }}">Date de commande</label>{{ form.order_date }}</div>
+      <div class="col"><label class="form-label" for="{{ form.amount.id_for_label }}">Montant (€)</label>{{ form.amount }}</div>
+    </div>
+    <div class="form-check mb-3">{{ form.is_received }}<label class="form-check-label" for="{{ form.is_received.id_for_label }}">Commande reçue</label></div>
+    <div class="mb-3"><label class="form-label" for="{{ form.received_date.id_for_label }}">Date de réception <span class="text-secondary">— facultative</span></label>{{ form.received_date }}</div>
+    <div>
+      <label class="form-label" for="{{ form.invoice_pdf.id_for_label }}">Facture PDF <span class="text-secondary">— facultative</span></label>
+      {% if order.invoice_pdf %}
+      <div class="d-flex align-items-center gap-2 border rounded bg-light p-2 mb-2 small">
+        <i class="bi bi-file-earmark-pdf text-danger" aria-hidden="true"></i>
+        <a class="text-break" href="{% url 'recipes:purchase_order_invoice' order.pk %}" target="_blank" rel="noopener">Voir la facture actuelle</a>
+      </div>
+      <div class="form-check mb-2">{{ form.remove_invoice }}<label class="form-check-label" for="{{ form.remove_invoice.id_for_label }}">{{ form.remove_invoice.label }}</label></div>
+      <label class="form-label small text-secondary" for="{{ form.invoice_pdf.id_for_label }}">Remplacer la facture</label>
+      {% endif %}
+      {{ form.invoice_pdf }}
+      {% for error in form.invoice_pdf.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+    </div>
+  </div>
+  <div class="modal-footer">
+    <button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">Annuler</button>
+    <button class="btn btn-primary" type="submit">{% if edit_mode %}Enregistrer{% else %}Ajouter{% endif %}</button>
+  </div>
+</form>

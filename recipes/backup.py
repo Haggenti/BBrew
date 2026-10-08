@@ -12,6 +12,7 @@ from .models import (
     Ingredient,
     IngredientCatalog,
     MashStep,
+    PurchaseOrder,
     Recipe,
     RecipeVersion,
     ShoppingItem,
@@ -30,6 +31,7 @@ BACKUP_MODELS = (
     MashStep,
     FermentationStep,
     ShoppingItem,
+    PurchaseOrder,
 )
 
 
