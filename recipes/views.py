@@ -123,7 +123,7 @@ def dashboard(request):
         "stock_alert_count": len(stock_alert_items),
         "stock_alert_items": stock_alert_items[:5],
         "upcoming_brews": upcoming_brews,
-        "recent_recipes": Recipe.objects.order_by("-created_at")[:3],
+        "recent_recipes": Recipe.objects.select_related("current_version").order_by("-created_at")[:3],
     }
     return render(request, "recipes/dashboard.html", {"dashboard": dashboard})
 

@@ -40,7 +40,7 @@
   <div class="col-lg-5">
     <section class="card dashboard-panel shadow-sm h-100">
       <div class="card-header bg-light d-flex justify-content-between align-items-center"><h2 class="h5 mb-0"><i class="bi bi-clock-history me-2" aria-hidden="true"></i>Dernières recettes</h2><a class="btn btn-sm btn-outline-secondary" href="{% url 'recipes:list' %}">Voir tout</a></div>
-      {% if dashboard.recent_recipes %}<div class="list-group list-group-flush">{% for recipe in dashboard.recent_recipes %}<a class="list-group-item list-group-item-action py-3" href="{% url 'recipes:detail' recipe.pk %}"><strong>{{ recipe.name }}</strong><small class="d-block text-secondary">{{ recipe.batch_size_l|floatformat:"1" }} L · {{ recipe.target_ibu }} IBU</small></a>{% endfor %}</div>{% else %}<div class="card-body text-center py-5"><p class="text-secondary mb-0">Aucune recette enregistrée.</p></div>{% endif %}
+      {% if dashboard.recent_recipes %}<div class="list-group list-group-flush">{% for recipe in dashboard.recent_recipes %}<a class="list-group-item list-group-item-action py-3" href="{% url 'recipes:detail' recipe.pk %}"><strong>{{ recipe.name }}</strong><small class="d-block text-secondary">Version {% if recipe.current_version %}{{ recipe.current_version.version_number }}{% else %}—{% endif %} · {{ recipe.created_at|date:"d/m/Y" }}</small></a>{% endfor %}</div>{% else %}<div class="card-body text-center py-5"><p class="text-secondary mb-0">Aucune recette enregistrée.</p></div>{% endif %}
     </section>
   </div>
 </div>
