@@ -1093,7 +1093,14 @@ def catalog_create(request):
 def catalog_edit(request, pk):
     item = get_object_or_404(IngredientCatalog, pk=pk)
     previous_name = item.name
-    form = CatalogForm(request.POST or None, instance=item)
+    form_class = {
+        IngredientCatalog.Kind.MALT: CatalogMaltForm,
+        IngredientCatalog.Kind.HOP: CatalogHopForm,
+        IngredientCatalog.Kind.YEAST: CatalogYeastForm,
+        IngredientCatalog.Kind.OTHER: CatalogOtherForm,
+        IngredientCatalog.Kind.CONSUMABLE: CatalogConsumableForm,
+    }.get(item.kind, CatalogForm)
+    form = form_class(request.POST or None, instance=item)
     if request.method == "POST" and form.is_valid():
         with transaction.atomic():
             item = form.save()
@@ -1114,7 +1121,11 @@ def catalog_edit(request, pk):
             else ""
         )
         messages.success(request, f"{item.name} a été modifié dans le catalogue{suffix}.")
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return HttpResponse(status=204)
         return redirect("recipes:catalog")
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return render(request, "recipes/_catalog_edit_modal.html", {"form": form, "item": item}, status=422 if request.method == "POST" else 200)
     return render(request, "recipes/catalog_form.html", {"form": form, "item": item})
 
 

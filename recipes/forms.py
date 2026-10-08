@@ -109,6 +109,17 @@ class RecipeForm(StyledModelForm):
 class EquipmentSettingsForm(StyledModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        for field_name in (
+            "diameter_cm",
+            "height_cm",
+            "bag_weight_g",
+            "evaporation_l_h",
+            "grain_absorption_l_kg",
+            "dead_space_l",
+            "mash_efficiency",
+            "style_tolerance_percent",
+        ):
+            self.fields[field_name].localize = True
         self.fields["style_tolerance_percent"].required = False
         self.fields["cost_management_enabled"].help_text = (
             "Les coûts inconnus restent vides et ne sont pas inclus dans l’estimation."
@@ -712,6 +723,8 @@ class CatalogForm(StyledModelForm):
             self.fields["quantity_available"].label = "Quantité disponible (unités)"
             self.fields["unit_cost"].label = "Coût unitaire (€/unité)"
             return
+        if kind == IngredientCatalog.Kind.HOP:
+            self.fields.pop("manufacturer", None)
         if kind != IngredientCatalog.Kind.YEAST:
             self.fields.pop("fermentation_temperature_min_c", None)
             self.fields.pop("fermentation_temperature_max_c", None)
@@ -754,7 +767,7 @@ class CatalogMaltForm(StyledModelForm):
 class CatalogHopForm(StyledModelForm):
     class Meta:
         model = IngredientCatalog
-        fields = ["name", "manufacturer", "form", "quantity_available", "alpha_acid", "unit_cost"]
+        fields = ["name", "form", "quantity_available", "alpha_acid", "unit_cost"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

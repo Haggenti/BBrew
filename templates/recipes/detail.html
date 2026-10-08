@@ -16,9 +16,9 @@
   .style-selector { width: min(30rem, 100%); }
   .profile-range { position: relative; height: .65rem; margin: 1.6rem 0 .5rem; border-radius: 999px; background: var(--bs-secondary-bg); }
   .profile-style-range { position: absolute; top: 0; height: 100%; background: var(--bs-info); border-radius: inherit; }
-  .profile-value-cursor { position: absolute; top: -.2rem; width: 3px; height: 1.05rem; border: 1px solid #fff; border-radius: 2px; background: var(--bs-dark); transform: translateX(-50%); z-index: 1; }
-  .profile-value-cursor.out-of-range { background: var(--bs-warning-text-emphasis); }
-  .profile-value-label { position: absolute; bottom: calc(100% + .3rem); color: var(--bs-body-color); font-size: .75rem; line-height: 1; white-space: nowrap; transform: translateX(-50%); }
+  .profile-value-cursor { background-color: #111; border: 0; border-radius: 2px; box-shadow: 0 0 0 1px #fff, 0 0 0 2px rgba(0, 0, 0, .45); forced-color-adjust: none; height: 1.05rem; position: absolute; top: -.2rem; transform: translateX(-50%); width: 4px; z-index: 1; }
+  .profile-value-cursor.out-of-range { background-color: #b45309; }
+  .profile-value-label { position: absolute; bottom: calc(100% + .45rem); color: var(--bs-body-color); font-size: .75rem; line-height: 1; white-space: nowrap; transform: translateX(-50%); }
   .profile-value-label.align-start { transform: none; }
   .profile-value-label.align-end { transform: translateX(-100%); }
   .tasting-range { min-width: 0; }

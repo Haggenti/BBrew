@@ -19,9 +19,46 @@
       <div class="table-responsive"><table class="table table-sm align-middle"><thead><tr><th>Nom</th><th>Fournisseur</th><th>Forme</th><th>Quantité</th><th>Couleur</th><th>Rendement</th><th></th></tr></thead><tbody>{% for item in malts %}<tr><td>{{ item.name }}<small class="d-block text-secondary">{% if item.unit_cost is not None %}{{ item.unit_cost|floatformat:"-2" }} {{ item.cost_unit_label }}{% else %}Coût inconnu{% endif %}</small></td><td>{{ item.manufacturer|default:"—" }}</td><td>{{ item.form|default:"—" }}</td><td><button class="btn btn-sm py-0 px-1 btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#add-quantity-{{ item.pk }}" aria-label="Modifier la quantité de {{ item.name }}" title="Modifier la quantité"><i class="bi bi-pencil" aria-hidden="true"></i></button> {{ item.quantity_available }} g<form id="add-quantity-{{ item.pk }}" class="collapse mt-2" method="post" action="{% url 'recipes:catalog_add_quantity' item.pk %}">{% csrf_token %}<div class="input-group input-group-sm"><input class="form-control" type="number" name="quantity" min="0" step="1" placeholder="Quantité en g" aria-label="Nouvelle quantité de {{ item.name }}" required><button class="btn btn-success" type="submit" title="Enregistrer"><i class="bi bi-check-lg" aria-hidden="true"></i></button></div></form></td><td>{{ item.color_ebc }} EBC</td><td>{{ item.potential_yield }} %</td><td class="text-nowrap"><a class="btn btn-sm btn-outline-secondary" href="{% url 'recipes:catalog_edit' item.pk %}" aria-label="Modifier {{ item.name }}" title="Modifier"><i class="bi bi-pencil" aria-hidden="true"></i></a> <form class="d-inline" method="post" action="{% url 'recipes:catalog_delete' item.pk %}" onsubmit="return confirm('Supprimer cette fiche du stock ?');">{% csrf_token %}<button class="btn btn-sm btn-outline-danger" type="submit" aria-label="Supprimer {{ item.name }}" title="Supprimer"><i class="bi bi-dash-lg" aria-hidden="true"></i></button></form></td></tr>{% empty %}<tr><td colspan="7" class="text-secondary">Aucun malt ou sucre en stock. Utilisez le bouton + pour ajouter une fiche.</td></tr>{% endfor %}</tbody></table></div>
     </div></section>
   </div>
+  <div class="modal fade" id="catalog-edit-modal" tabindex="-1" aria-labelledby="catalog-edit-modal-title" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content"></div>
+    </div>
+  </div>
+  <script>
+    (() => {
+      const modalElement = document.getElementById("catalog-edit-modal");
+      if (!modalElement) return;
+      const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
+      const content = modalElement.querySelector(".modal-content");
+      const requestOptions = (options = {}) => ({
+        ...options,
+        headers: {"X-Requested-With": "XMLHttpRequest", ...(options.headers || {})},
+      });
+      document.addEventListener("click", async (event) => {
+        const link = event.target.closest('a[href*="/modifier/"]');
+        if (!link) return;
+        event.preventDefault();
+        content.innerHTML = '<div class="modal-body text-center p-5"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Chargement…</span></div></div>';
+        modal.show();
+        const response = await fetch(link.href, requestOptions());
+        content.innerHTML = await response.text();
+      });
+      modalElement.addEventListener("submit", async (event) => {
+        const form = event.target.closest("[data-catalog-edit-form]");
+        if (!form) return;
+        event.preventDefault();
+        const response = await fetch(form.action, requestOptions({method: "POST", body: new FormData(form)}));
+        if (response.status === 204) {
+          window.location.reload();
+          return;
+        }
+        content.innerHTML = await response.text();
+      });
+    })();
+  </script>
   <div class="tab-pane fade" id="stock-hops" role="tabpanel">
     <section class="card border-success-subtle border-top-0 rounded-top-0"><div class="card-header bg-success-subtle d-flex justify-content-between align-items-center"><h2 class="h5 mb-0"><img src="{% static 'recipes/icons/hops.svg' %}" width="22" height="22" class="me-2" alt="" aria-hidden="true">Houblons</h2><button class="btn btn-sm btn-success" type="button" data-bs-toggle="modal" data-bs-target="#add-stock-hop-modal" aria-label="Ajouter un houblon" title="Ajouter"><i class="bi bi-plus-lg" aria-hidden="true"></i></button></div><div class="card-body">
-      <div class="table-responsive"><table class="table table-sm align-middle"><thead><tr><th>Nom</th><th>Fabricant</th><th>Forme</th><th>Quantité</th><th>Alpha</th><th></th></tr></thead><tbody>{% for item in hops %}<tr><td>{{ item.name }}<small class="d-block text-secondary">{% if item.unit_cost is not None %}{{ item.unit_cost|floatformat:"-2" }} {{ item.cost_unit_label }}{% else %}Coût inconnu{% endif %}</small></td><td>{{ item.manufacturer|default:"—" }}</td><td>{{ item.form|default:"—" }}</td><td><button class="btn btn-sm py-0 px-1 btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#add-quantity-{{ item.pk }}" aria-label="Modifier la quantité de {{ item.name }}" title="Modifier la quantité"><i class="bi bi-pencil" aria-hidden="true"></i></button> {{ item.quantity_available }} g<form id="add-quantity-{{ item.pk }}" class="collapse mt-2" method="post" action="{% url 'recipes:catalog_add_quantity' item.pk %}">{% csrf_token %}<div class="input-group input-group-sm"><input class="form-control" type="number" name="quantity" step="1" min="0" placeholder="Quantité" aria-label="Nouvelle quantité de {{ item.name }}" required><button class="btn btn-success" type="submit" title="Enregistrer"><i class="bi bi-check-lg" aria-hidden="true"></i></button></div></form></td><td>{{ item.alpha_acid }} %</td><td class="text-nowrap"><a class="btn btn-sm btn-outline-secondary" href="{% url 'recipes:catalog_edit' item.pk %}" aria-label="Modifier {{ item.name }}" title="Modifier"><i class="bi bi-pencil" aria-hidden="true"></i></a> <form class="d-inline" method="post" action="{% url 'recipes:catalog_delete' item.pk %}" onsubmit="return confirm('Supprimer cette fiche du stock ?');">{% csrf_token %}<button class="btn btn-sm btn-outline-danger" type="submit" aria-label="Supprimer {{ item.name }}" title="Supprimer"><i class="bi bi-dash-lg" aria-hidden="true"></i></button></form></td></tr>{% empty %}<tr><td colspan="6" class="text-secondary">Aucun houblon en stock.</td></tr>{% endfor %}</tbody></table></div>
+      <div class="table-responsive"><table class="table table-sm align-middle"><thead><tr><th>Nom</th><th>Forme</th><th>Quantité</th><th>Alpha</th><th></th></tr></thead><tbody>{% for item in hops %}<tr><td>{{ item.name }}<small class="d-block text-secondary">{% if item.unit_cost is not None %}{{ item.unit_cost|floatformat:"-2" }} {{ item.cost_unit_label }}{% else %}Coût inconnu{% endif %}</small></td><td>{{ item.form|default:"—" }}</td><td><button class="btn btn-sm py-0 px-1 btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#add-quantity-{{ item.pk }}" aria-label="Modifier la quantité de {{ item.name }}" title="Modifier la quantité"><i class="bi bi-pencil" aria-hidden="true"></i></button> {{ item.quantity_available }} g<form id="add-quantity-{{ item.pk }}" class="collapse mt-2" method="post" action="{% url 'recipes:catalog_add_quantity' item.pk %}">{% csrf_token %}<div class="input-group input-group-sm"><input class="form-control" type="number" name="quantity" step="1" min="0" placeholder="Quantité" aria-label="Nouvelle quantité de {{ item.name }}" required><button class="btn btn-success" type="submit" title="Enregistrer"><i class="bi bi-check-lg" aria-hidden="true"></i></button></div></form></td><td>{{ item.alpha_acid }} %</td><td class="text-nowrap"><a class="btn btn-sm btn-outline-secondary" href="{% url 'recipes:catalog_edit' item.pk %}" aria-label="Modifier {{ item.name }}" title="Modifier"><i class="bi bi-pencil" aria-hidden="true"></i></a> <form class="d-inline" method="post" action="{% url 'recipes:catalog_delete' item.pk %}" onsubmit="return confirm('Supprimer cette fiche du stock ?');">{% csrf_token %}<button class="btn btn-sm btn-outline-danger" type="submit" aria-label="Supprimer {{ item.name }}" title="Supprimer"><i class="bi bi-dash-lg" aria-hidden="true"></i></button></form></td></tr>{% empty %}<tr><td colspan="5" class="text-secondary">Aucun houblon en stock.</td></tr>{% endfor %}</tbody></table></div>
     </div></section>
   </div>
   <div class="tab-pane fade" id="stock-yeasts" role="tabpanel">
