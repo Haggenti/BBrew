@@ -1,0 +1,13 @@
+<tr>
+  <td><span class="badge text-bg-light me-1">N° {{ brew.pk }}</span><a class="fw-semibold text-decoration-none" href="{% url 'recipes:brew_detail' brew.pk %}">{{ brew.recipe_name }}</a></td>
+  <td><form class="d-inline" method="post" action="{% url 'recipes:brew_status_cycle' brew.pk %}" hx-post="{% url 'recipes:brew_status_cycle' brew.pk %}" hx-target="closest tr" hx-swap="outerHTML">{% csrf_token %}<button class="badge brew-status-badge status-{{ brew.status }}" type="submit" title="Cliquer pour passer à l’étape suivante" aria-label="Statut {{ brew.get_status_display }}. Cliquer pour passer à l’étape suivante">{{ brew.get_status_display }} <i class="bi bi-arrow-repeat ms-1" aria-hidden="true"></i></button></form>{% if brew.stock_status == "ok" %}<span class="ms-2 text-success" title="Stock suffisant" aria-label="Stock suffisant"><i class="bi bi-check-circle-fill" aria-hidden="true"></i></span>{% elif brew.stock_status == "shopping" %}<span class="ms-2 text-warning" title="Stock manquant, prévu dans la liste de courses" aria-label="Stock manquant, prévu dans la liste de courses"><i class="bi bi-cart-check-fill" aria-hidden="true"></i></span>{% elif brew.stock_status == "insufficient" %}{% if brew.stock_missing_items %}<button class="btn btn-link btn-sm p-0 ms-2 text-danger align-baseline" type="button" data-bs-toggle="modal" data-bs-target="#missing-stock-{{ brew.pk }}" title="Voir le stock manquant" aria-label="Voir le stock manquant"><i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i></button>{% else %}<span class="ms-2 text-danger" title="Stock insuffisant" aria-label="Stock insuffisant"><i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i></span>{% endif %}{% endif %}</td>
+  <td>{{ brew.planned_date|date:"d/m/Y"|default:"—" }}</td>
+  <td>{{ brew.completed_date|date:"d/m/Y"|default:"—" }}</td>
+  <td>{{ brew.recipe_version_label|default:"—" }}</td>
+  <td class="text-nowrap">
+    <form class="d-inline" method="post" action="{% url 'recipes:brew_delete' brew.pk %}" onsubmit="return confirm('Supprimer ce brassin ?');">
+      {% csrf_token %}
+      <button class="btn btn-outline-danger btn-sm" type="submit" aria-label="Supprimer {{ brew.recipe_name }}" title="Supprimer"><i class="bi bi-dash-lg" aria-hidden="true"></i></button>
+    </form>
+  </td>
+</tr>

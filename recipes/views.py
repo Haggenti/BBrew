@@ -603,8 +603,37 @@ def brew_status_cycle(request, pk):
     current_index = statuses.index(brew.status)
     brew.status = statuses[(current_index + 1) % len(statuses)]
     brew.save(update_fields=["status"])
-    messages.success(request, f"Statut mis à jour : {brew.get_status_display()}.")
-    if request.POST.get("return_to") == "detail":
+    return_to_detail = request.POST.get("return_to") == "detail"
+    if not return_to_detail and request.headers.get("HX-Request") != "true":
+        messages.success(request, f"Statut mis à jour : {brew.get_status_display()}.")
+    if request.headers.get("HX-Request") == "true":
+        if brew.status == Brew.Status.PLANNED:
+            existing_shopping_names = {
+                item.name.strip().casefold()
+                for item in ShoppingItem.objects.all()
+            }
+            requirements = brew_stock_requirements(brew)
+            missing_items = [
+                item for item in requirements
+                if item["catalog"] is None
+                or item["available"] is None
+                or item["available"] < item["required"]
+            ]
+            brew.stock_missing_items = [
+                item for item in missing_items
+                if item["name"].strip().casefold() not in existing_shopping_names
+            ]
+            if brew.recipe_version and not missing_items:
+                brew.stock_status = "ok"
+            elif missing_items and not brew.stock_missing_items:
+                brew.stock_status = "shopping"
+            else:
+                brew.stock_status = "insufficient"
+        else:
+            brew.stock_status = None
+            brew.stock_missing_items = []
+        return render(request, "recipes/_brew_row.html", {"brew": brew})
+    if return_to_detail:
         return redirect("recipes:brew_detail", pk=brew.pk)
     return redirect("recipes:brews")
 
