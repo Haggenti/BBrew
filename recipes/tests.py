@@ -837,13 +837,18 @@ class RecipeWorkflowTests(TestCase):
 
     def test_recipe_version_keeps_changes_after_switching_versions(self):
         recipe = Recipe.objects.create(name="Version stable")
-        first_version = recipe.current_version
+        first_version = RecipeVersion.objects.get(recipe=recipe, version_number=1)
+        recipe.refresh_from_db()
+        recipe.notes = "Notes avant V2"
+        recipe.save()
         self.client.post(
             f"/recettes/{recipe.pk}/versions/ajouter/",
             {"reason": "Version modifiée"},
         )
         second_version = RecipeVersion.objects.filter(recipe=recipe).latest("version_number")
         recipe.refresh_from_db()
+        first_version.refresh_from_db()
+        self.assertEqual(first_version.snapshot["recipe"]["notes"], "Notes avant V2")
 
         recipe.notes = "Notes conservées dans V2"
         recipe.tasting_malt = 4
@@ -855,7 +860,7 @@ class RecipeWorkflowTests(TestCase):
             f"/recettes/{recipe.pk}/historique/{first_version.pk}/restaurer/",
         )
         recipe.refresh_from_db()
-        self.assertEqual(recipe.notes, "")
+        self.assertEqual(recipe.notes, "Notes avant V2")
         self.assertIsNone(recipe.tasting_malt)
 
         self.client.post(

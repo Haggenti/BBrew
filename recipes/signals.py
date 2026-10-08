@@ -235,9 +235,16 @@ def log_shopping_brew_links(sender, instance, action, reverse, pk_set, using, **
 def save_version(recipe, reason):
     if _versioning_suspended or recipe.pk in _deleting_recipe_ids:
         return
-    if not Recipe.objects.filter(pk=recipe.pk).exists():
+    source_recipe = recipe
+    recipe = Recipe.objects.select_related("current_version").filter(pk=recipe.pk).first()
+    if recipe is None:
         return
     with transaction.atomic():
+        if recipe.current_version_id:
+            RecipeVersion.objects.filter(pk=recipe.current_version_id).update(
+                snapshot=recipe_snapshot(recipe),
+                modified_at=timezone.now(),
+            )
         next_number = (
             RecipeVersion.objects.filter(recipe=recipe).aggregate(max_number=Max("version_number"))["max_number"] or 0
         ) + 1
@@ -249,6 +256,7 @@ def save_version(recipe, reason):
         )
         recipe.current_version = version
         Recipe.objects.filter(pk=recipe.pk).update(current_version=version)
+        source_recipe.current_version_id = version.pk
     return version
 
 
