@@ -779,6 +779,23 @@ class RecipeWorkflowTests(TestCase):
         response = self.client.get(f"/brassins/{brew.pk}/cycle-statut/")
         self.assertEqual(response.status_code, 405)
 
+    def test_brew_recipe_snapshot_is_historical_and_read_only(self):
+        recipe = Recipe.objects.create(name="Recette figée", batch_size_l=20)
+        self.client.post("/brassins/ajouter/", {"recipe": recipe.pk, "planned_date": ""})
+        brew = Brew.objects.get()
+        self.assertEqual(brew.recipe_snapshot["recipe"]["name"], "Recette figée")
+
+        recipe.name = "Recette modifiée"
+        recipe.save()
+        brew.refresh_from_db()
+        self.assertEqual(brew.recipe_snapshot["recipe"]["name"], "Recette figée")
+
+        response = self.client.get(f"/brassins/{brew.pk}/recette-utilisee/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Mode visualisation du snapshot")
+        self.assertContains(response, "Recette figée")
+        self.assertNotContains(response, "Modifier")
+
     def test_database_reset_requires_confirmation_and_selected_sections(self):
         recipe = Recipe.objects.create(name="À conserver")
         Brew.objects.create(recipe=recipe, recipe_name=recipe.name)

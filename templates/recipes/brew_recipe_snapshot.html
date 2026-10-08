@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Snapshot · {{ brew.recipe_name }}{% endblock %}
+{% block content %}
+<div class="snapshot-page rounded-3 border border-warning-subtle bg-warning-subtle p-3 p-lg-4">
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+    <div>
+      <a href="{% url 'recipes:brew_detail' brew.pk %}" class="text-secondary text-decoration-none">← Retour au brassin</a>
+      <h1 class="h2 mt-2 mb-1"><i class="bi bi-camera me-2" aria-hidden="true"></i>{{ snapshot.recipe.name }}</h1>
+      <p class="mb-0 text-secondary"><strong>Visualisation du snapshot</strong> · Recette utilisée lors de la création du brassin n°{{ brew.pk }}.</p>
+    </div>
+    <span class="badge text-bg-warning fs-6">Lecture seule</span>
+  </div>
+  <div class="alert alert-warning" role="note">
+    Cette page affiche l’état figé de la recette utilisé par ce brassin. Les modifications ultérieures de la recette actuelle ne sont pas prises en compte ici.
+  </div>
+  <div class="row g-3">
+    <div class="col-md-6">
+      <section class="card h-100">
+        <div class="card-header"><h2 class="h5 mb-0">Paramètres</h2></div>
+        <dl class="card-body row mb-0">
+          <dt class="col-7">Volume</dt><dd class="col-5">{{ snapshot.recipe.batch_size_l }} L</dd>
+          <dt class="col-7">OG cible</dt><dd class="col-5">{{ snapshot.recipe.target_og }}</dd>
+          <dt class="col-7">IBU cible</dt><dd class="col-5">{{ snapshot.recipe.target_ibu }}</dd>
+          <dt class="col-7">Rendement</dt><dd class="col-5">{{ snapshot.recipe.efficiency }} %</dd>
+          <dt class="col-7">Ébullition</dt><dd class="col-5">{{ snapshot.recipe.boil_time_min }} min</dd>
+        </dl>
+      </section>
+    </div>
+    <div class="col-md-6">
+      <section class="card h-100">
+        <div class="card-header"><h2 class="h5 mb-0">Ingrédients</h2></div>
+        <div class="card-body">
+          <ul class="mb-0">
+            {% for ingredient in snapshot.ingredients %}
+            <li>{{ ingredient.name }} · {{ ingredient.amount_g }} g</li>
+            {% empty %}<li class="text-secondary">Aucun ingrédient</li>{% endfor %}
+          </ul>
+        </div>
+      </section>
+    </div>
+    <div class="col-md-6">
+      <section class="card h-100">
+        <div class="card-header"><h2 class="h5 mb-0">Empâtage</h2></div>
+        <div class="card-body">
+          <ul class="mb-0">
+            {% for step in snapshot.mash_steps %}
+            <li>{{ step.name }} · {{ step.temperature_c }} °C · {{ step.duration_min }} min</li>
+            {% empty %}<li class="text-secondary">Aucun palier</li>{% endfor %}
+          </ul>
+        </div>
+      </section>
+    </div>
+    <div class="col-md-6">
+      <section class="card h-100">
+        <div class="card-header"><h2 class="h5 mb-0">Fermentation</h2></div>
+        <div class="card-body">
+          <ul class="mb-0">
+            {% for step in snapshot.fermentation_steps %}
+            <li>{{ step.phase }} · {{ step.temperature_c }} °C · {{ step.duration_days }} jours</li>
+            {% empty %}<li class="text-secondary">Aucun palier</li>{% endfor %}
+          </ul>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+{% endblock %}

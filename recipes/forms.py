@@ -1,3 +1,4 @@
+from copy import deepcopy
 from decimal import Decimal
 import math
 
@@ -262,6 +263,7 @@ class BrewForm(StyledModelForm):
     def __init__(self, *args, **kwargs):
         compact = kwargs.pop("compact", False)
         lock_brew_fields = kwargs.pop("lock_brew_fields", False)
+        kwargs.pop("refresh_recipe_snapshot", False)
         super().__init__(*args, **kwargs)
         self.fields["recipe"].label = "Recette"
         self.fields["preboil_volume_mode"] = forms.ChoiceField(
@@ -369,6 +371,8 @@ class BrewForm(StyledModelForm):
             if brew.recipe_version:
                 from .calculations import estimate_snapshot
 
+                if not brew.recipe_snapshot:
+                    brew.recipe_snapshot = deepcopy(brew.recipe_version.snapshot)
                 estimates = estimate_snapshot(brew.recipe_version.snapshot)
                 brew.recipe_version_label = (
                     f"V{brew.recipe_version.version_number} · {brew.recipe_version.created_at:%d/%m/%Y %H:%M} · "

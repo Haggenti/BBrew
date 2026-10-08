@@ -112,6 +112,11 @@ class Brew(models.Model):
         blank=True,
         related_name="brews",
     )
+    recipe_snapshot = models.JSONField(
+        "snapshot de la recette",
+        null=True,
+        blank=True,
+    )
     recipe_name = models.CharField("nom de la recette", max_length=120)
     recipe_version_label = models.CharField("version de recette", max_length=200, blank=True)
     stock_consumed_at = models.DateTimeField("stock consommé le", null=True, blank=True)

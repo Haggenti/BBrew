@@ -117,10 +117,10 @@
           <button class="badge brew-status-badge status-{{ brew.status }}" type="submit" title="Cliquer pour passer à l’étape suivante" aria-label="Statut {{ brew.get_status_display }}. Cliquer pour passer à l’étape suivante">{{ brew.get_status_display }} <i class="bi bi-arrow-repeat ms-1" aria-hidden="true"></i></button>
         </form>
         <dl class="row mb-0">
-          <dt class="col-sm-6 text-secondary">Recette d’origine</dt>
-          <dd class="col-sm-6">{% if brew.recipe %}<a href="{% url 'recipes:detail' brew.recipe.pk %}">{{ brew.recipe.name }}</a>{% else %}{{ brew.recipe_name }}{% endif %}</dd>
+          <dt class="col-sm-6 text-secondary">Recette utilisée</dt>
+          <dd class="col-sm-6"><a href="{% url 'recipes:brew_recipe_snapshot' brew.pk %}">{{ brew.recipe_name }} <span class="badge text-bg-warning">Snapshot</span></a></dd>
           <dt class="col-sm-6 text-secondary">Version brassée</dt>
-          <dd class="col-sm-6">{% if brew.recipe_version %}<a href="{% url 'recipes:history' brew.recipe.pk %}">{{ brew.recipe_version_label }}</a>{% else %}{{ brew.recipe_version_label|default:"—" }}{% endif %}</dd>
+          <dd class="col-sm-6">{{ brew.recipe_version_label|default:"—" }}</dd>
           <dt class="col-sm-6 text-secondary">Date du brassage</dt>
           <dd class="col-sm-6">
             <span class="brew-date-editor">

@@ -13,6 +13,7 @@ urlpatterns = [
     path("brassins/ajouter/", views.brew_create, name="brew_create"),
     path("brassins/ajouter/depuis-recette/<int:recipe_pk>/", views.brew_create_from_recipe, name="brew_create_from_recipe"),
     path("brassins/<int:pk>/", views.brew_detail, name="brew_detail"),
+    path("brassins/<int:pk>/recette-utilisee/", views.brew_recipe_snapshot, name="brew_recipe_snapshot"),
     path("brassins/<int:pk>/modifier/", views.brew_edit, name="brew_edit"),
     path("brassins/<int:pk>/notes/", views.brew_notes_update, name="brew_notes_update"),
     path("brassins/<int:pk>/mesures/", views.brew_measurements_update, name="brew_measurements_update"),

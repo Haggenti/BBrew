@@ -619,6 +619,18 @@ def brew_detail(request, pk):
     )
 
 
+def brew_recipe_snapshot(request, pk):
+    brew = get_object_or_404(Brew, pk=pk)
+    if not brew.recipe_snapshot:
+        messages.error(request, "Aucun snapshot n’est disponible pour ce brassin.")
+        return redirect("recipes:brew_detail", pk=brew.pk)
+    return render(
+        request,
+        "recipes/brew_recipe_snapshot.html",
+        {"brew": brew, "snapshot": brew.recipe_snapshot},
+    )
+
+
 def brew_edit(request, pk):
     brew = get_object_or_404(Brew, pk=pk)
     measurement_post = request.method == "POST" and any(
