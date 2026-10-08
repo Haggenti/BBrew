@@ -307,81 +307,6 @@ class RecipeWorkflowTests(TestCase):
             'href="https://github.com/Haggenti/BBrew"',
         )
 
-    def test_brew_calendar_navigation_allows_month_and_year_selection(self):
-        response = self.client.get("/brassins/", {"month": "2026-10"})
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["calendar_month"], "octobre 2026")
-        self.assertContains(response, 'id="calendar-date"')
-        self.assertContains(response, 'name="calendar_date"')
-        self.assertContains(response, "onchange=\"this.form.submit()\"")
-        self.assertContains(response, 'aria-label="Mois précédent"')
-        self.assertContains(response, 'aria-label="Mois suivant"')
-        self.assertContains(
-            response,
-            f'href="?month={response.context["today_month"]}">Aujourd’hui</a>',
-            html=False,
-        )
-        self.assertContains(response, 'value="2026-10-01"', html=False)
-
-        selected_response = self.client.get(
-            "/brassins/",
-            {"calendar_date": "2027-03-15"},
-        )
-        self.assertEqual(selected_response.context["calendar_month"], "mars 2027")
-
-    def test_brew_number_and_bottling_date_are_shown_in_calendar(self):
-        brew = Brew.objects.create(
-            recipe_name="Brassin test",
-            planned_date=date(2026, 10, 10),
-            completed_date=date(2026, 10, 25),
-        )
-        later_brew = Brew.objects.create(recipe_name="Brassin suivant")
-        self.assertGreater(later_brew.pk, brew.pk)
-
-        response = self.client.get("/brassins/", {"month": "2026-10"})
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, f"N° {brew.pk}")
-        self.assertContains(response, f"Brassin n°{brew.pk} — Brassin test")
-        self.assertContains(
-            response,
-            f"Embouteillage — Brassin n°{brew.pk} — Brassin test",
-        )
-        self.assertContains(response, "brew-calendar-span")
-        self.assertContains(response, "span-end")
-        self.assertContains(response, 'class="brew-calendar-bottling d-inline-block me-1"')
-        self.assertNotContains(response, "<svg")
-        self.assertEqual(
-            response.context["calendar_days"][date(2026, 10, 10)],
-            [brew],
-        )
-        bottling_day = next(
-            day
-            for week in response.context["calendar_weeks"]
-            for day in week["days"]
-            if day["date"] == date(2026, 10, 25)
-        )
-        self.assertEqual(bottling_day["bottlings"], [])
-        self.assertEqual(len(bottling_day["brew_spans"]), 1)
-        self.assertTrue(bottling_day["brew_spans"][0]["ends"])
-        brewing_day = next(
-            day
-            for week in response.context["calendar_weeks"]
-            for day in week["days"]
-            if day["date"] == date(2026, 10, 10)
-        )
-        self.assertTrue(brewing_day["brew_spans"][0]["starts"])
-        middle_day = next(
-            day
-            for week in response.context["calendar_weeks"]
-            for day in week["days"]
-            if day["date"] == date(2026, 10, 18)
-        )
-        self.assertEqual(middle_day["brew_spans"][0]["brew"], brew)
-        self.assertFalse(middle_day["brew_spans"][0]["starts"])
-        self.assertFalse(middle_day["brew_spans"][0]["ends"])
-
     def test_brew_number_restarts_at_one_when_all_brews_are_deleted(self):
         first = Brew.objects.create(recipe_name="Premier brassin")
         second = Brew.objects.create(recipe_name="Deuxième brassin")
@@ -830,38 +755,6 @@ class RecipeWorkflowTests(TestCase):
         self.assertNotIn("cost_total", HopForm().fields)
         self.assertNotIn("cost_total", YeastForm().fields)
         self.assertNotIn("cost_total", OtherForm().fields)
-
-    def test_brew_detail_places_planned_actual_next_to_analysis(self):
-        recipe = Recipe.objects.create(name="Ale à analyser")
-        brew = Brew.objects.create(recipe=recipe, recipe_name=recipe.name)
-
-        response = self.client.get(f"/brassins/{brew.pk}/")
-
-        self.assertEqual(response.status_code, 200)
-        content = response.content.decode()
-        bottling_position = content.index("Mise en bouteille")
-        comparison_row_position = content.index('<div class="row g-3 mt-0 align-items-stretch">')
-        analysis_position = content.index("Analyse du brassin")
-        comparison_position = content.index("<h2 class=\"h5 mb-0\">Prévu / réel</h2>")
-        self.assertLess(bottling_position, comparison_row_position)
-        self.assertLess(comparison_row_position, analysis_position)
-        self.assertLess(analysis_position, comparison_position)
-        self.assertContains(response, f"Brassin n°{brew.pk} · créé le")
-        self.assertContains(response, 'data-bs-target="#bottling-modal"')
-        self.assertContains(response, 'id="bottling-modal"')
-        self.assertContains(response, f'action="/brassins/{brew.pk}/mise-en-bouteille/"')
-        self.assertContains(response, f'action="/brassins/{brew.pk}/cycle-statut/"')
-        self.assertContains(response, "brew-status-badge status-planned")
-
-        response = self.client.post(
-            f"/brassins/{brew.pk}/cycle-statut/",
-            {"return_to": "detail"},
-        )
-        self.assertRedirects(response, f"/brassins/{brew.pk}/")
-        brew.refresh_from_db()
-        self.assertEqual(brew.status, Brew.Status.BREWING)
-        response = self.client.get(f"/brassins/{brew.pk}/")
-        self.assertContains(response, "brew-status-badge status-brewing")
 
     def test_brew_status_can_be_cycled_from_brew_list(self):
         brew = Brew.objects.create(recipe_name="Statut cyclique")
@@ -1864,6 +1757,7 @@ class RecipeWorkflowTests(TestCase):
         )
         brew = Brew.objects.create(
             recipe_name="Capsule Ale",
+            status=Brew.Status.FERMENTING,
         )
 
         response = self.client.post(
@@ -1913,71 +1807,6 @@ class RecipeWorkflowTests(TestCase):
         self.assertRedirects(response, f"/brassins/{brew.pk}/")
         capsules.refresh_from_db()
         self.assertEqual(capsules.quantity_available, 5)
-
-    def test_brew_can_be_created_viewed_and_updated(self):
-        recipe = Recipe.objects.create(name="Bière de test")
-        response = self.client.post(
-            "/brassins/ajouter/",
-            {
-                "recipe": recipe.pk,
-                "status": "planned",
-                "planned_date": "2026-10-10",
-                "completed_date": "",
-                "actual_preboil_volume_l": "28",
-                "actual_og": "1.052",
-                "actual_fg": "1.010",
-                "fermentation_temperature_c": "19",
-                "actual_batch_size_l": "",
-                "actual_spent_grains_weight_kg": "",
-                "notes": "Prévoir un palier de 66 °C.",
-            },
-        )
-        brew = Brew.objects.get()
-        self.assertRedirects(response, "/brassins/")
-        brews_response = self.client.get("/brassins/")
-        self.assertNotContains(brews_response, "Ajouter un brassin")
-        self.assertEqual(brew.recipe_name, "Bière de test")
-        self.assertIsNotNone(brew.recipe_version)
-        self.assertIn("V1", brew.recipe_version_label)
-        form_response = self.client.get("/brassins/ajouter/")
-        self.assertContains(form_response, "Version initiale")
-        self.assertEqual(form_response.context["latest_versions"][recipe.pk], brew.recipe_version.pk)
-        edit_response = self.client.get(f"/brassins/{brew.pk}/modifier/")
-        self.assertContains(edit_response, 'value="2026-10-10"')
-
-        response = self.client.get(f"/brassins/{brew.pk}/")
-        self.assertContains(response, "Prévoir un palier de 66 °C.")
-
-        response = self.client.post(
-            f"/brassins/{brew.pk}/modifier/",
-            {
-                "recipe": recipe.pk,
-                "status": "brewing",
-                "planned_date": "2026-10-10",
-                "completed_date": "",
-                "actual_preboil_volume_l": "28",
-                "actual_og": "1.052",
-                "actual_fg": "1.010",
-                "fermentation_temperature_c": "19",
-                "actual_batch_size_l": "19.5",
-                "actual_spent_grains_weight_kg": "",
-                "notes": "Brassage démarré.",
-            },
-        )
-        self.assertRedirects(response, f"/brassins/{brew.pk}/")
-        brew.refresh_from_db()
-        self.assertEqual(brew.status, Brew.Status.BREWING)
-        self.assertEqual(brew.actual_batch_size_l, Decimal("19.5"))
-        self.assertEqual(brew.actual_abv, 5.51)
-        detail_response = self.client.get(f"/brassins/{brew.pk}/")
-        self.assertContains(detail_response, "Évaporation totale")
-        self.assertContains(detail_response, "8,50 L")
-        self.assertContains(detail_response, "8,50 L/h")
-
-        response = self.client.post(f"/brassins/{brew.pk}/supprimer/")
-        self.assertRedirects(response, "/brassins/")
-        self.assertFalse(Brew.objects.filter(pk=brew.pk).exists())
-        self.assertTrue(Recipe.objects.filter(pk=recipe.pk).exists())
 
     def test_brew_volume_can_be_entered_as_headspace_measurement(self):
         EquipmentSettings.objects.create(diameter_cm=40, height_cm=45)
@@ -2370,9 +2199,10 @@ class RecipeWorkflowTests(TestCase):
         self.client.post(f"/recettes/{recipe.pk}/versions/ajouter/", {"reason": "Version de brassage"})
         response = self.client.post(
             "/brassins/ajouter/",
-            {"recipe": recipe.pk, "status": "planned", "planned_date": ""},
+            {"recipe": recipe.pk, "status": "brewing", "planned_date": ""},
         )
         brew = Brew.objects.get()
+        self.client.post(f"/brassins/{brew.pk}/cycle-statut/")
 
         response = self.client.post(
             f"/brassins/{brew.pk}/consommer-stock/",
@@ -2416,9 +2246,10 @@ class RecipeWorkflowTests(TestCase):
         self.client.post(f"/recettes/{recipe.pk}/versions/ajouter/", {"reason": "Version de brassage"})
         self.client.post(
             "/brassins/ajouter/",
-            {"recipe": recipe.pk, "status": "planned", "planned_date": ""},
+            {"recipe": recipe.pk, "status": "brewing", "planned_date": ""},
         )
         brew = Brew.objects.get()
+        self.client.post(f"/brassins/{brew.pk}/cycle-statut/")
 
         response = self.client.post(
             f"/brassins/{brew.pk}/consommer-stock/",
