@@ -609,6 +609,7 @@ def brew_detail(request, pk):
         "recipes/brew_detail.html",
         {
             "brew": brew,
+            "can_taste": brew.status == Brew.Status.COMPLETED,
             "notes_form": notes_form,
             "measurement_form": measurement_form,
             "tasting_form": tasting_form,
@@ -2217,6 +2218,9 @@ def recipe_category_update(request, pk):
 
 def brew_tasting_update(request, pk):
     brew = get_object_or_404(Brew, pk=pk)
+    if brew.status != Brew.Status.COMPLETED:
+        messages.warning(request, "Le profil de dégustation sera disponible lorsque le brassin sera terminé.")
+        return redirect("recipes:brew_detail", pk=brew.pk)
     form = BrewTastingForm(request.POST or None, instance=brew)
     if request.method == "POST":
         if form.is_valid():

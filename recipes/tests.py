@@ -800,6 +800,8 @@ class RecipeWorkflowTests(TestCase):
         recipe = Recipe.objects.create(name="Dégustation du brassin")
         self.client.post("/brassins/ajouter/", {"recipe": recipe.pk, "planned_date": ""})
         brew = Brew.objects.get()
+        brew.status = Brew.Status.COMPLETED
+        brew.save(update_fields=["status"])
 
         response = self.client.get(f"/brassins/{brew.pk}/degustation/")
         self.assertEqual(response.status_code, 200)
