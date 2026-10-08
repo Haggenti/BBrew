@@ -19,7 +19,7 @@ from decimal import Decimal
 from decimal import ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP
 from django.utils import timezone
 
-from .forms import BackupUploadForm, BeerCategoryForm, BeerXMLUploadForm, BoilSettingsForm, BrewForm, BrewMeasurementForm, BrewNotesForm, CatalogConsumableForm, CatalogHopForm, CatalogMaltForm, CatalogOtherForm, CatalogYeastForm, CatalogForm, EquipmentSettingsForm, FermentationStepForm, HopForm, IngredientQuantityForm, IngredientTimeForm, MaltForm, MashGraphSettingsForm, MashStepForm, OtherForm, PurchaseOrderForm, RecipeBrewingSettingsForm, RecipeCategoryForm, RecipeEfficiencyForm, RecipeForm, RecipeNameForm, RecipeNotesForm, RecipeTastingForm, ScaleForm, ShoppingItemForm, YeastForm
+from .forms import BackupUploadForm, BeerCategoryForm, BeerXMLUploadForm, BoilSettingsForm, BrewForm, BrewMeasurementForm, BrewNotesForm, BrewTastingForm, CatalogConsumableForm, CatalogHopForm, CatalogMaltForm, CatalogOtherForm, CatalogYeastForm, CatalogForm, EquipmentSettingsForm, FermentationStepForm, HopForm, IngredientQuantityForm, IngredientTimeForm, MaltForm, MashGraphSettingsForm, MashStepForm, OtherForm, PurchaseOrderForm, RecipeBrewingSettingsForm, RecipeCategoryForm, RecipeEfficiencyForm, RecipeForm, RecipeNameForm, RecipeNotesForm, RecipeTastingForm, ScaleForm, ShoppingItemForm, YeastForm
 from .models import ActivityEvent, BeerCategory, Brew, EquipmentSettings, FermentationStep, Ingredient, IngredientCatalog, MashStep, PurchaseOrder, Recipe, RecipeVersion, ShoppingItem
 from .signals import log_activity, save_version, suspend_versioning
 from .versioning import describe_version_change
@@ -598,6 +598,7 @@ def brew_create_from_recipe(request, recipe_pk):
 def brew_detail(request, pk):
     brew = get_object_or_404(Brew, pk=pk)
     comparison = _brew_comparison(brew)
+    tasting_form = BrewTastingForm(instance=brew)
     notes_form = BrewNotesForm(instance=brew)
     measurement_form = BrewMeasurementForm(
         instance=brew,
@@ -610,6 +611,30 @@ def brew_detail(request, pk):
             "brew": brew,
             "notes_form": notes_form,
             "measurement_form": measurement_form,
+            "tasting_form": tasting_form,
+            "tasting_stars": [
+                {
+                    "left_value": Decimal(star) - Decimal("0.5"),
+                    "right_value": Decimal(star),
+                }
+                for star in range(1, 6)
+            ],
+            "tasting_axes": [
+                {
+                    "name": field_name,
+                    "label": label,
+                    "value": getattr(brew, field_name),
+                    "field": tasting_form[field_name],
+                }
+                for field_name, label in (
+                    ("tasting_malt", "Malté / douceur"),
+                    ("tasting_bitterness", "Amertume perçue"),
+                    ("tasting_hops", "Arômes de houblon"),
+                    ("tasting_body", "Corps"),
+                    ("tasting_alcohol", "Chaleur de l’alcool"),
+                    ("tasting_acidity", "Acidité"),
+                )
+            ],
             "comparison": comparison,
             "stock_requirements": brew_stock_requirements(brew),
             "capsule_catalogs": IngredientCatalog.objects.filter(
@@ -1178,24 +1203,12 @@ def recipe_restore(request, pk, version_pk):
         "target_ibu",
         "boil_time_min",
         "notes",
-        "tasting_malt",
-        "tasting_bitterness",
-        "tasting_hops",
-        "tasting_body",
-        "tasting_alcohol",
-        "tasting_acidity",
-        "tasting_notes",
     ):
-        value = recipe_data.get(field) if field.startswith("tasting_") else recipe_data[field]
-        if field in {"notes", "tasting_notes"} and value is None:
+        value = recipe_data[field]
+        if field == "notes" and value is None:
             value = ""
         setattr(recipe, field, value)
     recipe.category_id = recipe_data.get("category", recipe.category_id)
-    recipe.tasting_rating = (
-        Decimal(recipe_data["tasting_rating"])
-        if recipe_data.get("tasting_rating") is not None
-        else None
-    )
     recipe.target_carbonation = recipe_data.get("target_carbonation", Decimal("2.40"))
     for field, default in (
         ("mash_time_min", 0),
@@ -1715,7 +1728,6 @@ def recipe_detail(request, pk, edit_forms=None):
         boil_events.append(
             {"type": "cooling_hop", "temperature": temperature, "rows": list(grouped_rows)}
         )
-    tasting_form = RecipeTastingForm(instance=recipe)
     inventory_by_kind = []
     for kind, label in IngredientCatalog.Kind.choices:
         if kind == IngredientCatalog.Kind.CONSUMABLE:
@@ -1733,31 +1745,6 @@ def recipe_detail(request, pk, edit_forms=None):
         {
             "recipe": recipe,
             "name_form": RecipeNameForm(instance=recipe),
-            "tasting_form": tasting_form,
-            "tasting_stars": [
-                {
-                    "number": star_number,
-                    "left_value": Decimal(star_number) - Decimal("0.5"),
-                    "right_value": Decimal(star_number),
-                }
-                for star_number in range(1, 6)
-            ],
-            "tasting_axes": [
-                {
-                    "name": field_name,
-                    "label": label,
-                    "value": getattr(recipe, field_name),
-                    "field": tasting_form[field_name],
-                }
-                for field_name, label in (
-                    ("tasting_malt", "Malté / douceur"),
-                    ("tasting_bitterness", "Amertume perçue"),
-                    ("tasting_hops", "Arômes de houblon"),
-                    ("tasting_body", "Corps"),
-                    ("tasting_alcohol", "Chaleur de l’alcool"),
-                    ("tasting_acidity", "Acidité"),
-                )
-            ],
             "category_form": category_form,
             "brewing_settings_form": RecipeBrewingSettingsForm(instance=recipe),
             "notes_form": RecipeNotesForm(instance=recipe),
@@ -2228,16 +2215,38 @@ def recipe_category_update(request, pk):
     return redirect("recipes:detail", pk=recipe.pk)
 
 
-@require_POST
-def recipe_tasting_update(request, pk):
-    recipe = get_object_or_404(Recipe, pk=pk)
-    form = RecipeTastingForm(request.POST, instance=recipe)
-    if form.is_valid():
-        form.save()
-        messages.success(request, "Le profil de dégustation a été mis à jour.")
-    else:
+def brew_tasting_update(request, pk):
+    brew = get_object_or_404(Brew, pk=pk)
+    form = BrewTastingForm(request.POST or None, instance=brew)
+    if request.method == "POST":
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Le profil de dégustation du brassin a été mis à jour.")
+            return redirect("recipes:brew_detail", pk=brew.pk)
         messages.error(request, "Le profil de dégustation contient une note invalide.")
-    return redirect("recipes:detail", pk=recipe.pk)
+    return render(
+        request,
+        "recipes/brew_tasting.html",
+        {
+            "brew": brew,
+            "form": form,
+            "tasting_stars": [
+                {"left_value": Decimal(star) - Decimal("0.5"), "right_value": Decimal(star)}
+                for star in range(1, 6)
+            ],
+            "tasting_axes": [
+                (field, label, form[field])
+                for field, label in (
+                    ("tasting_malt", "Malté / douceur"),
+                    ("tasting_bitterness", "Amertume perçue"),
+                    ("tasting_hops", "Arômes de houblon"),
+                    ("tasting_body", "Corps"),
+                    ("tasting_alcohol", "Chaleur de l’alcool"),
+                    ("tasting_acidity", "Acidité"),
+                )
+            ],
+        },
+    )
 
 
 def recipe_scale(request, pk):

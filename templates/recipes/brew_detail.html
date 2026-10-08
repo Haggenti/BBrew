@@ -1,5 +1,6 @@
 {% extends "base.html" %}
-{% block title %}{{ brew.recipe_name }} · Brassin{% endblock %}
+{% block title %}{{ brew.recipe_name }} · Brassin
+{% endblock %}
 {% block content %}
 <style>
   .brew-status-badge { border: 0; cursor: pointer; }
@@ -19,6 +20,7 @@
   <div class="brew-actions d-flex flex-wrap justify-content-end gap-2">
     <div class="btn-group" role="group" aria-label="Actions principales du brassin">
       <button class="btn btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#edit-brew-notes-modal"><i class="bi bi-journal-text me-1" aria-hidden="true"></i>Notes</button>
+      <button class="btn btn-outline-primary" type="button" data-bs-toggle="modal" data-bs-target="#brew-tasting-profile-modal"><i class="bi bi-stars me-1" aria-hidden="true"></i>Dégustation</button>
       <button class="btn btn-outline-info" type="button" data-bs-toggle="modal" data-bs-target="#measure-brew-modal"><i class="bi bi-eyedropper me-1" aria-hidden="true"></i>Mesurer</button>
     </div>
     {% if brew.stock_consumed_at %}
@@ -336,4 +338,5 @@
     .brew-actions { justify-content: flex-start !important; width: 100%; }
   }
 </style>
+{% include "recipes/_brew_tasting_modal.html" %}
 {% endblock %}

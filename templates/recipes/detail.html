@@ -200,7 +200,6 @@
     <section class="card card-body h-100">
       <div class="d-flex justify-content-between align-items-center gap-2 mb-3">
         <h2 class="h5 mb-0"><i class="bi bi-sticky me-2" aria-hidden="true"></i>Notes</h2>
-        <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="modal" data-bs-target="#tasting-profile-modal"><i class="bi bi-diagram-3 me-1" aria-hidden="true"></i>Profil de dégustation</button>
       </div>
       <form method="post" action="{% url 'recipes:notes_update' recipe.pk %}" hx-post="{% url 'recipes:notes_update' recipe.pk %}" hx-target="#notification-container" hx-swap="innerHTML">
         {% csrf_token %}{{ notes_form.notes }}<button class="btn btn-outline-primary mt-3" type="submit">Enregistrer les notes</button>
@@ -258,7 +257,7 @@
 <div class="modal fade" id="tasting-profile-modal" tabindex="-1" aria-labelledby="tasting-profile-title" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content">
-      <form method="post" action="{% url 'recipes:tasting_update' recipe.pk %}" id="tasting-profile-form">
+      <form method="post" action="#" id="legacy-tasting-profile-form">
         {% csrf_token %}
         <div class="modal-header">
           <div><h2 class="modal-title h5" id="tasting-profile-title">Profil de dégustation</h2><p class="small text-secondary mb-0">Notez vos perceptions de 0 (absent) à 5 (intense).</p></div>

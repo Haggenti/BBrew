@@ -796,6 +796,32 @@ class RecipeWorkflowTests(TestCase):
         self.assertContains(response, "Recette figée")
         self.assertNotContains(response, "Modifier")
 
+    def test_brew_tasting_profile_is_saved_on_brew(self):
+        recipe = Recipe.objects.create(name="Dégustation du brassin")
+        self.client.post("/brassins/ajouter/", {"recipe": recipe.pk, "planned_date": ""})
+        brew = Brew.objects.get()
+
+        response = self.client.get(f"/brassins/{brew.pk}/degustation/")
+        self.assertEqual(response.status_code, 200)
+        response = self.client.post(
+            f"/brassins/{brew.pk}/degustation/",
+            {
+                "tasting_malt": "4",
+                "tasting_bitterness": "2",
+                "tasting_hops": "5",
+                "tasting_rating": "4.5",
+                "tasting_notes": "Finale sèche.",
+            },
+        )
+
+        self.assertRedirects(response, f"/brassins/{brew.pk}/")
+        brew.refresh_from_db()
+        self.assertEqual(brew.tasting_malt, 4)
+        self.assertEqual(brew.tasting_bitterness, 2)
+        self.assertEqual(brew.tasting_hops, 5)
+        self.assertEqual(brew.tasting_rating, Decimal("4.5"))
+        self.assertEqual(brew.tasting_notes, "Finale sèche.")
+
     def test_database_reset_requires_confirmation_and_selected_sections(self):
         recipe = Recipe.objects.create(name="À conserver")
         Brew.objects.create(recipe=recipe, recipe_name=recipe.name)
@@ -868,9 +894,6 @@ class RecipeWorkflowTests(TestCase):
         self.assertEqual(first_version.snapshot["recipe"]["notes"], "Notes avant V2")
 
         recipe.notes = "Notes conservées dans V2"
-        recipe.tasting_malt = 4
-        recipe.tasting_rating = Decimal("4.5")
-        recipe.tasting_notes = "Finale sèche"
         recipe.save()
 
         self.client.post(
@@ -878,16 +901,12 @@ class RecipeWorkflowTests(TestCase):
         )
         recipe.refresh_from_db()
         self.assertEqual(recipe.notes, "Notes avant V2")
-        self.assertIsNone(recipe.tasting_malt)
 
         self.client.post(
             f"/recettes/{recipe.pk}/historique/{second_version.pk}/restaurer/",
         )
         recipe.refresh_from_db()
         self.assertEqual(recipe.notes, "Notes conservées dans V2")
-        self.assertEqual(recipe.tasting_malt, 4)
-        self.assertEqual(recipe.tasting_rating, Decimal("4.5"))
-        self.assertEqual(recipe.tasting_notes, "Finale sèche")
 
     def test_fermentation_steps_can_be_added_and_edited(self):
         recipe = Recipe.objects.create(name="Fermented Ale")
@@ -1220,69 +1239,6 @@ class RecipeWorkflowTests(TestCase):
         self.assertIsNotNone(response.context["estimated_ebc_color"])
         self.assertIsNotNone(response.context["estimated_og"])
         self.assertIsNotNone(response.context["estimated_ibu"])
-        self.assertContains(response, "tasting-profile-chart")
-        self.assertContains(response, 'data-bs-target="#tasting-profile-modal"')
-        self.assertContains(response, 'id="tasting-profile-modal"')
-        self.assertContains(response, "data-tasting-stars")
-        self.assertEqual(len(response.context["tasting_stars"]), 5)
-        self.assertContains(response, "Non noté")
-        self.assertContains(response, "Cliquez ou faites glisser sur un axe")
-        self.assertNotContains(response, 'data-tasting-range')
-
-    def test_recipe_tasting_profile_saves_optional_scores_and_notes(self):
-        recipe = Recipe.objects.create(name="Dégustation")
-        version_count = recipe.versions.count()
-
-        response = self.client.post(
-            f"/recettes/{recipe.pk}/degustation/",
-            {
-                "tasting_malt": "4",
-                "tasting_bitterness": "2",
-                "tasting_hops": "5",
-                "tasting_body": "",
-                "tasting_alcohol": "1",
-                "tasting_acidity": "",
-                "tasting_rating": "4.5",
-                "tasting_notes": "Notes d’agrumes et finale sèche.",
-            },
-        )
-
-        self.assertRedirects(response, f"/recettes/{recipe.pk}/")
-        recipe.refresh_from_db()
-        self.assertEqual(recipe.tasting_malt, 4)
-        self.assertEqual(recipe.tasting_bitterness, 2)
-        self.assertEqual(recipe.tasting_hops, 5)
-        self.assertIsNone(recipe.tasting_body)
-        self.assertEqual(recipe.tasting_alcohol, 1)
-        self.assertIsNone(recipe.tasting_acidity)
-        self.assertEqual(recipe.tasting_rating, Decimal("4.5"))
-        self.assertEqual(recipe.tasting_notes, "Notes d’agrumes et finale sèche.")
-        self.assertEqual(recipe.versions.count(), version_count)
-
-    def test_recipe_tasting_profile_rejects_scores_above_five(self):
-        recipe = Recipe.objects.create(name="Note invalide")
-
-        response = self.client.post(
-            f"/recettes/{recipe.pk}/degustation/",
-            {"tasting_malt": "6"},
-        )
-
-        self.assertRedirects(response, f"/recettes/{recipe.pk}/")
-        recipe.refresh_from_db()
-        self.assertIsNone(recipe.tasting_malt)
-
-    def test_recipe_tasting_rating_rejects_non_half_steps_and_out_of_range(self):
-        recipe = Recipe.objects.create(name="Note invalide")
-        for rating in ("4.2", "5.5", "-0.5"):
-            with self.subTest(rating=rating):
-                response = self.client.post(
-                    f"/recettes/{recipe.pk}/degustation/",
-                    {"tasting_rating": rating},
-                )
-                self.assertRedirects(response, f"/recettes/{recipe.pk}/")
-                recipe.refresh_from_db()
-                self.assertIsNone(recipe.tasting_rating)
-
     def test_recipe_detail_marks_ingredients_missing_from_stock(self):
         recipe = Recipe.objects.create(name="Ingrédient non référencé")
         catalog = IngredientCatalog.objects.create(name="Pale malt", kind=IngredientCatalog.Kind.MALT)
@@ -1716,9 +1672,6 @@ class RecipeWorkflowTests(TestCase):
         )
         recipe = Recipe.objects.create(
             name="Sauvegarde Ale",
-            tasting_malt=3,
-            tasting_hops=5,
-            tasting_notes="Notes d’agrumes.",
         )
         Ingredient.objects.create(
             recipe=recipe,
@@ -1742,9 +1695,6 @@ class RecipeWorkflowTests(TestCase):
         self.assertRedirects(restore_response, "/recettes/")
         restored = Recipe.objects.get()
         self.assertEqual(restored.name, "Sauvegarde Ale")
-        self.assertEqual(restored.tasting_malt, 3)
-        self.assertEqual(restored.tasting_hops, 5)
-        self.assertEqual(restored.tasting_notes, "Notes d’agrumes.")
         self.assertEqual(restored.ingredients.get().catalog.name, "Pale malt")
         self.assertFalse(Recipe.objects.filter(name="Données à remplacer").exists())
 

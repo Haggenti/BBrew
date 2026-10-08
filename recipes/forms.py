@@ -556,7 +556,7 @@ class RecipeTastingForm(StyledModelForm):
         return rating
 
     class Meta:
-        model = Recipe
+        model = Brew
         fields = [
             "tasting_malt",
             "tasting_bitterness",
@@ -573,6 +573,11 @@ class RecipeTastingForm(StyledModelForm):
                 attrs={"rows": 2, "placeholder": "Arômes, équilibre, longueur en bouche…"}
             ),
         }
+
+
+class BrewTastingForm(RecipeTastingForm):
+    class Meta(RecipeTastingForm.Meta):
+        model = Brew
 
 
 class IngredientForm(StyledModelForm):

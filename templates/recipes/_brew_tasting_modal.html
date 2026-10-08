@@ -1,0 +1,124 @@
+{% load l10n %}
+<style>
+  .brew-tasting-chart-wrap { height: 20rem; position: relative; }
+  .tasting-stars { display: inline-flex; }
+  .tasting-star-button { background: none; border: 0; color: var(--bs-secondary-color); cursor: pointer; height: 2rem; overflow: hidden; padding: 0; position: relative; width: 1.1rem; }
+  .tasting-star-button i { font-size: 1.75rem; left: 0; line-height: 1; position: absolute; top: .1rem; width: 2.2rem; }
+  .tasting-star-button.half-right i { left: -1.1rem; }
+  .tasting-star-button .bi-star-fill { color: #ffc107; display: none; }
+  .tasting-star-button.is-selected .bi-star-fill { display: block; }
+  .tasting-star-button:focus-visible { outline: 2px solid var(--bs-primary); outline-offset: 1px; z-index: 1; }
+</style>
+<div class="modal fade" id="brew-tasting-profile-modal" tabindex="-1" aria-labelledby="brew-tasting-profile-title">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <form method="post" action="{% url 'recipes:brew_tasting_update' brew.pk %}" id="brew-tasting-profile-form">
+        {% csrf_token %}
+        <div class="modal-header">
+          <div><h2 class="modal-title h5" id="brew-tasting-profile-title">Profil de dégustation</h2><p class="small text-secondary mb-0">Notez vos perceptions de 0 (absent) à 5 (intense).</p></div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-3 align-items-center">
+            <div class="col-12">
+              <div class="tasting-rating">
+                <span class="small fw-semibold">Note globale</span>
+                <div class="tasting-stars" data-brew-tasting-stars>
+                  {% for star in tasting_stars %}
+                  <span class="d-inline-flex">
+                    <button class="tasting-star-button half-left" type="button" data-rating-value="{{ star.left_value|unlocalize }}" title="{{ star.left_value }}/5" aria-label="Noter {{ star.left_value }} sur 5"><i class="bi bi-star" aria-hidden="true"></i><i class="bi bi-star-fill" aria-hidden="true"></i></button>
+                    <button class="tasting-star-button half-right" type="button" data-rating-value="{{ star.right_value|unlocalize }}" title="{{ star.right_value }}/5" aria-label="Noter {{ star.right_value }} sur 5"><i class="bi bi-star" aria-hidden="true"></i><i class="bi bi-star-fill" aria-hidden="true"></i></button>
+                  </span>
+                  {% endfor %}
+                </div>
+                {{ tasting_form.tasting_rating }}
+                <output class="small text-secondary" id="brew-tasting-rating-value" aria-live="polite">{% if brew.tasting_rating is not None %}{{ brew.tasting_rating|floatformat:"-1" }}/5{% else %}Non notée{% endif %}</output>
+              </div>
+            </div>
+            <div class="col-md-7">
+              <div class="brew-tasting-chart-wrap"><canvas id="brew-tasting-profile-chart" role="img" aria-label="Diagramme radar interactif du profil de dégustation."></canvas></div>
+              <div class="small text-secondary text-center">Cliquez ou faites glisser sur un axe pour définir sa note de 0 à 5.</div>
+            </div>
+            <div class="col-md-5">
+              {% for axis in tasting_axes %}
+              <div class="d-flex justify-content-between align-items-center border-bottom py-2">
+                {{ axis.field.as_hidden }}
+                <span class="small fw-semibold">{{ axis.label }}</span>
+                <output class="small text-secondary" id="brew-value-{{ axis.name }}" data-brew-tasting-value="{{ axis.name }}" aria-live="polite">Non noté</output>
+              </div>
+              {% endfor %}
+            </div>
+            <div class="col-12">
+              <label class="form-label small fw-semibold" for="{{ tasting_form.tasting_notes.id_for_label }}">Notes de dégustation</label>
+              {{ tasting_form.tasting_notes }}
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer justify-content-between">
+          <button class="btn btn-sm btn-outline-secondary" type="button" data-clear-brew-tasting-profile>Effacer les notes et les scores</button>
+          <div><button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">Annuler</button>
+          <button class="btn btn-primary" type="submit"><i class="bi bi-check-lg me-1" aria-hidden="true"></i>Enregistrer</button></div>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+<script>
+(() => {
+  const canvas = document.getElementById("brew-tasting-profile-chart");
+  const form = document.getElementById("brew-tasting-profile-form");
+  if (!canvas || !form) return;
+  const names = ["tasting_malt", "tasting_bitterness", "tasting_hops", "tasting_body", "tasting_alcohol", "tasting_acidity"];
+  const labels = ["Malté / douceur", "Amertume", "Arômes de houblon", "Corps", "Chaleur alcool", "Acidité"];
+  const fields = names.map((name) => form.elements.namedItem(name));
+  const readValue = (field) => { const value = Number(field.value); return Number.isFinite(value) ? value : 0; };
+  const outputs = names.map((name) => document.getElementById(`brew-value-${name}`));
+  const displayValue = (field) => { const value = Number(field.value); return Number.isFinite(value) && field.value !== "" ? `${value}/5` : "Non noté"; };
+  const rating = form.elements.namedItem("tasting_rating");
+  const ratingOutput = document.getElementById("brew-tasting-rating-value");
+  const buttons = [...form.querySelectorAll("[data-rating-value]")];
+  let chart;
+  let draggedAxis = null;
+  fields.forEach((field, index) => { if (!/^[0-5]$/.test(field.value)) field.value = ""; outputs[index].textContent = displayValue(field); });
+  const refresh = () => {
+    if (chart) {
+      chart.data.datasets[0].data = fields.map(readValue);
+      chart.update("none");
+    }
+  };
+  const renderRating = (value) => buttons.forEach((button) => button.classList.toggle("is-selected", value !== "" && Number(button.dataset.ratingValue) <= Number(value)));
+  document.getElementById("brew-tasting-profile-modal").addEventListener("shown.bs.modal", () => {
+    if (!chart) chart = new Chart(canvas, { type: "radar", data: { labels, datasets: [{ data: fields.map(readValue), backgroundColor: "rgba(13, 202, 240, .18)", borderColor: "rgb(13, 202, 240)", borderWidth: 2, pointBackgroundColor: "rgb(13, 202, 240)", pointBorderColor: "#fff", pointRadius: 5 }] }, options: { responsive: true, maintainAspectRatio: false, animation: false, scales: { r: { min: 0, max: 5, ticks: { stepSize: 1, backdropColor: "transparent" }, pointLabels: { font: { size: 11 } } } }, plugins: { legend: { display: false }, tooltip: { enabled: false } } } });
+    chart.resize();
+  });
+  const axisAt = (event) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = (event.clientX - rect.left) * chart.width / rect.width;
+    const y = (event.clientY - rect.top) * chart.height / rect.height;
+    const scale = chart.scales.r;
+    if (Math.hypot(x - scale.xCenter, y - scale.yCenter) > scale.drawingArea + 18) return null;
+    let angle = Math.atan2(y - scale.yCenter, x - scale.xCenter) + Math.PI / 2;
+    if (angle < 0) angle += Math.PI * 2;
+    return Math.round(angle / (Math.PI * 2 / labels.length)) % labels.length;
+  };
+  const setDraggedValue = (event) => {
+    if (draggedAxis === null) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = (event.clientX - rect.left) * chart.width / rect.width;
+    const y = (event.clientY - rect.top) * chart.height / rect.height;
+    const scale = chart.scales.r;
+    const value = Math.max(0, Math.min(5, Math.round(Math.hypot(x - scale.xCenter, y - scale.yCenter) / scale.drawingArea * 5)));
+    fields[draggedAxis].value = String(value);
+    outputs[draggedAxis].textContent = `${value}/5`;
+    refresh();
+  };
+  canvas.addEventListener("pointerdown", (event) => { draggedAxis = axisAt(event); if (draggedAxis !== null) { canvas.setPointerCapture(event.pointerId); setDraggedValue(event); event.preventDefault(); } });
+  canvas.addEventListener("pointermove", setDraggedValue);
+  canvas.addEventListener("pointerup", () => { draggedAxis = null; });
+  canvas.addEventListener("pointercancel", () => { draggedAxis = null; });
+  renderRating(rating.value);
+  buttons.forEach((button) => button.addEventListener("click", () => { rating.value = button.dataset.ratingValue; ratingOutput.textContent = `${rating.value}/5`; renderRating(rating.value); }));
+  fields.forEach((field, index) => field.addEventListener("input", () => { outputs[index].textContent = displayValue(field); refresh(); }));
+  form.querySelector("[data-clear-brew-tasting-profile]").addEventListener("click", () => { fields.forEach((field, index) => { field.value = ""; outputs[index].textContent = "Non noté"; }); form.elements.namedItem("tasting_notes").value = ""; rating.value = ""; ratingOutput.textContent = "Non notée"; renderRating(""); refresh(); });
+})();
+</script>

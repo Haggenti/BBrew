@@ -107,14 +107,6 @@ def recipe_snapshot(recipe):
             "mash_temperature_grid": recipe.mash_temperature_grid,
             "mash_zones": recipe.mash_zones,
             "notes": recipe.notes,
-            "tasting_malt": recipe.tasting_malt,
-            "tasting_bitterness": recipe.tasting_bitterness,
-            "tasting_hops": recipe.tasting_hops,
-            "tasting_body": recipe.tasting_body,
-            "tasting_alcohol": recipe.tasting_alcohol,
-            "tasting_acidity": recipe.tasting_acidity,
-            "tasting_rating": str(recipe.tasting_rating) if recipe.tasting_rating is not None else None,
-            "tasting_notes": recipe.tasting_notes,
         },
         "ingredients": [
             {

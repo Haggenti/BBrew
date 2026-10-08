@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% load l10n %}
+{% block title %}Dégustation · {{ brew.recipe_name }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-start gap-3 mb-4">
+  <div>
+    <a href="{% url 'recipes:brew_detail' brew.pk %}" class="text-secondary text-decoration-none">← Retour au brassin</a>
+    <h1 class="h2 mt-2 mb-1">Profil de dégustation</h1>
+    <p class="text-secondary mb-0">{{ brew.recipe_name }} · brassin n°{{ brew.pk }}</p>
+  </div>
+</div>
+<section class="card">
+  <div class="card-header bg-light">
+    <h2 class="h5 mb-0"><i class="bi bi-stars me-2" aria-hidden="true"></i>Évaluer ce brassin</h2>
+    <p class="small text-secondary mb-0 mt-1">Notez vos perceptions de 0 (absent) à 5 (intense).</p>
+  </div>
+  <form method="post" id="brew-tasting-form">
+    {% csrf_token %}
+    <div class="card-body">
+      <div class="mb-4">
+        <label class="form-label fw-semibold">Note globale</label>
+        <div class="d-flex align-items-center gap-2">
+          <div class="d-flex">
+            {% for star in tasting_stars %}
+            <button class="btn btn-sm btn-outline-warning" type="button" data-rating-value="{{ star.right_value|unlocalize }}" aria-label="Noter {{ star.right_value }} sur 5">★</button>
+            {% endfor %}
+          </div>
+          {{ form.tasting_rating }}
+          <output id="tasting-rating-value" class="text-secondary">{% if brew.tasting_rating is not None %}{{ brew.tasting_rating|floatformat:"-1" }}/5{% else %}Non notée{% endif %}</output>
+        </div>
+      </div>
+      <div class="row g-3">
+        {% for name, label, field in tasting_axes %}
+        <div class="col-md-6">
+          <div class="d-flex justify-content-between align-items-center">
+            <label class="form-label mb-1" for="{{ field.id_for_label }}">{{ label }}</label>
+            <span class="small text-secondary" data-axis-value="{{ name }}">{% if field.value != None %}{{ field.value }}/5{% else %}Non noté{% endif %}</span>
+          </div>
+          {{ field }}
+        </div>
+        {% endfor %}
+      </div>
+      <div class="mt-4">
+        <label class="form-label" for="{{ form.tasting_notes.id_for_label }}">Notes de dégustation</label>
+        {{ form.tasting_notes }}
+      </div>
+    </div>
+    <div class="card-footer d-flex justify-content-between">
+      <a class="btn btn-outline-secondary" href="{% url 'recipes:brew_detail' brew.pk %}">Annuler</a>
+      <button class="btn btn-primary" type="submit"><i class="bi bi-check-lg me-1" aria-hidden="true"></i>Enregistrer</button>
+    </div>
+  </form>
+</section>
+<script>
+  const ratingField = document.getElementById("id_tasting_rating");
+  const ratingOutput = document.getElementById("tasting-rating-value");
+  document.querySelectorAll("[data-rating-value]").forEach((button) => {
+    button.addEventListener("click", () => {
+      ratingField.value = button.dataset.ratingValue;
+      ratingOutput.textContent = `${button.dataset.ratingValue}/5`;
+    });
+  });
+  document.querySelectorAll("[data-axis-value]").forEach((output) => {
+    const field = document.getElementById(`id_${output.dataset.axisValue}`);
+    field?.addEventListener("input", () => {
+      output.textContent = field.value ? `${field.value}/5` : "Non noté";
+    });
+  });
+</script>
+{% endblock %}
