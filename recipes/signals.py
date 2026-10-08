@@ -1,7 +1,7 @@
 from decimal import Decimal
 from contextlib import contextmanager
 
-from django.db import connections
+from django.db import connections, transaction
 from django.db.models import Max
 from django.db.models.signals import m2m_changed, post_delete, post_save, pre_delete, pre_save
 from django.dispatch import receiver
@@ -237,15 +237,18 @@ def save_version(recipe, reason):
         return
     if not Recipe.objects.filter(pk=recipe.pk).exists():
         return
-    next_number = (RecipeVersion.objects.filter(recipe=recipe).aggregate(max_number=Max("version_number"))["max_number"] or 0) + 1
-    version = RecipeVersion.objects.create(
-        recipe=recipe,
-        version_number=next_number,
-        reason=reason,
-        snapshot=recipe_snapshot(recipe),
-    )
-    recipe.current_version = version
-    Recipe.objects.filter(pk=recipe.pk).update(current_version=version)
+    with transaction.atomic():
+        next_number = (
+            RecipeVersion.objects.filter(recipe=recipe).aggregate(max_number=Max("version_number"))["max_number"] or 0
+        ) + 1
+        version = RecipeVersion.objects.create(
+            recipe=recipe,
+            version_number=next_number,
+            reason=reason,
+            snapshot=recipe_snapshot(recipe),
+        )
+        recipe.current_version = version
+        Recipe.objects.filter(pk=recipe.pk).update(current_version=version)
     return version
 
 

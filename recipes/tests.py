@@ -942,6 +942,38 @@ class RecipeWorkflowTests(TestCase):
             version_count_before_restore,
         )
 
+    def test_recipe_version_keeps_changes_after_switching_versions(self):
+        recipe = Recipe.objects.create(name="Version stable")
+        first_version = recipe.current_version
+        self.client.post(
+            f"/recettes/{recipe.pk}/versions/ajouter/",
+            {"reason": "Version modifiée"},
+        )
+        second_version = RecipeVersion.objects.filter(recipe=recipe).latest("version_number")
+        recipe.refresh_from_db()
+
+        recipe.notes = "Notes conservées dans V2"
+        recipe.tasting_malt = 4
+        recipe.tasting_rating = Decimal("4.5")
+        recipe.tasting_notes = "Finale sèche"
+        recipe.save()
+
+        self.client.post(
+            f"/recettes/{recipe.pk}/historique/{first_version.pk}/restaurer/",
+        )
+        recipe.refresh_from_db()
+        self.assertEqual(recipe.notes, "")
+        self.assertIsNone(recipe.tasting_malt)
+
+        self.client.post(
+            f"/recettes/{recipe.pk}/historique/{second_version.pk}/restaurer/",
+        )
+        recipe.refresh_from_db()
+        self.assertEqual(recipe.notes, "Notes conservées dans V2")
+        self.assertEqual(recipe.tasting_malt, 4)
+        self.assertEqual(recipe.tasting_rating, Decimal("4.5"))
+        self.assertEqual(recipe.tasting_notes, "Finale sèche")
+
     def test_fermentation_steps_can_be_added_and_edited(self):
         recipe = Recipe.objects.create(name="Fermented Ale")
         response = self.client.post(

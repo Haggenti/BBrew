@@ -92,6 +92,7 @@ def recipe_snapshot(recipe):
     return {
         "recipe": {
             "name": recipe.name,
+            "category": recipe.category_id,
             "batch_size_l": str(recipe.batch_size_l),
             "efficiency": str(recipe.efficiency),
             "target_og": str(recipe.target_og),

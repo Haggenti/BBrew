@@ -1138,6 +1138,7 @@ def recipe_restore(request, pk, version_pk):
         if field in {"notes", "tasting_notes"} and value is None:
             value = ""
         setattr(recipe, field, value)
+    recipe.category_id = recipe_data.get("category", recipe.category_id)
     recipe.tasting_rating = (
         Decimal(recipe_data["tasting_rating"])
         if recipe_data.get("tasting_rating") is not None
@@ -1154,12 +1155,13 @@ def recipe_restore(request, pk, version_pk):
     ):
         setattr(recipe, field, recipe_data.get(field, default))
     recipe.mash_zones = recipe_data.get("mash_zones", ["beta", "alpha"])
-    with suspend_versioning():
+    with transaction.atomic(), suspend_versioning():
         recipe.save()
         recipe.ingredients.all().delete()
         recipe.mash_steps.all().delete()
         recipe.fermentation_steps.all().delete()
         for item in data["ingredients"]:
+            item = item.copy()
             catalog_id = item.pop("catalog", None)
             item["catalog_id"] = (
                 IngredientCatalog.objects.filter(pk=catalog_id).values_list("pk", flat=True).first()
@@ -1171,8 +1173,8 @@ def recipe_restore(request, pk, version_pk):
             MashStep.objects.create(recipe=recipe, **step)
         for step in data.get("fermentation_steps", []):
             FermentationStep.objects.create(recipe=recipe, **step)
-    recipe.current_version = version
-    recipe.save(update_fields=["current_version"])
+        recipe.current_version = version
+        recipe.save(update_fields=["current_version"])
     messages.success(request, f"La version V{version.version_number} de la recette est maintenant active.")
     return redirect("recipes:detail", pk=recipe.pk)
 
@@ -1312,7 +1314,11 @@ def catalog_edit(request, pk):
             item = form.save()
             updated_ingredients = 0
             if item.name != previous_name:
-                updated_ingredients = Ingredient.objects.filter(catalog_id=item.pk).update(name=item.name)
+                linked_ingredients = Ingredient.objects.filter(catalog_id=item.pk)
+                updated_ingredients = linked_ingredients.count()
+                for ingredient in linked_ingredients:
+                    ingredient.name = item.name
+                    ingredient.save(update_fields=["name"])
                 if updated_ingredients:
                     log_activity(
                         ActivityEvent.EventType.UPDATE,
@@ -1998,7 +2004,8 @@ def fermentation_reorder(request, pk):
         for position, step_id in enumerate(step_ids, start=1):
             step = steps_by_id[step_id]
             if step.position != position:
-                FermentationStep.objects.filter(pk=step.pk).update(position=position)
+                step.position = position
+                step.save(update_fields=["position"])
                 changed = True
         if changed:
             log_activity(
