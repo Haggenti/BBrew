@@ -20,6 +20,7 @@ if not BBS_VERSION:
             text=True,
         ).stdout.strip()
 BBS_REPOSITORY_URL = "https://github.com/Haggenti/BBrew"
+BBS_RELEASES_API_URL = "https://api.github.com/repos/Haggenti/BBrew/releases/latest"
 DATA_DIR = Path(os.environ.get("BBREW_DATA_DIR", BASE_DIR))
 ALLOWED_HOSTS = [
     host.strip()

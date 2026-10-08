@@ -19,9 +19,8 @@ def _version_parts(version):
 
 
 def _latest_release():
-    repository = settings.BBS_REPOSITORY_URL.rstrip("/")
     request = Request(
-        f"{repository}/releases/latest",
+        settings.BBS_RELEASES_API_URL,
         headers={"Accept": "application/vnd.github+json", "User-Agent": "BBrew"},
     )
     with urlopen(request, timeout=2) as response:
@@ -39,7 +38,7 @@ class BBSLoginView(LoginView):
             latest = _latest_release()
             latest_parts = _version_parts(latest)
         except (HTTPError, URLError, TimeoutError, OSError, ValueError, json.JSONDecodeError):
-            logger.warning("Unable to check for a newer BBrew release.", exc_info=True)
+            logger.warning("Unable to check for a newer BBrew release.")
             return response
 
         if current and latest_parts and latest_parts > current:
