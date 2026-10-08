@@ -118,7 +118,12 @@
         </form>
         <dl class="row mb-0">
           <dt class="col-sm-6 text-secondary">Recette utilisée</dt>
-          <dd class="col-sm-6"><a href="{% url 'recipes:brew_recipe_snapshot' brew.pk %}">{{ brew.recipe_name }} <span class="badge text-bg-warning">Snapshot</span></a></dd>
+          <dd class="col-sm-6">
+            <a href="{% url 'recipes:brew_recipe_snapshot' brew.pk %}" class="text-decoration-none">
+              <span class="fw-medium">{{ brew.recipe_name }}</span>
+              <span class="badge rounded-pill text-bg-warning ms-1"><i class="bi bi-camera me-1" aria-hidden="true"></i>Snapshot</span>
+            </a>
+          </dd>
           <dt class="col-sm-6 text-secondary">Version brassée</dt>
           <dd class="col-sm-6">{{ brew.recipe_version_label|default:"—" }}</dd>
           <dt class="col-sm-6 text-secondary">Date du brassage</dt>
