@@ -110,7 +110,7 @@ def dashboard(request):
         Brew.objects.select_related("recipe")
         .filter(
             planned_date__gte=today,
-            status__in=[Brew.Status.PLANNED, Brew.Status.BREWING, Brew.Status.FERMENTING, Brew.Status.CONDITIONING],
+            status__in=[Brew.Status.PLANNED, Brew.Status.BREWING, Brew.Status.FERMENTING],
         )
         .order_by("planned_date", "pk")[:3]
     )
@@ -118,7 +118,7 @@ def dashboard(request):
         "recipe_count": Recipe.objects.count(),
         "upcoming_brew_count": Brew.objects.filter(
             planned_date__gte=today,
-        ).exclude(status__in=[Brew.Status.COMPLETED, Brew.Status.CANCELLED]).count(),
+        ).exclude(status=Brew.Status.COMPLETED).count(),
         "shopping_count": ShoppingItem.objects.filter(is_ordered=False).count(),
         "stock_alert_count": len(stock_alert_items),
         "stock_alert_items": stock_alert_items[:5],
@@ -715,6 +715,9 @@ def _brew_comparison(brew):
 @require_POST
 def brew_consume_stock(request, pk):
     brew = get_object_or_404(Brew, pk=pk)
+    if brew.status != Brew.Status.BREWING:
+        messages.error(request, "Le stock ne peut être consommé que lorsque le brassage est en cours.")
+        return redirect("recipes:brew_detail", pk=brew.pk)
     selected = set(request.POST.getlist("stock_item"))
     requirements = brew_stock_requirements(brew)
     consumable = {item["key"]: item for item in requirements if item["catalog"] and not item["consumed"]}
@@ -780,6 +783,9 @@ def brew_rollback_stock(request, pk):
 @require_POST
 def brew_consume_capsules(request, pk):
     brew = get_object_or_404(Brew, pk=pk)
+    if brew.status != Brew.Status.FERMENTING:
+        messages.error(request, "La mise en bouteille n’est possible que pendant la fermentation.")
+        return redirect("recipes:brew_detail", pk=brew.pk)
     if brew.capsules_consumed_at:
         messages.error(request, "Les capsules de ce brassin ont déjà été consommées.")
         return redirect("recipes:brew_detail", pk=brew.pk)
@@ -811,6 +817,9 @@ def brew_consume_capsules(request, pk):
 @require_POST
 def brew_bottling_update(request, pk):
     brew = get_object_or_404(Brew, pk=pk)
+    if brew.status != Brew.Status.FERMENTING:
+        messages.error(request, "La mise en bouteille n’est possible que pendant la fermentation.")
+        return redirect("recipes:brew_detail", pk=brew.pk)
     try:
         bottle_count = int(request.POST.get("bottled_bottle_count", ""))
     except (TypeError, ValueError):

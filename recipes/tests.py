@@ -874,9 +874,7 @@ class RecipeWorkflowTests(TestCase):
         expected_statuses = [
             Brew.Status.BREWING,
             Brew.Status.FERMENTING,
-            Brew.Status.CONDITIONING,
             Brew.Status.COMPLETED,
-            Brew.Status.CANCELLED,
             Brew.Status.PLANNED,
         ]
         for expected_status in expected_statuses:

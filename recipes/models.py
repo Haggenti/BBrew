@@ -96,9 +96,7 @@ class Brew(models.Model):
         PLANNED = "planned", "Planifié"
         BREWING = "brewing", "Brassage en cours"
         FERMENTING = "fermenting", "Fermentation"
-        CONDITIONING = "conditioning", "Garde / conditionnement"
         COMPLETED = "completed", "Terminé"
-        CANCELLED = "cancelled", "Annulé"
 
     recipe = models.ForeignKey(
         Recipe,
