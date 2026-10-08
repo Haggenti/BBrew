@@ -13,7 +13,7 @@ import calendar
 from itertools import groupby
 from datetime import date, timedelta
 
-from .calculations import average_mash_temperature, ebc_color_rgb, estimated_abv, estimated_color_ebc, estimated_efficiency, estimated_final_gravity, estimated_og, ibu_final_gravity_comment, ibu_final_gravity_ratio, plato_from_gravity, tinseth_ibu
+from .calculations import average_mash_temperature, ebc_color_rgb, estimate_snapshot, estimated_abv, estimated_color_ebc, estimated_efficiency, estimated_final_gravity, estimated_og, ibu_final_gravity_comment, ibu_final_gravity_ratio, plato_from_gravity, tinseth_ibu
 from .beerxml import export_recipe, import_recipe
 from decimal import Decimal
 from decimal import ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP
@@ -624,10 +624,50 @@ def brew_recipe_snapshot(request, pk):
     if not brew.recipe_snapshot:
         messages.error(request, "Aucun snapshot n’est disponible pour ce brassin.")
         return redirect("recipes:brew_detail", pk=brew.pk)
+    snapshot = brew.recipe_snapshot
+    recipe_data = snapshot.get("recipe", {})
+    ingredients = snapshot.get("ingredients", [])
+    equipment = EquipmentSettings.objects.first() or EquipmentSettings()
+    grain_weight_kg = sum(
+        float(item.get("amount_g", 0))
+        for item in ingredients
+        if item.get("kind") == Ingredient.Kind.MALT
+    ) / 1000
+    water_l = (
+        float(recipe_data.get("batch_size_l", 0))
+        + float(equipment.evaporation_l_h) * float(recipe_data.get("boil_time_min", 0)) / 60
+        + float(equipment.dead_space_l)
+        + float(equipment.grain_absorption_l_kg) * grain_weight_kg
+    )
+    carbonation_target = float(recipe_data.get("target_carbonation", 0))
+    carbonation_temperature_f = 20 * 9 / 5 + 32
+    residual_co2 = (
+        3.0378
+        - (0.050062 * carbonation_temperature_f)
+        + (0.00026555 * carbonation_temperature_f**2)
+    )
+    sugar_g = max(0, carbonation_target - residual_co2) * 3.86 * float(recipe_data.get("batch_size_l", 0))
+    estimated_values = estimate_snapshot(snapshot)
     return render(
         request,
         "recipes/brew_recipe_snapshot.html",
-        {"brew": brew, "snapshot": brew.recipe_snapshot},
+        {
+            "brew": brew,
+            "snapshot": snapshot,
+            "ingredients_by_category": [
+                ("Malts", [item for item in ingredients if item.get("kind") == Ingredient.Kind.MALT]),
+                ("Houblons", [item for item in ingredients if item.get("kind") == Ingredient.Kind.HOP]),
+                ("Levures", [item for item in ingredients if item.get("kind") == Ingredient.Kind.YEAST]),
+                ("Autres ingrédients", [item for item in ingredients if item.get("kind") == Ingredient.Kind.OTHER]),
+            ],
+            "snapshot_calculations": {
+                "abv": estimated_values.get("abv"),
+                "fg": estimated_values.get("fg"),
+                "water_l": water_l,
+                "sugar_g": round(sugar_g),
+                "sugar_g_per_l": (sugar_g / float(recipe_data.get("batch_size_l", 1))) if recipe_data.get("batch_size_l") else 0,
+            },
+        },
     )
 
 
