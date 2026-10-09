@@ -1268,6 +1268,11 @@
     const updateOtherBoilField = () => {
       otherBoilField.hidden = otherAddition.value !== "Ébullition";
     };
+    modalElement.addEventListener("shown.bs.modal", () => {
+      const amountInput = modalElement.querySelector("#inventory-amount");
+      amountInput?.focus();
+      amountInput?.select();
+    });
     otherAddition.addEventListener("change", updateOtherBoilField);
     const inventoryPanel = document.getElementById("recipe-inventory");
     const inventoryGroups = [...inventoryPanel.querySelectorAll("[data-inventory-kind]")];
