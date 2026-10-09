@@ -468,6 +468,8 @@ def shopping_item_receive(request, pk):
             quantity_in_unit = Decimal(quantity)
             if kind == IngredientCatalog.Kind.MALT:
                 quantity_in_unit /= Decimal("1000")
+            elif kind == IngredientCatalog.Kind.HOP:
+                quantity_in_unit /= Decimal("100")
             catalog_data = {
                 "name": item.name.strip(),
                 "kind": kind,
@@ -487,6 +489,8 @@ def shopping_item_receive(request, pk):
                 quantity_in_unit = Decimal(quantity)
                 if catalog.kind == IngredientCatalog.Kind.MALT:
                     quantity_in_unit /= Decimal("1000")
+                elif catalog.kind == IngredientCatalog.Kind.HOP:
+                    quantity_in_unit /= Decimal("100")
                 catalog.unit_cost = (total_price / quantity_in_unit).quantize(Decimal("0.0001"))
                 update_fields.append("unit_cost")
             catalog.save(update_fields=update_fields)
@@ -1515,6 +1519,8 @@ def recipe_detail(request, pk, edit_forms=None):
             quantity = Decimal(str(ingredient.amount_g))
             if ingredient.kind == Ingredient.Kind.MALT:
                 quantity /= Decimal("1000")
+            elif ingredient.kind == Ingredient.Kind.HOP:
+                quantity /= Decimal("100")
             stock_cost = (quantity * ingredient.catalog.unit_cost).quantize(Decimal("0.01"))
             stock_costs_by_kind[ingredient.kind] = (
                 stock_costs_by_kind.get(ingredient.kind, Decimal("0")) + stock_cost

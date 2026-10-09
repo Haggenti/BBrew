@@ -735,7 +735,7 @@ class RecipeWorkflowTests(TestCase):
         recipe = Recipe.objects.create(name="Coût stock", batch_size_l=20)
         ingredients = [
             (Ingredient.Kind.MALT, 3000, Decimal("2.0000"), Decimal("99.00"), Decimal("6.00")),
-            (Ingredient.Kind.HOP, 20, Decimal("0.0500"), Decimal("99.00"), Decimal("1.00")),
+            (Ingredient.Kind.HOP, 20, Decimal("5.0000"), Decimal("99.00"), Decimal("1.00")),
             (Ingredient.Kind.YEAST, 2, Decimal("3.0000"), Decimal("99.00"), Decimal("6.00")),
             (Ingredient.Kind.OTHER, 3, Decimal("4.0000"), Decimal("99.00"), Decimal("12.00")),
         ]
@@ -2001,7 +2001,7 @@ class RecipeWorkflowTests(TestCase):
     def test_shopping_item_receipt_calculates_cost_per_catalog_unit(self):
         cases = [
             (IngredientCatalog.Kind.MALT, 5000, "10.00", Decimal("2.0000")),
-            (IngredientCatalog.Kind.HOP, 100, "5.00", Decimal("0.0500")),
+            (IngredientCatalog.Kind.HOP, 100, "5.00", Decimal("5.0000")),
             (IngredientCatalog.Kind.YEAST, 2, "12.00", Decimal("6.0000")),
             (IngredientCatalog.Kind.OTHER, 4, "8.00", Decimal("2.0000")),
             (IngredientCatalog.Kind.CONSUMABLE, 10, "15.00", Decimal("1.5000")),

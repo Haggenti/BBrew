@@ -152,8 +152,12 @@
         unitCostPreview.textContent = "";
         return;
       }
-      const costPerUnit = kind === "malt" ? totalPrice * 1000 / quantity : totalPrice / quantity;
-      const unit = kind === "malt" ? "€/kg" : kind === "hop" ? "€/g" : kind === "yeast" ? "€/paquet" : "€/unité";
+      const costPerUnit = kind === "malt"
+        ? totalPrice * 1000 / quantity
+        : kind === "hop"
+          ? totalPrice * 100 / quantity
+          : totalPrice / quantity;
+      const unit = kind === "malt" ? "€/kg" : kind === "hop" ? "€/100 g" : kind === "yeast" ? "€/paquet" : "€/unité";
       unitCostPreview.textContent = `Estimation : ${costPerUnit.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} ${unit}.`;
     };
     const updateQuantityOptions = () => {

@@ -392,7 +392,7 @@ class IngredientCatalog(models.Model):
     def cost_unit_label(self):
         return {
             self.Kind.MALT: "€/kg",
-            self.Kind.HOP: "€/g",
+            self.Kind.HOP: "€/100 g",
             self.Kind.YEAST: "€/paquet",
             self.Kind.OTHER: "€/unité",
             self.Kind.CONSUMABLE: "€/unité",

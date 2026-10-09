@@ -811,7 +811,7 @@ class CatalogForm(StyledModelForm):
         )
         self.fields["unit_cost"].label = {
             IngredientCatalog.Kind.MALT: "Coût unitaire (€/kg)",
-            IngredientCatalog.Kind.HOP: "Coût unitaire (€/g)",
+            IngredientCatalog.Kind.HOP: "Coût unitaire (€/100 g)",
             IngredientCatalog.Kind.YEAST: "Coût unitaire (€/paquet)",
         }.get(kind, "Coût unitaire (€/unité)")
 
@@ -847,7 +847,7 @@ class CatalogHopForm(StyledModelForm):
             widget=forms.Select(attrs={"class": "form-select"}),
         )
         self.fields["quantity_available"].label = "Quantité disponible (g)"
-        self.fields["unit_cost"].label = "Coût unitaire (€/g)"
+        self.fields["unit_cost"].label = "Coût unitaire (€/100 g)"
 
 
 class CatalogYeastForm(StyledModelForm):
