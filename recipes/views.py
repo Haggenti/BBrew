@@ -13,7 +13,7 @@ import calendar
 from itertools import groupby
 from datetime import date, timedelta
 
-from .calculations import average_mash_temperature, ebc_color_rgb, estimate_snapshot, estimated_abv, estimated_color_ebc, estimated_efficiency, estimated_final_gravity, estimated_og, ibu_final_gravity_comment, ibu_final_gravity_ratio, plato_from_gravity, tinseth_ibu
+from .calculations import average_mash_temperature, bu_gu_comment, bu_gu_ratio, ebc_color_rgb, estimate_snapshot, estimated_abv, estimated_color_ebc, estimated_efficiency, estimated_final_gravity, estimated_og, plato_from_gravity, tinseth_ibu
 from .beerxml import export_recipe, import_recipe
 from decimal import Decimal, InvalidOperation
 from decimal import ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP
@@ -1556,8 +1556,8 @@ def recipe_detail(request, pk, edit_forms=None):
     ebc = estimated_color_ebc(malts, float(recipe.batch_size_l)) if malts else None
     abv = estimated_abv(og or float(recipe.target_og), yeasts, mash_steps)
     final_gravity = estimated_final_gravity(og or float(recipe.target_og), yeasts, mash_steps)
-    ibu_df_ratio = ibu_final_gravity_ratio(ibu, final_gravity)
-    ibu_df_comment = ibu_final_gravity_comment(ibu_df_ratio, final_gravity)
+    bu_gu = bu_gu_ratio(ibu, og or float(recipe.target_og))
+    bu_gu_description = bu_gu_comment(bu_gu)
 
     def category_matches_profile(category):
         values = (
@@ -1929,8 +1929,8 @@ def recipe_detail(request, pk, edit_forms=None):
             "estimated_final_plato": plato_from_gravity(final_gravity) if final_gravity else None,
             "mash_temperature": average_mash_temperature(mash_steps),
             "has_mash_steps": bool(mash_steps),
-            "ibu_df_ratio": ibu_df_ratio,
-            "ibu_df_comment": ibu_df_comment,
+            "bu_gu": bu_gu,
+            "bu_gu_description": bu_gu_description,
             "style_indicators": style_indicators,
         },
     )

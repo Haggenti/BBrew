@@ -22,6 +22,8 @@ from .calculations import (
     estimated_final_gravity,
     gravity_points,
     average_mash_temperature,
+    bu_gu_comment,
+    bu_gu_ratio,
     ebc_color_rgb,
     ibu_final_gravity_comment,
     ibu_final_gravity_ratio,
@@ -259,6 +261,11 @@ class CalculationTests(TestCase):
         self.assertIsNone(ibu_final_gravity_ratio(50, None))
         self.assertEqual(ibu_final_gravity_comment(49.5, 1.010), "équilibrée, finale sèche")
         self.assertEqual(ibu_final_gravity_comment(60, 1.022), "amère, finale liquoreuse")
+        self.assertEqual(bu_gu_ratio(45, 1.060), 0.75)
+        self.assertIsNone(bu_gu_ratio(45, None))
+        self.assertEqual(bu_gu_comment(0.4), "douce")
+        self.assertEqual(bu_gu_comment(0.7), "équilibrée")
+        self.assertEqual(bu_gu_comment(1.0), "amère")
         self.assertEqual(average_mash_temperature([]), 65.0)
         self.assertAlmostEqual(mash_fermentability_limit(64.5), 85.5)
         self.assertEqual(mash_fermentability_limit(75), 72.0)

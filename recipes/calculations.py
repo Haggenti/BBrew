@@ -248,6 +248,27 @@ def ibu_final_gravity_comment(ratio: float | None, final_gravity: float | None) 
     return f"{bitterness}, finale {sweetness}"
 
 
+def bu_gu_ratio(ibu: float | None, original_gravity: float | None) -> float | None:
+    """Calcule le ratio BU:GU à partir de l'IBU et de la DI."""
+    if ibu is None or original_gravity is None:
+        return None
+    gravity_units = (float(original_gravity) - 1) * 1000
+    if gravity_units <= 0:
+        return None
+    return round(float(ibu) / gravity_units, 2)
+
+
+def bu_gu_comment(ratio: float | None) -> str | None:
+    """Interprète le ratio BU:GU selon l'équilibre amertume/densité."""
+    if ratio is None:
+        return None
+    if ratio < 0.5:
+        return "douce"
+    if ratio <= 0.8:
+        return "équilibrée"
+    return "amère"
+
+
 def plato_from_gravity(gravity: float) -> float:
     """Convertit une densité spécifique en degrés Plato."""
     plato = (
