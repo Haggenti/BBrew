@@ -194,6 +194,37 @@ class CalculationTests(TestCase):
         hop.addition = "Dry hop"
         self.assertEqual(tinseth_ibu([hop], 20, 1.050), 0)
 
+    def test_tinseth_ibu_applies_gravity_correction_and_pellet_factor(self):
+        recipe = Recipe.objects.create(name="IBU correction")
+        cone = Ingredient.objects.create(
+            recipe=recipe,
+            name="Cascade cônes",
+            kind=Ingredient.Kind.HOP,
+            amount_g=28.4,
+            alpha_acid=8,
+            boil_minutes=60,
+            form="Cônes",
+        )
+        pellet = Ingredient.objects.create(
+            recipe=recipe,
+            name="Cascade pellets",
+            kind=Ingredient.Kind.HOP,
+            amount_g=28.4,
+            alpha_acid=8,
+            boil_minutes=60,
+            form="Pellets",
+        )
+
+        cone_ibu = tinseth_ibu([cone], 20, 1.090)
+        pellet_ibu = tinseth_ibu([pellet], 20, 1.090)
+
+        self.assertAlmostEqual(pellet_ibu, cone_ibu * 1.09, places=1)
+        self.assertLess(cone_ibu, tinseth_ibu([cone], 20, 1.050))
+        self.assertGreater(
+            tinseth_ibu([cone], 20, 1.090, 25),
+            cone_ibu,
+        )
+
     def test_color_and_abv_use_recipe_ingredients(self):
         recipe = Recipe.objects.create(name="Amber Ale", batch_size_l=20, efficiency=75)
         malt = Ingredient.objects.create(
@@ -211,6 +242,11 @@ class CalculationTests(TestCase):
             attenuation=80,
         )
         self.assertGreater(estimated_color_ebc([malt], 20), 0)
+        expected_mcu = 4.23 * 50 * 5 / 20
+        self.assertEqual(
+            estimated_color_ebc([malt], 20),
+            round(2.9396 * (expected_mcu**0.6859), 1),
+        )
         self.assertAlmostEqual(estimated_abv(1.050, [yeast]), 5.25)
         self.assertAlmostEqual(estimated_final_gravity(1.050, [yeast]), 1.010, places=3)
         yeast.attenuation = 60
@@ -507,10 +543,20 @@ class RecipeWorkflowTests(TestCase):
         self.assertContains(response, "18A")
         self.assertEqual(response.context["style_indicators"], [])
 
-    def test_recipe_creation_uses_mash_efficiency_as_default(self):
+    def test_recipe_creation_form_only_requests_name(self):
         EquipmentSettings.objects.create(mash_efficiency=82)
         response = self.client.get("/recettes/nouvelle/")
-        self.assertEqual(response.context["form"].initial["efficiency"], 82)
+        self.assertEqual(list(response.context["form"].fields), ["name"])
+
+    def test_recipe_creation_uses_standard_brewing_defaults(self):
+        response = self.client.post("/recettes/nouvelle/", {"name": "Nouvelle recette"})
+        self.assertRedirects(response, "/recettes/")
+        recipe = Recipe.objects.get(name="Nouvelle recette")
+        self.assertEqual(recipe.batch_size_l, Decimal("20"))
+        self.assertEqual(recipe.efficiency, Decimal("72"))
+        self.assertEqual(recipe.boil_time_min, 60)
+        self.assertEqual(recipe.target_carbonation, Decimal("2.40"))
+        self.assertEqual(recipe.category.code, "12A")
 
     def test_recipe_efficiency_can_be_updated_from_detail(self):
         recipe = Recipe.objects.create(name="Efficiency test", efficiency=75)
@@ -1763,6 +1809,27 @@ class RecipeWorkflowTests(TestCase):
         self.assertEqual(capsules.quantity_available, 100)
         self.assertEqual(brew.capsules_consumed, 0)
         self.assertIsNone(brew.capsules_consumed_at)
+
+    def test_brew_bottling_can_be_saved_without_capsule_information(self):
+        brew = Brew.objects.create(
+            recipe_name="Sans capsules Ale",
+            status=Brew.Status.FERMENTING,
+        )
+
+        response = self.client.post(
+            f"/brassins/{brew.pk}/mise-en-bouteille/",
+            {
+                "completed_date": "2026-10-20",
+                "actual_fg": "1.010",
+            },
+        )
+
+        self.assertRedirects(response, f"/brassins/{brew.pk}/")
+        brew.refresh_from_db()
+        self.assertEqual(brew.completed_date, date(2026, 10, 20))
+        self.assertEqual(brew.actual_fg, Decimal("1.010"))
+        self.assertIsNone(brew.bottled_bottle_count)
+        self.assertIsNone(brew.capsule_catalog)
 
     def test_brew_capsules_cannot_make_stock_negative(self):
         capsules = IngredientCatalog.objects.create(

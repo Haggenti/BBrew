@@ -24,38 +24,56 @@ def estimated_og(malts, volume_l: float, efficiency: float) -> float:
     return round(1 + points / 1000, 3)
 
 
-def tinseth_ibu(hops, volume_l: float, original_gravity: float) -> float:
-    """Estime l'amertume Tinseth des ajouts bouillis."""
+def tinseth_ibu(
+    hops,
+    volume_l: float,
+    original_gravity: float,
+    preboil_volume_l: float | None = None,
+) -> float:
+    """Estime l'amertume Tinseth des ajouts bouillis.
+
+    ``original_gravity`` représente la DI après ébullition. Quand le volume
+    pré-ébullition est fourni, la densité pendant l'ébullition est recalculée
+    par conservation des points de densité. Les pellets bénéficient d'un
+    facteur d'efficacité de 1,09 par rapport aux cônes.
+    """
     if volume_l <= 0:
         return 0
     total = 0.0
+    boil_gravity = float(original_gravity)
+    if preboil_volume_l and preboil_volume_l > volume_l:
+        boil_gravity = 1 + (
+            (float(original_gravity) - 1) * float(volume_l) / float(preboil_volume_l)
+        )
+    density_factor = max(1.0, 1 + (boil_gravity - 1.050) / 0.2)
     for hop in hops:
         addition = str(getattr(hop, "addition", "") or "").casefold()
         if addition in {"dry hop", "fermentation primaire", "garde", "conditionnement"}:
             continue
-        utilization = 1.65 * (0.000125 ** (original_gravity - 1))
+        utilization = 1.65 * (0.000125 ** (boil_gravity - 1))
+        utilization /= density_factor
         utilization *= (1 - math.exp(-0.04 * float(hop.boil_minutes))) / 4.15
+        hop_form = str(getattr(hop, "form", "") or "").strip().casefold()
+        pellet_factor = 1.09 if hop_form in {"pellet", "pellets"} else 1.0
         total += (
             utilization
             * (float(hop.alpha_acid) / 100)
             * (float(hop.amount_g) * 1000 / volume_l)
+            * pellet_factor
         )
     return round(total, 1)
 
 
 def estimated_color_ebc(malts, volume_l: float) -> float:
     """Estime la couleur avec la formule de Morey, convertie en EBC."""
-    gallons = volume_l * 0.264172
-    if gallons <= 0:
+    volume_l = float(volume_l)
+    if volume_l <= 0:
         return 0
-    mcu = sum(
-        (float(malt.amount_g) / 1000 * 2.20462)
-        * (float(malt.color_ebc) / 1.97)
-        / gallons
+    mcu_total = sum(
+        4.23 * float(malt.color_ebc) * (float(malt.amount_g) / 1000) / volume_l
         for malt in malts
     )
-    srm = 1.4922 * (mcu**0.6859) if mcu > 0 else 0
-    return round(srm * 1.97, 1)
+    return round(2.9396 * (mcu_total**0.6859), 1) if mcu_total > 0 else 0
 
 
 def ebc_color_rgb(ebc: float) -> str:

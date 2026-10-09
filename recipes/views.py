@@ -15,7 +15,7 @@ from datetime import date, timedelta
 
 from .calculations import average_mash_temperature, ebc_color_rgb, estimate_snapshot, estimated_abv, estimated_color_ebc, estimated_efficiency, estimated_final_gravity, estimated_og, ibu_final_gravity_comment, ibu_final_gravity_ratio, plato_from_gravity, tinseth_ibu
 from .beerxml import export_recipe, import_recipe
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from decimal import ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP
 from django.utils import timezone
 
@@ -703,7 +703,6 @@ def brew_edit(request, pk):
         field in request.POST
         for field in (
             "actual_og",
-            "actual_fg",
             "actual_preboil_volume_l",
             "actual_batch_size_l",
             "actual_spent_grains_weight_kg",
@@ -816,11 +815,32 @@ def brew_delete(request, pk):
 
 
 def _brew_comparison(brew):
+    planned_preboil_og = None
+    planned_preboil_volume = None
     actual_efficiency = None
     evaporation_total = None
     evaporation_rate = None
     residual_water_kg = None
     dry_grains_kg = 0
+    if brew.planned_og is not None and brew.planned_batch_size_l:
+        boil_time = None
+        if brew.recipe_version:
+            boil_time = brew.recipe_version.snapshot.get("boil_time_min")
+        if boil_time is None and brew.recipe:
+            boil_time = brew.recipe.boil_time_min
+        equipment = EquipmentSettings.objects.first()
+        evaporation = (
+            float(equipment.evaporation_l_h) * float(boil_time) / 60
+            if equipment and boil_time
+            else 0
+        )
+        planned_preboil_volume = float(brew.planned_batch_size_l) + evaporation
+        if planned_preboil_volume > 0:
+            planned_preboil_og = 1 + (
+                (float(brew.planned_og) - 1)
+                * float(brew.planned_batch_size_l)
+                / planned_preboil_volume
+            )
     if brew.recipe_version:
         dry_grains_kg = sum(
             float(item.get("amount_g", 0))
@@ -844,7 +864,10 @@ def _brew_comparison(brew):
             boil_time = brew.recipe.boil_time_min
         if boil_time:
             evaporation_rate = evaporation_total / (float(boil_time) / 60)
-    if brew.actual_og is not None and brew.actual_batch_size_l and brew.recipe_version:
+    if brew.recipe_version and (
+        (brew.actual_og is not None and brew.actual_batch_size_l)
+        or (brew.actual_preboil_og is not None and brew.actual_preboil_volume_l)
+    ):
         from types import SimpleNamespace
 
         malts = [
@@ -852,8 +875,21 @@ def _brew_comparison(brew):
             for item in brew.recipe_version.snapshot.get("ingredients", [])
             if item["kind"] == Ingredient.Kind.MALT
         ]
-        actual_efficiency = estimated_efficiency(malts, brew.actual_og, brew.actual_batch_size_l)
+        if brew.actual_og is not None and brew.actual_batch_size_l:
+            actual_efficiency = estimated_efficiency(malts, brew.actual_og, brew.actual_batch_size_l)
     return {
+        "planned_preboil_og": planned_preboil_og,
+        "planned_preboil_volume": planned_preboil_volume,
+        "preboil_volume_delta": (
+            float(brew.actual_preboil_volume_l) - planned_preboil_volume
+            if brew.actual_preboil_volume_l is not None and planned_preboil_volume is not None
+            else None
+        ),
+        "preboil_og_delta": (
+            float(brew.actual_preboil_og) - planned_preboil_og
+            if brew.actual_preboil_og is not None and planned_preboil_og is not None
+            else None
+        ),
         "actual_efficiency": actual_efficiency,
         "evaporation_total": evaporation_total,
         "evaporation_rate": evaporation_rate,
@@ -864,11 +900,15 @@ def _brew_comparison(brew):
             if residual_water_kg is not None and dry_grains_kg > 0
             else None
         ),
+        "efficiency_delta": (
+            actual_efficiency - float(brew.planned_efficiency)
+            if actual_efficiency is not None and brew.planned_efficiency is not None
+            else None
+        ),
         "og_delta": float(brew.actual_og - brew.planned_og) if brew.actual_og is not None and brew.planned_og is not None else None,
         "fg_delta": float(brew.actual_fg - brew.planned_fg) if brew.actual_fg is not None and brew.planned_fg is not None else None,
         "abv_delta": brew.actual_abv - float(brew.planned_abv) if brew.actual_abv is not None and brew.planned_abv is not None else None,
         "volume_delta": float(brew.actual_batch_size_l - brew.planned_batch_size_l) if brew.actual_batch_size_l is not None and brew.planned_batch_size_l is not None else None,
-        "efficiency_delta": actual_efficiency - float(brew.planned_efficiency) if actual_efficiency is not None and brew.planned_efficiency is not None else None,
     }
 
 
@@ -980,21 +1020,46 @@ def brew_bottling_update(request, pk):
     if brew.status != Brew.Status.FERMENTING:
         messages.error(request, "La mise en bouteille n’est possible que pendant la fermentation.")
         return redirect("recipes:brew_detail", pk=brew.pk)
-    try:
-        bottle_count = int(request.POST.get("bottled_bottle_count", ""))
-    except (TypeError, ValueError):
-        bottle_count = 0
-    capsule_catalog = IngredientCatalog.objects.filter(
-        pk=request.POST.get("capsule_catalog"),
-        kind=IngredientCatalog.Kind.CONSUMABLE,
-    ).first()
-    if bottle_count <= 0 or capsule_catalog is None:
-        messages.error(request, "Indiquez un nombre de bouteilles positif et un consommable de capsules valide.")
-        return redirect("recipes:brew_detail", pk=brew.pk)
+    raw_bottle_count = request.POST.get("bottled_bottle_count", "").strip()
+    if raw_bottle_count:
+        try:
+            bottle_count = int(raw_bottle_count)
+        except (TypeError, ValueError):
+            messages.error(request, "Le nombre de bouteilles à capsuler est invalide.")
+            return redirect("recipes:brew_detail", pk=brew.pk)
+        if bottle_count <= 0:
+            messages.error(request, "Le nombre de bouteilles à capsuler doit être positif.")
+            return redirect("recipes:brew_detail", pk=brew.pk)
+    else:
+        bottle_count = None
+
+    raw_capsule_catalog = request.POST.get("capsule_catalog", "").strip()
+    if raw_capsule_catalog:
+        capsule_catalog = IngredientCatalog.objects.filter(
+            pk=raw_capsule_catalog,
+            kind=IngredientCatalog.Kind.CONSUMABLE,
+        ).first()
+        if capsule_catalog is None:
+            messages.error(request, "Le type de capsules sélectionné est invalide.")
+            return redirect("recipes:brew_detail", pk=brew.pk)
+    else:
+        capsule_catalog = None
     if brew.capsules_consumed_at:
         messages.error(request, "La consommation des capsules a déjà été enregistrée.")
         return redirect("recipes:brew_detail", pk=brew.pk)
     update_fields = ["bottled_bottle_count", "capsule_catalog"]
+    raw_fg = request.POST.get("actual_fg", "").strip()
+    if raw_fg:
+        try:
+            actual_fg = Decimal(raw_fg)
+        except (InvalidOperation, TypeError, ValueError):
+            messages.error(request, "La DF post-fermentation est invalide.")
+            return redirect("recipes:brew_detail", pk=brew.pk)
+        if actual_fg < Decimal("0.900") or actual_fg > Decimal("1.200"):
+            messages.error(request, "La DF post-fermentation doit être comprise entre 0,900 et 1,200.")
+            return redirect("recipes:brew_detail", pk=brew.pk)
+        brew.actual_fg = actual_fg
+        update_fields.append("actual_fg")
     if "completed_date" in request.POST:
         raw_completed_date = request.POST.get("completed_date", "").strip()
         if raw_completed_date:
@@ -1468,7 +1533,20 @@ def recipe_detail(request, pk, edit_forms=None):
     others = recipe.ingredients.filter(kind="other")
     mash_steps = list(recipe.mash_steps.all())
     og = estimated_og(malts, float(recipe.batch_size_l), float(recipe.efficiency)) if malts else None
-    ibu = tinseth_ibu(hops, float(recipe.batch_size_l), og or float(recipe.target_og)) if hops else None
+    planned_preboil_volume = (
+        float(recipe.batch_size_l)
+        + float(equipment.evaporation_l_h) * float(recipe.boil_time_min) / 60
+    )
+    ibu = (
+        tinseth_ibu(
+            hops,
+            float(recipe.batch_size_l),
+            og or float(recipe.target_og),
+            planned_preboil_volume,
+        )
+        if hops
+        else None
+    )
     ebc = estimated_color_ebc(malts, float(recipe.batch_size_l)) if malts else None
     abv = estimated_abv(og or float(recipe.target_og), yeasts, mash_steps)
     final_gravity = estimated_final_gravity(og or float(recipe.target_og), yeasts, mash_steps)
@@ -1666,7 +1744,12 @@ def recipe_detail(request, pk, edit_forms=None):
         {
             "ingredient": hop,
             "stock_cost": stock_costs_by_ingredient[hop.pk],
-            "ibu": tinseth_ibu([hop], float(recipe.batch_size_l), og or float(recipe.target_og)),
+            "ibu": tinseth_ibu(
+                [hop],
+                float(recipe.batch_size_l),
+                og or float(recipe.target_og),
+                planned_preboil_volume,
+            ),
             "edit_form": inline_form(
                 edit_forms.get(
                     hop.pk,
@@ -2146,16 +2229,15 @@ def fermentation_graph_update(request, pk):
 
 
 def recipe_create(request):
-    equipment = EquipmentSettings.objects.first()
-    initial = {"efficiency": equipment.mash_efficiency} if equipment else {}
-    form = RecipeForm(request.POST or None, initial=initial)
+    form = RecipeForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
-        recipe = form.save()
-        if recipe.category_id is None:
-            default_category = BeerCategory.objects.filter(code="18A").first()
-            if default_category:
-                recipe.category = default_category
-                recipe.save(update_fields=["category"])
+        recipe = form.save(commit=False)
+        recipe.batch_size_l = 20
+        recipe.efficiency = 72
+        recipe.boil_time_min = 60
+        recipe.target_carbonation = Decimal("2.40")
+        recipe.category = BeerCategory.objects.filter(code="12A").first()
+        recipe.save()
         messages.success(request, f"La recette « {recipe.name} » a été créée.")
         return redirect("recipes:list")
     return render(request, "recipes/form.html", {"form": form})

@@ -413,7 +413,6 @@
     </div>
   </div>
   <div class="card-body">
-    {% if mash_steps %}
     <div class="row g-4 align-items-start mash-editor-layout" data-mash-layout>
       {% include "recipes/_mash_summary.html" %}
       <div class="mash-chart-column">
@@ -461,10 +460,9 @@
         </div>
       </div>
     </div>
-    {% else %}<p class="text-secondary mb-0">Aucun palier défini.</p>{% endif %}
+    {% if not mash_steps %}<p class="text-secondary mb-0">Double-cliquez sur le graphique pour ajouter le premier palier.</p>{% endif %}
   </div>
 </section>
-{% if mash_chart_points %}
 {{ mash_chart_points|json_script:"mash-chart-data" }}
 {{ mash_edit_points|json_script:"mash-edit-data" }}
 <script>
@@ -486,6 +484,7 @@
       { id: "mashout", min: 75, max: 78, label: "Mash-out", color: "rgba(25, 135, 84, .12)" }
     ];
     const linePoints = () => {
+      if (!steps.length) return [];
       const result = [{ x: 0, y: steps[0].temperature }];
       let elapsed = 0;
       steps.forEach((step, index) => {
@@ -742,7 +741,7 @@
         syncGraph();
       }
     });
-    document.getElementById("mash-graph-delete").addEventListener("click", () => {
+    document.getElementById("mash-graph-delete")?.addEventListener("click", () => {
       if (!selectedStepId || steps.length <= 1) return;
       const index = steps.findIndex((step) => String(step.id) === String(selectedStepId));
       if (index < 0) return;
@@ -753,7 +752,6 @@
     syncGraph();
   })();
 </script>
-{% endif %}
 <hr class="my-4">
 <section class="card border-secondary-subtle">
   <div class="card-header bg-light d-flex justify-content-between align-items-center">

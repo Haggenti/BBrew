@@ -83,29 +83,10 @@ class StyledModelForm(forms.ModelForm):
 class RecipeForm(StyledModelForm):
     class Meta:
         model = Recipe
-        fields = ["name", "category", "batch_size_l", "efficiency", "target_og", "target_ibu", "target_carbonation", "boil_time_min", "notes"]
+        fields = ["name"]
         widgets = {
             "name": forms.TextInput(attrs={"placeholder": "Ex. Pale Ale du dimanche"}),
-            "batch_size_l": forms.NumberInput(attrs={"step": "0.1", "min": "1"}),
-            "efficiency": forms.NumberInput(attrs={"step": "1", "min": "1", "max": "100"}),
-            "target_og": forms.NumberInput(attrs={"step": "0.001", "min": "1"}),
-            "target_ibu": forms.NumberInput(attrs={"step": "1", "min": "0"}),
-            "target_carbonation": forms.NumberInput(attrs={"step": "0.1", "min": "0", "max": "6"}),
-            "boil_time_min": forms.NumberInput(attrs={"min": "1", "max": "240", "step": "1"}),
-            "notes": forms.Textarea(attrs={"rows": 4, "placeholder": "Notes générales sur cette recette"}),
         }
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.fields["boil_time_min"].required = False
-        self.fields["target_carbonation"].required = False
-        self.fields["efficiency"].label = "Efficacité (%)"
-
-    def clean_boil_time_min(self):
-        return self.cleaned_data.get("boil_time_min") or 60
-
-    def clean_target_carbonation(self):
-        return self.cleaned_data.get("target_carbonation") or Decimal("2.40")
 
 
 class EquipmentSettingsForm(StyledModelForm):
@@ -346,7 +327,7 @@ class BrewForm(StyledModelForm):
         fields = [
             "recipe", "recipe_version", "status", "planned_date", "completed_date",
             "bottled_bottle_count", "capsule_catalog",
-            "actual_preboil_volume_l", "actual_batch_size_l", "actual_og",
+            "actual_preboil_volume_l", "actual_preboil_og", "actual_batch_size_l", "actual_og",
             "actual_spent_grains_weight_kg",
             "actual_fg", "notes",
         ]
@@ -355,6 +336,7 @@ class BrewForm(StyledModelForm):
             "completed_date": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"}),
             "actual_batch_size_l": forms.NumberInput(attrs={"min": "0", "step": "0.1"}),
             "actual_preboil_volume_l": forms.NumberInput(attrs={"min": "0", "step": "0.1"}),
+            "actual_preboil_og": forms.NumberInput(attrs={"min": "0.9", "step": "0.001"}),
             "actual_spent_grains_weight_kg": forms.NumberInput(attrs={"min": "0", "step": "0.001"}),
             "bottled_bottle_count": forms.NumberInput(attrs={"min": "1", "step": "1"}),
             "actual_og": forms.NumberInput(attrs={"min": "0.9", "step": "0.001"}),
@@ -410,9 +392,9 @@ class BrewMeasurementForm(BrewForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         measurement_fields = (
-            "preboil_volume_mode", "actual_preboil_volume_l", "preboil_headspace_cm",
+            "preboil_volume_mode", "actual_preboil_volume_l", "preboil_headspace_cm", "actual_preboil_og",
             "batch_volume_mode", "actual_batch_size_l", "batch_headspace_cm",
-            "actual_og", "actual_fg", "actual_spent_grains_weight_kg",
+            "actual_og", "actual_spent_grains_weight_kg",
         )
         self.fields = {name: self.fields[name] for name in measurement_fields}
 

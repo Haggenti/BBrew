@@ -13,14 +13,14 @@
 <div class="brew-measurement-form">
   <div class="row g-3">
     <div class="col-md-6">
-      <label class="form-label" for="{{ form.actual_og.id_for_label }}">{{ form.actual_og.label }}</label>
+      <label class="form-label" for="{{ form.actual_og.id_for_label }}">DI post-ébullition</label>
       {{ form.actual_og }}
       {% for error in form.actual_og.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
     </div>
     <div class="col-md-6">
-      <label class="form-label" for="{{ form.actual_fg.id_for_label }}">{{ form.actual_fg.label }}</label>
-      {{ form.actual_fg }}
-      {% for error in form.actual_fg.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+      <label class="form-label" for="{{ form.actual_preboil_og.id_for_label }}">DI pré-ébullition</label>
+      {{ form.actual_preboil_og }}
+      {% for error in form.actual_preboil_og.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
     </div>
     <div class="col-md-6">
       <label class="form-label" for="{{ form.actual_spent_grains_weight_kg.id_for_label }}">{{ form.actual_spent_grains_weight_kg.label }}</label>

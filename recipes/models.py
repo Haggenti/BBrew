@@ -117,6 +117,9 @@ class Brew(models.Model):
     actual_preboil_volume_l = models.DecimalField(
         "volume pré-ébullition réel (L)", max_digits=6, decimal_places=2, null=True, blank=True
     )
+    actual_preboil_og = models.DecimalField(
+        "DI pré-ébullition mesurée", max_digits=5, decimal_places=3, null=True, blank=True
+    )
     actual_batch_size_l = models.DecimalField(
         "volume réel (L)", max_digits=6, decimal_places=2, null=True, blank=True
     )

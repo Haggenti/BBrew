@@ -172,12 +172,13 @@
           </form>
         </div>
         {% else %}
-        <p class="text-secondary small">Indiquez le nombre de bouteilles et le type de capsules, puis enregistrez avant de consommer le stock.</p>
+        <p class="text-secondary small">Le nombre de bouteilles et le type de capsules sont facultatifs. Renseignez-les pour pouvoir consommer les capsules dans le stock.</p>
         <form method="post" action="{% url 'recipes:brew_bottling_update' brew.pk %}" class="row g-3 align-items-end mb-3">
           {% csrf_token %}
           <div class="col-12"><label class="form-label" for="bottling-date">Date de mise en bouteille</label><input id="bottling-date" class="form-control" type="date" name="completed_date" value="{{ brew.completed_date|date:'Y-m-d' }}"></div>
-          <div class="col-12"><label class="form-label" for="bottled-bottle-count">Bouteilles à capsuler</label><input id="bottled-bottle-count" class="form-control" type="number" name="bottled_bottle_count" min="1" step="1" value="{{ brew.bottled_bottle_count|default:'' }}" required></div>
-          <div class="col-12"><label class="form-label" for="capsule-catalog">Type de capsules</label><select id="capsule-catalog" class="form-select" name="capsule_catalog" required><option value="">Sélectionner</option>{% for capsule in capsule_catalogs %}<option value="{{ capsule.pk }}" {% if brew.capsule_catalog_id == capsule.pk %}selected{% endif %}>{{ capsule.name }} ({{ capsule.quantity_available }} disponible(s))</option>{% endfor %}</select></div>
+          <div class="col-12"><label class="form-label" for="bottling-fg">DF post-fermentation</label><input id="bottling-fg" class="form-control" type="number" name="actual_fg" min="0.900" max="1.200" step="0.001" value="{{ brew.actual_fg|default:'' }}"></div>
+          <div class="col-12"><label class="form-label" for="bottled-bottle-count">Bouteilles à capsuler <span class="text-secondary">(facultatif)</span></label><input id="bottled-bottle-count" class="form-control" type="number" name="bottled_bottle_count" min="1" step="1" value="{{ brew.bottled_bottle_count|default:'' }}"></div>
+          <div class="col-12"><label class="form-label" for="capsule-catalog">Type de capsules <span class="text-secondary">(facultatif)</span></label><select id="capsule-catalog" class="form-select" name="capsule_catalog"><option value="">Sélectionner</option>{% for capsule in capsule_catalogs %}<option value="{{ capsule.pk }}" {% if brew.capsule_catalog_id == capsule.pk %}selected{% endif %}>{{ capsule.name }} ({{ capsule.quantity_available }} disponible(s))</option>{% endfor %}</select></div>
           <div class="col-12"><button class="btn btn-outline-primary w-100" type="submit">Enregistrer</button></div>
         </form>
         {% if brew.bottled_bottle_count and brew.capsule_catalog %}<form method="post" action="{% url 'recipes:brew_consume_capsules' brew.pk %}" onsubmit="return confirm('Consommer {{ brew.bottled_bottle_count }} capsule(s) dans le stock ?');">{% csrf_token %}<button class="btn btn-warning" type="submit"><i class="bi bi-box-arrow-down me-1" aria-hidden="true"></i>Consommer {{ brew.bottled_bottle_count }} capsule(s)</button></form>{% endif %}
@@ -196,23 +197,12 @@
       <div class="col-lg-6">
         <h3 class="h6 text-uppercase text-secondary border-bottom pb-2">Volumes et absorption</h3>
         <dl class="row small mb-0">
-          <dt class="col-7 text-secondary">Volume pré-ébullition</dt><dd class="col-5 text-end">{% if brew.actual_preboil_volume_l %}{{ brew.actual_preboil_volume_l }} L{% else %}—{% endif %}</dd>
-          <dt class="col-7 text-secondary">Volume final</dt><dd class="col-5 text-end">{% if brew.actual_batch_size_l %}{{ brew.actual_batch_size_l }} L{% else %}—{% endif %}</dd>
           <dt class="col-7 text-secondary">Évaporation totale</dt><dd class="col-5 text-end">{% if comparison.evaporation_total is not None %}{{ comparison.evaporation_total|floatformat:2 }} L{% else %}—{% endif %}</dd>
           <dt class="col-7 text-secondary">Évaporation horaire</dt><dd class="col-5 text-end">{% if comparison.evaporation_rate is not None %}{{ comparison.evaporation_rate|floatformat:2 }} L/h{% else %}—{% endif %}</dd>
           <dt class="col-7 text-secondary">Poids de grain de départ</dt><dd class="col-5 text-end">{% if comparison.grain_weight_kg is not None %}{{ comparison.grain_weight_kg|floatformat:2 }} kg{% else %}—{% endif %}</dd>
           <dt class="col-7 text-secondary">Drêches avec sac</dt><dd class="col-5 text-end">{% if brew.actual_spent_grains_weight_kg is not None %}{{ brew.actual_spent_grains_weight_kg }} kg{% else %}—{% endif %}</dd>
           <dt class="col-7 text-secondary">Eau résiduelle absorbée</dt><dd class="col-5 text-end">{% if comparison.residual_water_kg is not None %}{{ comparison.residual_water_kg|floatformat:2 }} L{% else %}—{% endif %}</dd>
           <dt class="col-7 text-secondary">Taux d’absorption</dt><dd class="col-5 text-end">{% if comparison.absorption_l_per_kg is not None %}{{ comparison.absorption_l_per_kg|floatformat:2 }} L/kg{% else %}—{% endif %}</dd>
-        </dl>
-      </div>
-      <div class="col-lg-6">
-        <h3 class="h6 text-uppercase text-secondary border-bottom pb-2">Fermentation et mesures</h3>
-        <dl class="row small mb-0">
-          <dt class="col-7 text-secondary">DI mesurée</dt><dd class="col-5 text-end">{{ brew.actual_og|default:"—" }}</dd>
-          <dt class="col-7 text-secondary">DF mesurée</dt><dd class="col-5 text-end">{{ brew.actual_fg|default:"—" }}</dd>
-          <dt class="col-7 text-secondary">ABV réel</dt><dd class="col-5 text-end">{% if brew.actual_abv is not None %}<strong>{{ brew.actual_abv }} %</strong>{% else %}—{% endif %}</dd>
-          <dt class="col-7 text-secondary">Stock</dt><dd class="col-5 text-end">{% if brew.stock_consumed_at %}Consommé le {{ brew.stock_consumed_at|date:"d/m/Y à H:i" }}{% else %}Non consommé{% endif %}</dd>
         </dl>
       </div>
     </div>
@@ -226,11 +216,13 @@
     <div class="table-responsive"><table class="table table-sm align-middle mb-0">
       <thead><tr><th>Indicateur</th><th>Prévu</th><th>Réel</th><th>Écart</th></tr></thead>
       <tbody>
+        <tr><th>Volume pré-ébullition</th><td>{% if comparison.planned_preboil_volume is not None %}{{ comparison.planned_preboil_volume|floatformat:2 }} L{% else %}—{% endif %}</td><td>{% if brew.actual_preboil_volume_l is not None %}{{ brew.actual_preboil_volume_l }} L{% else %}—{% endif %}</td><td>{% if comparison.preboil_volume_delta is not None %}{{ comparison.preboil_volume_delta|floatformat:2 }} L{% else %}—{% endif %}</td></tr>
         <tr><th>Volume final</th><td>{% if brew.planned_batch_size_l is not None %}{{ brew.planned_batch_size_l }} L{% else %}—{% endif %}</td><td>{% if brew.actual_batch_size_l is not None %}{{ brew.actual_batch_size_l }} L{% else %}—{% endif %}</td><td>{% if comparison.volume_delta is not None %}{{ comparison.volume_delta|floatformat:2 }} L{% else %}—{% endif %}</td></tr>
-        <tr><th>DI</th><td>{{ brew.planned_og|default:"—" }}</td><td>{{ brew.actual_og|default:"—" }}</td><td>{% if comparison.og_delta is not None %}{{ comparison.og_delta|floatformat:3 }}{% else %}—{% endif %}</td></tr>
+        <tr><th>DI pré-ébullition</th><td>{% if comparison.planned_preboil_og is not None %}{{ comparison.planned_preboil_og|floatformat:3 }}{% else %}—{% endif %}</td><td>{{ brew.actual_preboil_og|default:"—" }}</td><td>{% if comparison.preboil_og_delta is not None %}{{ comparison.preboil_og_delta|floatformat:3 }}{% else %}—{% endif %}</td></tr>
+        <tr><th>DI après ébullition</th><td>{{ brew.planned_og|default:"—" }}</td><td>{{ brew.actual_og|default:"—" }}</td><td>{% if comparison.og_delta is not None %}{{ comparison.og_delta|floatformat:3 }}{% else %}—{% endif %}</td></tr>
         <tr><th>DF</th><td>{{ brew.planned_fg|default:"—" }}</td><td>{{ brew.actual_fg|default:"—" }}</td><td>{% if comparison.fg_delta is not None %}{{ comparison.fg_delta|floatformat:3 }}{% else %}—{% endif %}</td></tr>
         <tr><th>ABV</th><td>{% if brew.planned_abv is not None %}{{ brew.planned_abv }} %{% else %}—{% endif %}</td><td>{% if brew.actual_abv is not None %}{{ brew.actual_abv }} %{% else %}—{% endif %}</td><td>{% if comparison.abv_delta is not None %}{{ comparison.abv_delta|floatformat:2 }} %{% else %}—{% endif %}</td></tr>
-        <tr><th>Rendement</th><td>{% if brew.planned_efficiency is not None %}{{ brew.planned_efficiency }} %{% else %}—{% endif %}</td><td>{% if comparison.actual_efficiency is not None %}{{ comparison.actual_efficiency }} %{% else %}—{% endif %}</td><td>{% if comparison.efficiency_delta is not None %}{{ comparison.efficiency_delta|floatformat:1 }} points{% else %}—{% endif %}</td></tr>
+        <tr><th>Efficacité</th><td>{% if brew.planned_efficiency is not None %}{{ brew.planned_efficiency }} %{% else %}—{% endif %}</td><td>{% if comparison.actual_efficiency is not None %}{{ comparison.actual_efficiency }} %{% else %}—{% endif %}</td><td>{% if comparison.efficiency_delta is not None %}{{ comparison.efficiency_delta|floatformat:"1" }} points{% else %}—{% endif %}</td></tr>
       </tbody>
     </table></div>
   </div>
