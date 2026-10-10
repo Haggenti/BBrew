@@ -3,6 +3,39 @@
 import math
 
 
+def cylinder_headspace_cm(volume_l: float, diameter_cm: float, height_cm: float) -> float | None:
+    """Calcule la hauteur libre entre le liquide et le haut d'une cuve cylindrique."""
+    volume_l = float(volume_l)
+    diameter_cm = float(diameter_cm)
+    height_cm = float(height_cm)
+    if volume_l < 0 or diameter_cm <= 0 or height_cm <= 0:
+        return None
+    liquid_height_cm = volume_l * 1000 / (math.pi * (diameter_cm / 2) ** 2)
+    return round(height_cm - liquid_height_cm, 1)
+
+
+def correct_hydrometer_gravity(
+    measured_gravity: float,
+    temperature_c: float,
+    calibration_temperature_c: float = 20.0,
+) -> float:
+    """Corrige une lecture d'hydromètre vers sa température d'étalonnage."""
+    def water_density(temperature_f: float) -> float:
+        return (
+            1.00130346
+            - 0.000134722124 * temperature_f
+            + 0.00000204052596 * temperature_f**2
+            - 0.00000000232820948 * temperature_f**3
+        )
+
+    reading_temperature_f = float(temperature_c) * 9 / 5 + 32
+    calibration_temperature_f = float(calibration_temperature_c) * 9 / 5 + 32
+    corrected = float(measured_gravity) * (
+        water_density(reading_temperature_f) / water_density(calibration_temperature_f)
+    )
+    return round(corrected, 3)
+
+
 def abv_from_gravity(original_gravity: float, final_gravity: float) -> float:
     """Estime l'alcool en volume à partir des densités initiale et finale."""
     return round((original_gravity - final_gravity) * 131.25, 2)

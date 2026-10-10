@@ -53,3 +53,28 @@ def planned_stock_needs():
             if brew not in need["brews"]:
                 need["brews"].append(brew)
     return needs
+
+
+def planned_brew_stock_requirements():
+    """Return requirements after reserving stock chronologically for planned brews."""
+    today = timezone.localdate()
+    upcoming_brews = Brew.objects.filter(
+        planned_date__gte=today,
+        status=Brew.Status.PLANNED,
+    ).order_by("planned_date", "pk")
+    reserved = {}
+    requirements_by_brew = {}
+    for brew in upcoming_brews:
+        requirements = brew_stock_requirements(brew)
+        for requirement in requirements:
+            catalog_id = requirement["catalog_id"]
+            if catalog_id is None or requirement["available"] is None:
+                requirement["available_after_previous"] = None
+                requirement["sufficient_for_brew"] = False
+                continue
+            available_after_previous = requirement["available"] - reserved.get(catalog_id, 0)
+            requirement["available_after_previous"] = max(0, available_after_previous)
+            requirement["sufficient_for_brew"] = available_after_previous >= requirement["required"]
+            reserved[catalog_id] = reserved.get(catalog_id, 0) + requirement["required"]
+        requirements_by_brew[brew.pk] = requirements
+    return requirements_by_brew

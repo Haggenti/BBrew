@@ -1,6 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Liste de courses · BBS{% endblock %}
 {% block content %}
+<style>
+  .integration-quantity-row .quantity-preset-wrapper { flex: 0 0 45%; min-width: 0; }
+  @media (max-width: 575.98px) {
+    .integration-quantity-row .quantity-preset-wrapper { flex-basis: 42%; }
+  }
+</style>
 <div class="d-flex justify-content-between align-items-start mb-4">
   <div>
     <h1 class="h2 mb-1"><i class="bi bi-cart3 me-2" aria-hidden="true"></i>Liste de courses</h1>
@@ -139,6 +145,7 @@
     const kindSelect = form.querySelector("[data-new-kind]");
     const quantityInput = form.querySelector("[name='quantity']");
     const quantityPreset = form.querySelector("[data-quantity-preset]");
+    const quantityPresetWrapper = form.querySelector("[data-quantity-preset-wrapper]");
     const totalPriceInput = form.querySelector("[data-total-price]");
     const unitCostPreview = form.querySelector("[data-unit-cost-preview]");
     const selectedKind = () => {
@@ -165,7 +172,14 @@
       const kindPresets = presetsByKind[kind] || [];
       quantityPreset.replaceChildren(new Option("Quantité usuelle", ""));
       kindPresets.forEach(([value, label]) => quantityPreset.add(new Option(label, value)));
-      quantityPreset.classList.toggle("d-none", kindPresets.length === 0);
+      quantityPresetWrapper.classList.toggle("d-none", kindPresets.length === 0);
+      const requiredQuantity = Number(form.dataset.requiredQuantity);
+      if (Number.isFinite(requiredQuantity) && kindPresets.length > 0) {
+        const selectedPreset = kindPresets.find(([value]) => Number(value) >= requiredQuantity)
+          || kindPresets[kindPresets.length - 1];
+        quantityPreset.value = selectedPreset[0];
+        if (!quantityInput.value) quantityInput.value = selectedPreset[0];
+      }
       quantityInput.placeholder = kind === "yeast" ? "Nombre de paquets" : "Quantité";
       quantityInput.setAttribute("aria-label", kind === "yeast" ? "Nombre de paquets reçus" : "Quantité reçue");
       updateUnitCostPreview();

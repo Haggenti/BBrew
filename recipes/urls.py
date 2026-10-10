@@ -30,6 +30,7 @@ urlpatterns = [
     path("parametres/journal/", views.activity_log, name="activity_log"),
     path("parametres/journal/vider/", views.activity_log_clear, name="activity_log_clear"),
     path("courses/", views.shopping_list, name="shopping_list"),
+    path("courses/ajouter-besoins-brassins/", views.planned_brews_to_shopping, name="planned_brews_to_shopping"),
     path("courses/ajouter/", views.shopping_item_create, name="shopping_item_create"),
     path("courses/commandes/ajouter/", views.purchase_order_create, name="purchase_order_create"),
     path("courses/commandes/<int:pk>/modifier/", views.purchase_order_edit, name="purchase_order_edit"),

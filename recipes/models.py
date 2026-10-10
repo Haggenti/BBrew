@@ -197,6 +197,7 @@ class EquipmentSettings(models.Model):
     bag_weight_g = models.DecimalField("poids du sac (g)", max_digits=7, decimal_places=1, default=100)
     evaporation_l_h = models.DecimalField("évaporation (L/h)", max_digits=5, decimal_places=2, default=5)
     grain_absorption_l_kg = models.DecimalField("absorption des grains (L/kg)", max_digits=5, decimal_places=2, default=0.3)
+    hop_absorption_l_kg = models.DecimalField("absorption des houblons (L/kg)", max_digits=5, decimal_places=2, default=1)
     dead_space_l = models.DecimalField("volume mort (L)", max_digits=5, decimal_places=2, default=0)
     mash_efficiency = models.DecimalField("rendement de brassage (%)", max_digits=5, decimal_places=1, default=72)
     style_tolerance_percent = models.DecimalField("tolérance des styles (%)", max_digits=5, decimal_places=1, default=30)

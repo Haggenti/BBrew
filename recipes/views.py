@@ -13,19 +13,19 @@ import calendar
 from itertools import groupby
 from datetime import date, timedelta
 
-from .calculations import average_mash_temperature, bu_gu_comment, bu_gu_ratio, ebc_color_rgb, estimate_snapshot, estimated_abv, estimated_color_ebc, estimated_efficiency, estimated_final_gravity, estimated_og, plato_from_gravity, tinseth_ibu
+from .calculations import average_mash_temperature, bu_gu_comment, bu_gu_ratio, cylinder_headspace_cm, ebc_color_rgb, estimate_snapshot, estimated_abv, estimated_color_ebc, estimated_efficiency, estimated_final_gravity, estimated_og, plato_from_gravity, tinseth_ibu
 from .beerxml import export_recipe, import_recipe
 from decimal import Decimal, InvalidOperation
 from decimal import ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP
 from django.utils import timezone
 
-from .forms import BackupUploadForm, BeerCategoryForm, BeerXMLUploadForm, BoilSettingsForm, BrewForm, BrewMeasurementForm, BrewNotesForm, BrewTastingForm, CatalogConsumableForm, CatalogHopForm, CatalogMaltForm, CatalogOtherForm, CatalogYeastForm, CatalogForm, EquipmentSettingsForm, FermentationStepForm, HopForm, IngredientQuantityForm, IngredientTimeForm, MaltForm, MashGraphSettingsForm, MashStepForm, OtherForm, PurchaseOrderForm, RecipeBrewingSettingsForm, RecipeCategoryForm, RecipeEfficiencyForm, RecipeForm, RecipeNameForm, RecipeNotesForm, RecipeTastingForm, ScaleForm, ShoppingItemForm, YeastForm
+from .forms import BackupUploadForm, BeerCategoryForm, BeerXMLUploadForm, BoilSettingsForm, BrewForm, BrewMeasurementForm, BrewNotesForm, BrewPostboilMeasurementForm, BrewPreboilMeasurementForm, BrewTastingForm, CatalogConsumableForm, CatalogHopForm, CatalogMaltForm, CatalogOtherForm, CatalogYeastForm, CatalogForm, EquipmentSettingsForm, FermentationStepForm, HopForm, IngredientQuantityForm, IngredientTimeForm, MaltForm, MashGraphSettingsForm, MashStepForm, OtherForm, PurchaseOrderForm, RecipeBrewingSettingsForm, RecipeCategoryForm, RecipeEfficiencyForm, RecipeForm, RecipeNameForm, RecipeNotesForm, RecipeTastingForm, ScaleForm, ShoppingItemForm, YeastForm
 from .models import ActivityEvent, BeerCategory, Brew, EquipmentSettings, FermentationStep, Ingredient, IngredientCatalog, MashStep, PurchaseOrder, Recipe, RecipeVersion, ShoppingItem
 from .signals import log_activity, save_version, suspend_versioning
 from .versioning import describe_version_change
 from .backup import create_backup, restore_backup
 from .catalog_rules import CATALOG_KIND_RULES
-from .stock_logic import brew_stock_requirements, planned_stock_needs
+from .stock_logic import brew_stock_requirements, planned_brew_stock_requirements, planned_stock_needs
 
 
 def recipe_list(request):
@@ -139,28 +139,51 @@ def about(request):
     })
 
 
+def _shopping_keys_by_brew():
+    keys_by_brew = {}
+    for item in ShoppingItem.objects.prefetch_related("source_brews"):
+        for brew in item.source_brews.all():
+            keys_by_brew.setdefault(brew.pk, set()).add(
+                (item.catalog_id, item.name.strip().casefold())
+            )
+    return keys_by_brew
+
+
+def _requirement_shopping_key(requirement):
+    return (requirement["catalog_id"], requirement["name"].strip().casefold())
+
+
+def _requirement_is_in_shopping(requirement, shopping_keys):
+    catalog_id, name = _requirement_shopping_key(requirement)
+    return (catalog_id, name) in shopping_keys or (None, name) in shopping_keys
+
+
 def brew_list(request):
     brews = list(Brew.objects.all())
-    existing_shopping_names = {
-        item.name.strip().casefold()
-        for item in ShoppingItem.objects.all()
-    }
+    planned_requirements = planned_brew_stock_requirements()
+    shopping_keys_by_brew = _shopping_keys_by_brew()
     for brew in brews:
         if brew.status == Brew.Status.PLANNED:
-            requirements = brew_stock_requirements(brew)
+            requirements = planned_requirements.get(brew.pk, brew_stock_requirements(brew))
             missing_items = [
                 item for item in requirements
                 if item["catalog"] is None
-                or item["available"] is None
-                or item["available"] < item["required"]
+                or not item.get(
+                    "sufficient_for_brew",
+                    item["available"] is not None and item["available"] >= item["required"],
+                )
             ]
+            shopping_keys = shopping_keys_by_brew.get(brew.pk, set())
             brew.stock_missing_items = [
                 item for item in missing_items
-                if item["name"].strip().casefold() not in existing_shopping_names
+                if not _requirement_is_in_shopping(item, shopping_keys)
             ]
             if brew.recipe_version and not missing_items:
                 brew.stock_status = "ok"
-            elif missing_items and not brew.stock_missing_items:
+            elif missing_items and all(
+                _requirement_is_in_shopping(item, shopping_keys)
+                for item in missing_items
+            ):
                 brew.stock_status = "shopping"
             else:
                 brew.stock_status = "insufficient"
@@ -300,12 +323,49 @@ def shopping_list(request):
     items = list(items_query)
     catalog_items = IngredientCatalog.objects.all().order_by("kind", "name")
     catalog_by_name = {item.name.casefold(): item for item in catalog_items}
+    planned_requirements = planned_brew_stock_requirements()
     for item in items:
         item.catalog_match = item.catalog or catalog_by_name.get(item.name.strip().casefold())
         item.remaining_quantity = (
             max(item.planned_quantity - (item.received_quantity or 0), 0)
             if item.planned_quantity is not None
             else None
+        )
+        item.source_brew_needs = []
+        for brew in item.source_brews.all():
+            requirement = next(
+                (
+                    requirement
+                    for requirement in brew_stock_requirements(brew)
+                    if requirement["name"].strip().casefold() == item.name.strip().casefold()
+                ),
+                None,
+            )
+            if requirement:
+                item.source_brew_needs.append(
+                    {
+                        "brew": brew,
+                        "required": requirement["required"],
+                        "unit": requirement["unit"],
+                    }
+                )
+        item.purchase_quantity_need = (
+            sum(source["required"] for source in item.source_brew_needs)
+            if item.source_brew_needs
+            else item.planned_quantity
+        )
+        item.total_required_quantity = sum(
+            requirement["required"]
+            for requirements in planned_requirements.values()
+            for requirement in requirements
+            if (
+                item.catalog_match
+                and requirement["catalog_id"] == item.catalog_match.pk
+            )
+            or (
+                requirement["catalog_id"] is None
+                and requirement["name"].strip().casefold() == item.name.strip().casefold()
+            )
         )
     purchase_orders = list(PurchaseOrder.objects.all())
     for purchase_order in purchase_orders:
@@ -343,6 +403,98 @@ def shopping_item_create(request):
     if form.is_valid():
         form.save()
         messages.success(request, "Article ajouté à la liste de courses.")
+    return redirect("recipes:shopping_list")
+
+
+def _planned_shopping_needs():
+    planned_brews = Brew.objects.filter(
+        planned_date__gte=timezone.localdate(),
+        status=Brew.Status.PLANNED,
+    ).order_by("planned_date", "pk")
+    needs = {}
+    for brew in planned_brews:
+        for requirement in brew_stock_requirements(brew):
+            key = (
+                requirement["catalog_id"],
+                requirement["name"].strip().casefold(),
+            )
+            need = needs.setdefault(
+                key,
+                {
+                    "name": requirement["name"].strip(),
+                    "catalog": requirement["catalog"],
+                    "required": 0,
+                    "unit": requirement["unit"],
+                    "brews": [],
+                },
+            )
+            need["required"] += requirement["required"]
+            if brew not in need["brews"]:
+                need["brews"].append(brew)
+    for need in needs.values():
+        need["available"] = need["catalog"].quantity_available if need["catalog"] else 0
+        need["deficit"] = max(need["required"] - need["available"], 0)
+    return [need for need in needs.values() if need["deficit"] > 0]
+
+
+@require_POST
+def planned_brews_to_shopping(request):
+    selected_names = {
+        name.strip().casefold()
+        for name in request.POST.getlist("names")
+        if name.strip()
+    }
+    needs = [
+        need for need in _planned_shopping_needs()
+        if need["name"].casefold() in selected_names
+    ]
+
+    existing_items = list(ShoppingItem.objects.select_related("catalog").prefetch_related("source_brews"))
+    added_count = 0
+    updated_count = 0
+    for need in needs:
+        deficit = need["deficit"]
+        matching_item = next(
+            (
+                item for item in existing_items
+                if (
+                    (need["catalog"] and item.catalog_id == need["catalog"].pk)
+                    or item.name.strip().casefold() == need["name"].casefold()
+                )
+            ),
+            None,
+        )
+        if matching_item is None:
+            matching_item = ShoppingItem.objects.create(
+                name=need["name"],
+                catalog=need["catalog"],
+                planned_quantity=deficit,
+                unit=need["unit"],
+            )
+            existing_items.append(matching_item)
+            added_count += 1
+        elif matching_item.planned_quantity != deficit or (
+            not matching_item.catalog_id and need["catalog"]
+        ):
+            matching_item.planned_quantity = deficit
+            matching_item.unit = need["unit"]
+            if need["catalog"] and not matching_item.catalog_id:
+                matching_item.catalog = need["catalog"]
+            matching_item.save(update_fields=["planned_quantity", "unit", "catalog"])
+            updated_count += 1
+        matching_item.source_brews.add(*need["brews"])
+
+    if not selected_names:
+        messages.info(request, "Sélectionnez au moins un besoin à ajouter.")
+    elif added_count or updated_count:
+        messages.success(
+            request,
+            f"{added_count} article(s) ajouté(s), {updated_count} quantité(s) mise(s) à jour.",
+        )
+    elif not needs:
+        messages.info(request, "Les besoins sélectionnés ne sont plus manquants.")
+    else:
+        messages.info(request, "Aucun besoin manquant à ajouter pour les brassins planifiés.")
     return redirect("recipes:shopping_list")
 
 
@@ -525,6 +677,19 @@ def brew_missing_stock_to_shopping(request, pk):
     brew = get_object_or_404(Brew, pk=pk)
     names = request.POST.getlist("names") or [request.POST.get("name", "")]
     names = list(dict.fromkeys(name.strip() for name in names if name.strip()))
+    aggregate_needs = {
+        need["name"].strip().casefold(): need
+        for need in _planned_shopping_needs()
+    }
+    planned_requirements = planned_brew_stock_requirements().get(brew.pk, [])
+    planned_needs = {
+        requirement["name"].strip().casefold(): requirement
+        for requirement in planned_requirements
+    }
+    brew_requirements = {
+        requirement["name"].strip().casefold(): requirement
+        for requirement in brew_stock_requirements(brew)
+    }
     existing_items = {
         item.name.casefold(): item
         for item in ShoppingItem.objects.all()
@@ -532,10 +697,37 @@ def brew_missing_stock_to_shopping(request, pk):
     added_names = []
     for name in names:
         normalized_name = name.casefold()
+        need = planned_needs.get(normalized_name)
+        aggregate_need = aggregate_needs.get(normalized_name)
+        requirement = brew_requirements.get(normalized_name)
+        if aggregate_need and any(
+            source_brew.pk == brew.pk for source_brew in aggregate_need["brews"]
+        ):
+            planned_quantity = aggregate_need["deficit"]
+            need = need or aggregate_need
+        elif need:
+            available_after_previous = need.get("available_after_previous")
+            planned_quantity = max(need["required"] - (available_after_previous or 0), 0)
+        else:
+            planned_quantity = None
+        catalog = need["catalog"] if need else requirement["catalog"] if requirement else None
+        unit = need["unit"] if need else requirement["unit"] if requirement else ""
         if normalized_name in existing_items:
-            existing_items[normalized_name].source_brews.add(brew)
+            shopping_item = existing_items[normalized_name]
+            if planned_quantity is not None and shopping_item.planned_quantity != planned_quantity:
+                shopping_item.planned_quantity = planned_quantity
+                shopping_item.unit = unit
+                if catalog and not shopping_item.catalog_id:
+                    shopping_item.catalog = catalog
+                shopping_item.save(update_fields=["planned_quantity", "unit", "catalog"])
+            shopping_item.source_brews.add(brew)
             continue
-        shopping_item = ShoppingItem.objects.create(name=name)
+        shopping_item = ShoppingItem.objects.create(
+            name=name,
+            catalog=catalog,
+            planned_quantity=planned_quantity,
+            unit=unit,
+        )
         shopping_item.source_brews.add(brew)
         existing_items[normalized_name] = shopping_item
         added_names.append(name)
@@ -601,10 +793,31 @@ def brew_create_from_recipe(request, recipe_pk):
 
 def brew_detail(request, pk):
     brew = get_object_or_404(Brew, pk=pk)
+    requirements = (
+        planned_brew_stock_requirements().get(brew.pk)
+        if brew.status == Brew.Status.PLANNED
+        else None
+    ) or brew_stock_requirements(brew)
+    shopping_keys = _shopping_keys_by_brew().get(brew.pk, set())
+    stock_missing_items = [
+        item for item in requirements
+        if (
+            item["catalog"] is None
+            or not item.get(
+                "sufficient_for_brew",
+                item["available"] is not None and item["available"] >= item["required"],
+            )
+        )
+        and not _requirement_is_in_shopping(item, shopping_keys)
+    ]
     comparison = _brew_comparison(brew)
     tasting_form = BrewTastingForm(instance=brew)
     notes_form = BrewNotesForm(instance=brew)
-    measurement_form = BrewMeasurementForm(
+    preboil_measurement_form = BrewPreboilMeasurementForm(
+        instance=brew,
+        equipment_settings=EquipmentSettings.objects.first(),
+    )
+    postboil_measurement_form = BrewPostboilMeasurementForm(
         instance=brew,
         equipment_settings=EquipmentSettings.objects.first(),
     )
@@ -615,7 +828,8 @@ def brew_detail(request, pk):
             "brew": brew,
             "can_taste": brew.status == Brew.Status.COMPLETED,
             "notes_form": notes_form,
-            "measurement_form": measurement_form,
+            "preboil_measurement_form": preboil_measurement_form,
+            "postboil_measurement_form": postboil_measurement_form,
             "tasting_form": tasting_form,
             "tasting_stars": [
                 {
@@ -641,7 +855,8 @@ def brew_detail(request, pk):
                 )
             ],
             "comparison": comparison,
-            "stock_requirements": brew_stock_requirements(brew),
+            "stock_requirements": requirements,
+            "stock_missing_items": stock_missing_items,
             "capsule_catalogs": IngredientCatalog.objects.filter(
                 kind=IngredientCatalog.Kind.CONSUMABLE
             ),
@@ -663,11 +878,17 @@ def brew_recipe_snapshot(request, pk):
         for item in ingredients
         if item.get("kind") == Ingredient.Kind.MALT
     ) / 1000
+    hop_weight_kg = sum(
+        float(item.get("amount_g", 0))
+        for item in ingredients
+        if item.get("kind") == Ingredient.Kind.HOP
+    ) / 1000
     water_l = (
         float(recipe_data.get("batch_size_l", 0))
         + float(equipment.evaporation_l_h) * float(recipe_data.get("boil_time_min", 0)) / 60
         + float(equipment.dead_space_l)
         + float(equipment.grain_absorption_l_kg) * grain_weight_kg
+        + float(equipment.hop_absorption_l_kg) * hop_weight_kg
     )
     carbonation_target = float(recipe_data.get("target_carbonation", 0))
     carbonation_temperature_f = 20 * 9 / 5 + 32
@@ -746,7 +967,21 @@ def brew_notes_update(request, pk):
 @require_POST
 def brew_measurements_update(request, pk):
     brew = get_object_or_404(Brew, pk=pk)
-    form = BrewMeasurementForm(
+    if brew.status != Brew.Status.BREWING:
+        messages.error(request, "Les mesures ne peuvent être saisies que lorsque le brassage est en cours.")
+        return redirect("recipes:brew_detail", pk=brew.pk)
+    stage = request.POST.get("measurement_stage")
+    form_class = (
+        BrewPreboilMeasurementForm
+        if stage == "preboil"
+        else BrewPostboilMeasurementForm
+        if stage == "postboil"
+        else None
+    )
+    if form_class is None:
+        messages.error(request, "L’étape de mesure est invalide.")
+        return redirect("recipes:brew_detail", pk=brew.pk)
+    form = form_class(
         request.POST,
         instance=brew,
         equipment_settings=EquipmentSettings.objects.first(),
@@ -771,24 +1006,26 @@ def brew_status_cycle(request, pk):
         messages.success(request, f"Statut mis à jour : {brew.get_status_display()}.")
     if request.headers.get("HX-Request") == "true":
         if brew.status == Brew.Status.PLANNED:
-            existing_shopping_names = {
-                item.name.strip().casefold()
-                for item in ShoppingItem.objects.all()
-            }
-            requirements = brew_stock_requirements(brew)
+            requirements = planned_brew_stock_requirements().get(brew.pk, brew_stock_requirements(brew))
             missing_items = [
                 item for item in requirements
                 if item["catalog"] is None
-                or item["available"] is None
-                or item["available"] < item["required"]
+                or not item.get(
+                    "sufficient_for_brew",
+                    item["available"] is not None and item["available"] >= item["required"],
+                )
             ]
+            shopping_keys = _shopping_keys_by_brew().get(brew.pk, set())
             brew.stock_missing_items = [
                 item for item in missing_items
-                if item["name"].strip().casefold() not in existing_shopping_names
+                if not _requirement_is_in_shopping(item, shopping_keys)
             ]
             if brew.recipe_version and not missing_items:
                 brew.stock_status = "ok"
-            elif missing_items and not brew.stock_missing_items:
+            elif missing_items and all(
+                _requirement_is_in_shopping(item, shopping_keys)
+                for item in missing_items
+            ):
                 brew.stock_status = "shopping"
             else:
                 brew.stock_status = "insufficient"
@@ -1542,6 +1779,24 @@ def recipe_detail(request, pk, edit_forms=None):
     planned_preboil_volume = (
         float(recipe.batch_size_l)
         + float(equipment.evaporation_l_h) * float(recipe.boil_time_min) / 60
+        + float(equipment.dead_space_l)
+    )
+    grain_weight_kg = sum(float(malt.amount_g) for malt in malts) / 1000
+    hop_weight_kg = sum(float(hop.amount_g) for hop in hops) / 1000
+    water_start_volume = (
+        planned_preboil_volume
+        + float(equipment.grain_absorption_l_kg) * grain_weight_kg
+        + float(equipment.hop_absorption_l_kg) * hop_weight_kg
+    )
+    water_start_headspace = cylinder_headspace_cm(
+        water_start_volume,
+        equipment.diameter_cm,
+        equipment.height_cm,
+    )
+    preboil_headspace = cylinder_headspace_cm(
+        planned_preboil_volume,
+        equipment.diameter_cm,
+        equipment.height_cm,
     )
     ibu = (
         tinseth_ibu(
@@ -1660,6 +1915,7 @@ def recipe_detail(request, pk, edit_forms=None):
             if indicator:
                 style_indicators.append(indicator)
     malt_total = sum(float(malt.amount_g) for malt in malts)
+    hop_total = sum(float(hop.amount_g) for hop in hops)
     mash_chart_points = []
     mash_elapsed = 0
     if mash_steps:
@@ -1851,6 +2107,7 @@ def recipe_detail(request, pk, edit_forms=None):
             "other_cost_total": stock_costs_by_kind.get(Ingredient.Kind.OTHER),
             "malt_rows": malt_rows,
             "malt_total_g": malt_total,
+            "hop_total_g": hop_total,
             "mash_chart_points": mash_chart_points,
             "mash_edit_points": mash_edit_points,
             "water_equipment": {
@@ -1858,8 +2115,13 @@ def recipe_detail(request, pk, edit_forms=None):
                 "height_cm": float(equipment.height_cm),
                 "evaporation_l_h": float(equipment.evaporation_l_h),
                 "grain_absorption_l_kg": float(equipment.grain_absorption_l_kg),
+                "hop_absorption_l_kg": float(equipment.hop_absorption_l_kg),
                 "dead_space_l": float(equipment.dead_space_l),
             },
+            "water_start_volume": water_start_volume,
+            "water_start_headspace": water_start_headspace,
+            "planned_preboil_volume": planned_preboil_volume,
+            "planned_preboil_headspace": preboil_headspace,
             "hop_rows": hop_rows,
             "boil_events": boil_events,
             "yeast_rows": [

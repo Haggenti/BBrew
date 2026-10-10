@@ -1,0 +1,96 @@
+<style>
+  .brew-measurement-form { font-size: .9rem; }
+  .brew-measurement-form .form-label { display: block; font-size: .78rem; font-weight: 600; margin-bottom: .25rem; }
+  .brew-measurement-form .form-control,
+  .brew-measurement-form .form-select { min-height: 2.15rem; padding: .3rem .55rem; }
+  .brew-measurement-form [data-volume-input] { max-width: 16rem; }
+  @media (max-width: 575.98px) {
+    .brew-measurement-form [data-volume-input] { max-width: none; }
+  }
+</style>
+<div class="brew-measurement-form">
+  {% if stage == "preboil" %}
+  <div class="row g-3">
+    <div class="col-md-6">
+      <label class="form-label" for="{{ form.actual_preboil_og.id_for_label }}">DI pré-ébullition</label>
+      {{ form.actual_preboil_og }}
+      {% for error in form.actual_preboil_og.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+    </div>
+    <div class="col-md-6">
+      <label class="form-label" for="{{ form.preboil_temperature_c.id_for_label }}">{{ form.preboil_temperature_c.label }}</label>
+      {{ form.preboil_temperature_c }}
+      <div class="form-text">La lecture sera corrigée vers 20 °C.</div>
+      {% for error in form.preboil_temperature_c.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+    </div>
+  </div>
+  <hr class="my-3">
+  <h3 class="h6 text-uppercase text-secondary mb-3">Volume pré-ébullition</h3>
+  <label class="form-label" for="{{ form.preboil_volume_mode.id_for_label }}">{{ form.preboil_volume_mode.label }}</label>
+  {{ form.preboil_volume_mode }}
+  <div class="mt-2" data-volume-input="preboil-liters">
+    <label class="form-label" for="{{ form.actual_preboil_volume_l.id_for_label }}">Litrage direct (L)</label>
+    {{ form.actual_preboil_volume_l }}
+  </div>
+  <div class="mt-2 d-none" data-volume-input="preboil-headspace">
+    <label class="form-label" for="{{ form.preboil_headspace_cm.id_for_label }}">{{ form.preboil_headspace_cm.label }}</label>
+    {{ form.preboil_headspace_cm }}
+  </div>
+  {% for error in form.actual_preboil_volume_l.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+  {% for error in form.preboil_headspace_cm.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+  {% else %}
+  <div class="row g-3">
+    <div class="col-md-6">
+      <label class="form-label" for="{{ form.actual_og.id_for_label }}">DI après refroidissement</label>
+      {{ form.actual_og }}
+      {% for error in form.actual_og.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+    </div>
+    <div class="col-md-6">
+      <label class="form-label" for="{{ form.postboil_temperature_c.id_for_label }}">{{ form.postboil_temperature_c.label }}</label>
+      {{ form.postboil_temperature_c }}
+      <div class="form-text">Saisissez environ 20 °C.</div>
+      {% for error in form.postboil_temperature_c.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+    </div>
+  </div>
+  <hr class="my-3">
+  <h3 class="h6 text-uppercase text-secondary mb-3">Volume après refroidissement</h3>
+  <label class="form-label" for="{{ form.batch_volume_mode.id_for_label }}">{{ form.batch_volume_mode.label }}</label>
+  {{ form.batch_volume_mode }}
+  <div class="mt-2" data-volume-input="batch-liters">
+    <label class="form-label" for="{{ form.actual_batch_size_l.id_for_label }}">Litrage direct (L)</label>
+    {{ form.actual_batch_size_l }}
+  </div>
+  <div class="mt-2 d-none" data-volume-input="batch-headspace">
+    <label class="form-label" for="{{ form.batch_headspace_cm.id_for_label }}">{{ form.batch_headspace_cm.label }}</label>
+    {{ form.batch_headspace_cm }}
+  </div>
+  {% for error in form.actual_batch_size_l.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+  {% for error in form.batch_headspace_cm.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+  {% endif %}
+</div>
+<script>
+  (() => {
+    const root = document.currentScript.previousElementSibling;
+    const bind = (modeName, litersName, headspaceName, litersKey, headspaceKey) => {
+      const mode = root.querySelector(`[name="${modeName}"]`);
+      const liters = root.querySelector(`[name="${litersName}"]`);
+      const headspace = root.querySelector(`[name="${headspaceName}"]`);
+      const litersWrapper = root.querySelector(`[data-volume-input="${litersKey}"]`);
+      const headspaceWrapper = root.querySelector(`[data-volume-input="${headspaceKey}"]`);
+      if (!mode || !liters || !headspace || !litersWrapper || !headspaceWrapper) return;
+      const update = () => {
+        const useHeadspace = mode.value === "headspace";
+        liters.disabled = useHeadspace;
+        headspace.disabled = !useHeadspace;
+        litersWrapper.classList.toggle("d-none", useHeadspace);
+        headspaceWrapper.classList.toggle("d-none", !useHeadspace);
+      };
+      mode.addEventListener("change", update);
+      update();
+    };
+    {% if stage == "preboil" %}
+    bind("preboil_volume_mode", "actual_preboil_volume_l", "preboil_headspace_cm", "preboil-liters", "preboil-headspace");
+    {% else %}
+    bind("batch_volume_mode", "actual_batch_size_l", "batch_headspace_cm", "batch-liters", "batch-headspace");
+    {% endif %}
+  })();
+</script>

@@ -1,5 +1,5 @@
 from decimal import Decimal
-from datetime import date
+from datetime import date, timedelta
 import json
 from unittest.mock import patch
 
@@ -22,6 +22,7 @@ from .calculations import (
     estimated_final_gravity,
     gravity_points,
     average_mash_temperature,
+    correct_hydrometer_gravity,
     bu_gu_comment,
     bu_gu_ratio,
     ebc_color_rgb,
@@ -179,6 +180,10 @@ class CalculationTests(TestCase):
     def test_abv_from_gravity(self):
         self.assertEqual(abv_from_gravity(1.050, 1.010), 5.25)
 
+    def test_hydrometer_gravity_is_corrected_to_20_degrees(self):
+        self.assertEqual(correct_hydrometer_gravity(1.050, 20), 1.050)
+        self.assertEqual(correct_hydrometer_gravity(1.050, 78), 1.077)
+
     def test_gravity_points_are_positive(self):
         self.assertAlmostEqual(gravity_points(5, 80, 20, 75), 57.85, places=1)
 
@@ -293,6 +298,32 @@ class CalculationTests(TestCase):
 
 
 class RecipeWorkflowTests(TestCase):
+    def test_brew_creation_populates_planned_values_without_active_recipe_version(self):
+        recipe = Recipe.objects.create(
+            name="Recette sans version",
+            batch_size_l=20,
+            efficiency=72,
+            target_og=1.050,
+        )
+        Ingredient.objects.create(
+            recipe=recipe,
+            name="Malt Pilsen",
+            kind=Ingredient.Kind.MALT,
+            amount_g=5000,
+            potential_yield=80,
+        )
+        brew = BrewForm(
+            instance=Brew(
+                recipe=recipe,
+                planned_date=date(2026, 10, 10),
+                status=Brew.Status.PLANNED,
+            )
+        ).save()
+
+        self.assertEqual(brew.planned_batch_size_l, Decimal("20.0"))
+        self.assertIsNotNone(brew.planned_og)
+        self.assertIsNotNone(brew.planned_efficiency)
+        self.assertIsNotNone(brew.recipe_snapshot)
     def setUp(self):
         self.user = get_user_model().objects.create_user(
             username="workflow-test",
@@ -655,6 +686,7 @@ class RecipeWorkflowTests(TestCase):
                 "bag_weight_g": "1250",
                 "evaporation_l_h": "0.30",
                 "grain_absorption_l_kg": "0.80",
+                "hop_absorption_l_kg": "1.00",
                 "dead_space_l": "1.5",
                 "mash_efficiency": "78",
                 "cost_management_enabled": "on",
@@ -664,6 +696,7 @@ class RecipeWorkflowTests(TestCase):
         settings = EquipmentSettings.objects.get()
         self.assertEqual(settings.diameter_cm, 50)
         self.assertEqual(settings.grain_absorption_l_kg, Decimal("0.80"))
+        self.assertEqual(settings.hop_absorption_l_kg, Decimal("1.00"))
         self.assertEqual(settings.bag_weight_g, Decimal("1250.0"))
         self.assertTrue(settings.cost_management_enabled)
 
@@ -674,6 +707,7 @@ class RecipeWorkflowTests(TestCase):
         self.assertEqual(settings.diameter_cm, Decimal("38"))
         self.assertEqual(settings.height_cm, Decimal("40"))
         self.assertEqual(settings.grain_absorption_l_kg, Decimal("0.30"))
+        self.assertEqual(settings.hop_absorption_l_kg, Decimal("1.00"))
         self.assertEqual(settings.evaporation_l_h, Decimal("5.00"))
         self.assertEqual(settings.bag_weight_g, Decimal("100.0"))
         self.assertEqual(settings.style_tolerance_percent, Decimal("30.0"))
@@ -1281,7 +1315,9 @@ class RecipeWorkflowTests(TestCase):
         self.assertIn('id="carb-sugar"', carbonation_controls)
         self.assertContains(response, "Eau de départ nécessaire")
         self.assertContains(response, "water-result")
-        self.assertNotContains(response, "water-preboil")
+        self.assertContains(response, "Volume pré-ébullition")
+        self.assertContains(response, "preboil-volume-result")
+        self.assertContains(response, "Mesure depuis le haut de la cuve")
         self.assertNotContains(response, "water-capacity-warning")
         self.assertContains(response, "beer-color-card")
         self.assertContains(response, ".beer-glass-preview.ebc-preview { width: 6rem; height: 8rem;")
@@ -1878,6 +1914,31 @@ class RecipeWorkflowTests(TestCase):
         self.assertAlmostEqual(float(brew.actual_preboil_volume_l), 50.27, places=2)
         self.assertAlmostEqual(float(brew.actual_batch_size_l), 43.98, places=2)
 
+    def test_brew_measurements_are_only_available_while_brewing(self):
+        brew = Brew.objects.create(
+            recipe_name="Mesures verrouillées",
+            status=Brew.Status.PLANNED,
+        )
+
+        detail_response = self.client.get(f"/brassins/{brew.pk}/")
+        self.assertContains(detail_response, "Disponible uniquement lorsque le brassage est en cours")
+        self.assertNotContains(detail_response, 'data-bs-target="#preboil-measure-modal"')
+        self.assertNotContains(detail_response, 'data-bs-target="#postboil-measure-modal"')
+
+        response = self.client.post(
+            f"/brassins/{brew.pk}/mesures/",
+            {
+                "measurement_stage": "preboil",
+                "actual_preboil_og": "1.050",
+                "preboil_temperature_c": "78",
+                "actual_preboil_volume_l": "20",
+            },
+        )
+
+        self.assertRedirects(response, f"/brassins/{brew.pk}/")
+        brew.refresh_from_db()
+        self.assertIsNone(brew.actual_preboil_og)
+
     def test_brew_calculates_residual_water_from_spent_grains(self):
         EquipmentSettings.objects.create(bag_weight_g=1200)
         recipe = Recipe.objects.create(name="Drêches")
@@ -1926,6 +1987,186 @@ class RecipeWorkflowTests(TestCase):
         self.assertRedirects(response, "/courses/")
         self.assertFalse(ShoppingItem.objects.filter(pk=item.pk).exists())
 
+    def test_shopping_list_displays_required_quantity_per_source_brew(self):
+        recipe = Recipe.objects.create(name="Quantité Ale")
+        version = recipe.current_version
+        version.snapshot = {
+            "recipe": {"name": recipe.name},
+            "ingredients": [
+                {
+                    "name": "Malt Pilsen",
+                    "kind": Ingredient.Kind.MALT,
+                    "amount_g": "440",
+                    "catalog": None,
+                }
+            ],
+        }
+        version.save(update_fields=["snapshot"])
+        brew = Brew.objects.create(
+            recipe=recipe,
+            recipe_version=version,
+            recipe_name=recipe.name,
+        )
+        item = ShoppingItem.objects.create(name="Malt Pilsen")
+        item.source_brews.add(brew)
+
+        response = self.client.get("/courses/")
+
+        source_needs = response.context["todo_items"][0].source_brew_needs
+        self.assertEqual(source_needs[0]["required"], 440)
+        self.assertEqual(source_needs[0]["unit"], "g")
+        self.assertContains(response, "Quantité Ale")
+        self.assertContains(response, "440 g")
+
+    def test_shopping_list_total_need_includes_all_planned_brews(self):
+        catalog = IngredientCatalog.objects.create(
+            name="Levure totalisée",
+            kind=IngredientCatalog.Kind.YEAST,
+            quantity_available=1,
+        )
+        recipe = Recipe.objects.create(name="Total Ale")
+        version = recipe.current_version
+        version.snapshot = {
+            "recipe": {"name": recipe.name},
+            "ingredients": [
+                {
+                    "name": catalog.name,
+                    "kind": Ingredient.Kind.YEAST,
+                    "amount_g": "0",
+                    "catalog": catalog.pk,
+                }
+            ],
+        }
+        version.save(update_fields=["snapshot"])
+        first_brew = Brew.objects.create(
+            recipe=recipe,
+            recipe_version=version,
+            recipe_name=recipe.name,
+            planned_date=timezone.localdate() + timedelta(days=1),
+        )
+        second_brew = Brew.objects.create(
+            recipe=recipe,
+            recipe_version=version,
+            recipe_name=recipe.name,
+            planned_date=timezone.localdate() + timedelta(days=2),
+        )
+        item = ShoppingItem.objects.create(
+            name=catalog.name,
+            catalog=catalog,
+            planned_quantity=2,
+            unit="paquet(s)",
+        )
+        item.source_brews.add(second_brew)
+
+        response = self.client.get("/courses/")
+
+        self.assertNotContains(response, "Besoin total :")
+        self.assertNotContains(response, "À acheter :")
+        self.assertNotContains(response, "déjà en stock :")
+        self.assertContains(response, f"N° {second_brew.pk} — {recipe.name}")
+
+    def test_planned_brews_reserve_stock_in_chronological_order(self):
+        catalog = IngredientCatalog.objects.create(
+            name="Malt réservé",
+            kind=IngredientCatalog.Kind.MALT,
+            quantity_available=5000,
+        )
+        recipe = Recipe.objects.create(name="Réservation Ale")
+        version = recipe.current_version
+        version.snapshot = {
+            "recipe": {"name": recipe.name},
+            "ingredients": [
+                {
+                    "name": catalog.name,
+                    "kind": Ingredient.Kind.MALT,
+                    "amount_g": "3000",
+                    "catalog": catalog.pk,
+                }
+            ],
+        }
+        version.save(update_fields=["snapshot"])
+        first_brew = Brew.objects.create(
+            recipe=recipe,
+            recipe_version=version,
+            recipe_name=recipe.name,
+            planned_date=timezone.localdate() + timedelta(days=1),
+        )
+        second_brew = Brew.objects.create(
+            recipe=recipe,
+            recipe_version=version,
+            recipe_name=recipe.name,
+            planned_date=timezone.localdate() + timedelta(days=2),
+        )
+
+        response = self.client.get("/brassins/")
+
+        brews_by_id = {brew.pk: brew for brew in response.context["brews"]}
+        self.assertEqual(brews_by_id[first_brew.pk].stock_status, "ok")
+        self.assertEqual(brews_by_id[second_brew.pk].stock_status, "insufficient")
+
+        shopping_item = ShoppingItem.objects.create(name=catalog.name, catalog=catalog)
+        shopping_item.source_brews.add(first_brew)
+        response = self.client.get("/brassins/")
+        brews_by_id = {brew.pk: brew for brew in response.context["brews"]}
+        self.assertEqual(brews_by_id[second_brew.pk].stock_status, "insufficient")
+        self.assertTrue(brews_by_id[second_brew.pk].stock_missing_items)
+
+        detail_response = self.client.get(f"/brassins/{second_brew.pk}/")
+        self.assertContains(detail_response, "Stock manquant")
+        self.assertEqual(
+            detail_response.context["stock_missing_items"][0]["available_after_previous"],
+            2000,
+        )
+
+    def test_all_planned_brew_needs_are_added_to_shopping_without_duplicates(self):
+        catalog = IngredientCatalog.objects.create(
+            name="Malt regroupé",
+            kind=IngredientCatalog.Kind.MALT,
+            quantity_available=0,
+        )
+        recipe = Recipe.objects.create(name="Courses Ale")
+        version = recipe.current_version
+        version.snapshot = {
+            "recipe": {"name": recipe.name},
+            "ingredients": [
+                {
+                    "name": catalog.name,
+                    "kind": Ingredient.Kind.MALT,
+                    "amount_g": "3000",
+                    "catalog": catalog.pk,
+                }
+            ],
+        }
+        version.save(update_fields=["snapshot"])
+        first_brew = Brew.objects.create(
+            recipe=recipe,
+            recipe_version=version,
+            recipe_name=recipe.name,
+            planned_date=timezone.localdate() + timedelta(days=1),
+        )
+        second_brew = Brew.objects.create(
+            recipe=recipe,
+            recipe_version=version,
+            recipe_name=recipe.name,
+            planned_date=timezone.localdate() + timedelta(days=2),
+        )
+
+        response = self.client.post(
+            "/courses/ajouter-besoins-brassins/",
+            {"names": [catalog.name]},
+        )
+
+        self.assertRedirects(response, "/courses/")
+        item = ShoppingItem.objects.get(catalog=catalog)
+        self.assertEqual(item.planned_quantity, 6000)
+        self.assertEqual(set(item.source_brews.values_list("pk", flat=True)), {first_brew.pk, second_brew.pk})
+
+        self.client.post(
+            "/courses/ajouter-besoins-brassins/",
+            {"names": [catalog.name]},
+        )
+        self.assertEqual(ShoppingItem.objects.filter(catalog=catalog).count(), 1)
+
     def test_shopping_receive_offers_kind_specific_quantity_presets(self):
         pilsen = IngredientCatalog.objects.create(name="Pilsen", kind=IngredientCatalog.Kind.MALT)
         IngredientCatalog.objects.create(name="Cascade", kind=IngredientCatalog.Kind.HOP)
@@ -1972,6 +2213,22 @@ class RecipeWorkflowTests(TestCase):
         self.assertContains(response, "À intégrer au stock")
         self.assertContains(response, "Malt Pilsen")
         self.assertContains(response, "Nouvelle fiche de stock")
+
+    def test_regressing_order_state_hides_stock_integration_action(self):
+        item = ShoppingItem.objects.create(
+            name="Commande régressée",
+            is_ordered=True,
+            is_received=True,
+            received_quantity=1000,
+        )
+
+        response = self.client.post(f"/courses/{item.pk}/cocher/")
+
+        self.assertRedirects(response, "/courses/")
+        response = self.client.get("/courses/")
+        self.assertContains(response, "Commande régressée")
+        self.assertNotContains(response, f'id="receive-modal-{item.pk}"')
+        self.assertNotContains(response, "Intégrer Commande régressée au stock")
 
     def test_shopping_list_can_be_cleared(self):
         ShoppingItem.objects.create(name="Malt")
@@ -2182,6 +2439,59 @@ class RecipeWorkflowTests(TestCase):
             set(ShoppingItem.objects.values_list("name", flat=True)),
             {"Houblon déjà prévu", "Levure nouvelle"},
         )
+
+    def test_missing_stock_uses_total_planned_need_minus_stock(self):
+        catalog = IngredientCatalog.objects.create(
+            name="Levure cumulée",
+            kind=IngredientCatalog.Kind.YEAST,
+            quantity_available=1,
+        )
+        recipe = Recipe.objects.create(name="Cumul Ale")
+        version = recipe.current_version
+        version.snapshot = {
+            "recipe": {"name": recipe.name},
+            "ingredients": [
+                {
+                    "name": catalog.name,
+                    "kind": Ingredient.Kind.YEAST,
+                    "amount_g": "0",
+                    "catalog": catalog.pk,
+                }
+            ],
+        }
+        version.save(update_fields=["snapshot"])
+        first_brew = Brew.objects.create(
+            recipe=recipe,
+            recipe_version=version,
+            recipe_name=recipe.name,
+            planned_date=timezone.localdate() + timedelta(days=1),
+        )
+        Brew.objects.create(
+            recipe=recipe,
+            recipe_version=version,
+            recipe_name=recipe.name,
+            planned_date=timezone.localdate() + timedelta(days=2),
+        )
+        third_brew = Brew.objects.create(
+            recipe=recipe,
+            recipe_version=version,
+            recipe_name=recipe.name,
+            planned_date=timezone.localdate() + timedelta(days=3),
+        )
+
+        response = self.client.post(
+            f"/brassins/{first_brew.pk}/stock-manquant-courses/",
+            {"names": [catalog.name]},
+        )
+
+        self.assertRedirects(response, "/brassins/")
+        item = ShoppingItem.objects.get(catalog=catalog)
+        self.assertEqual(item.planned_quantity, 2)
+        self.assertEqual(
+            set(item.source_brews.values_list("pk", flat=True)),
+            {first_brew.pk},
+        )
+        self.assertNotIn(third_brew.pk, item.source_brews.values_list("pk", flat=True))
 
     def test_beerxml_import_can_replace_existing_recipe(self):
         recipe = Recipe.objects.create(name="Même nom", target_ibu=10)

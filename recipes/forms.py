@@ -98,6 +98,7 @@ class EquipmentSettingsForm(StyledModelForm):
             "bag_weight_g",
             "evaporation_l_h",
             "grain_absorption_l_kg",
+            "hop_absorption_l_kg",
             "dead_space_l",
             "mash_efficiency",
             "style_tolerance_percent",
@@ -124,6 +125,7 @@ class EquipmentSettingsForm(StyledModelForm):
             "bag_weight_g",
             "evaporation_l_h",
             "grain_absorption_l_kg",
+            "hop_absorption_l_kg",
             "dead_space_l",
             "mash_efficiency",
             "style_tolerance_percent",
@@ -135,6 +137,7 @@ class EquipmentSettingsForm(StyledModelForm):
             "bag_weight_g": forms.NumberInput(attrs={"min": "0", "step": "1"}),
             "evaporation_l_h": forms.NumberInput(attrs={"min": "0", "step": "0.01"}),
             "grain_absorption_l_kg": forms.NumberInput(attrs={"min": "0", "step": "0.01"}),
+            "hop_absorption_l_kg": forms.NumberInput(attrs={"min": "0", "step": "0.01"}),
             "dead_space_l": forms.NumberInput(attrs={"min": "0", "step": "0.01"}),
             "mash_efficiency": forms.NumberInput(attrs={"min": "1", "max": "100", "step": "0.1"}),
             "style_tolerance_percent": forms.NumberInput(attrs={"min": "0", "max": "100", "step": "0.1"}),
@@ -350,21 +353,27 @@ class BrewForm(StyledModelForm):
             brew.recipe_name = brew.recipe.name
             if not brew.recipe_version:
                 brew.recipe_version = brew.recipe.versions.first()
-            if brew.recipe_version:
-                from .calculations import estimate_snapshot
+            from .calculations import estimate_snapshot
+            from .versioning import recipe_snapshot
 
-                if not brew.recipe_snapshot:
-                    brew.recipe_snapshot = deepcopy(brew.recipe_version.snapshot)
-                estimates = estimate_snapshot(brew.recipe_version.snapshot)
+            source_snapshot = (
+                brew.recipe_version.snapshot
+                if brew.recipe_version
+                else recipe_snapshot(brew.recipe)
+            )
+            if not brew.recipe_snapshot:
+                brew.recipe_snapshot = deepcopy(source_snapshot)
+            estimates = estimate_snapshot(source_snapshot)
+            if brew.recipe_version:
                 brew.recipe_version_label = (
                     f"V{brew.recipe_version.version_number} · {brew.recipe_version.created_at:%d/%m/%Y %H:%M} · "
                     f"{brew.recipe_version.reason}"
                 )
-                brew.planned_batch_size_l = estimates["volume_l"]
-                brew.planned_og = estimates["og"]
-                brew.planned_fg = estimates["fg"]
-                brew.planned_abv = estimates["abv"]
-                brew.planned_efficiency = estimates["efficiency"]
+            brew.planned_batch_size_l = estimates["volume_l"]
+            brew.planned_og = estimates["og"]
+            brew.planned_fg = estimates["fg"]
+            brew.planned_abv = estimates["abv"]
+            brew.planned_efficiency = estimates["efficiency"]
         if commit:
             brew.save()
         return brew
@@ -397,6 +406,61 @@ class BrewMeasurementForm(BrewForm):
             "actual_og", "actual_spent_grains_weight_kg",
         )
         self.fields = {name: self.fields[name] for name in measurement_fields}
+
+
+class _BrewStageMeasurementForm(BrewMeasurementForm):
+    temperature_field = None
+    gravity_field = None
+    initial_temperature = 20
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields[self.temperature_field] = forms.DecimalField(
+            label="Température de mesure (°C)",
+            min_value=0,
+            max_value=100,
+            decimal_places=1,
+            max_digits=5,
+            initial=self.initial_temperature,
+            widget=forms.NumberInput(attrs={"min": "0", "max": "100", "step": "0.5"}),
+        )
+        self.fields = {
+            name: self.fields[name]
+            for name in self.stage_fields + (self.temperature_field,)
+        }
+
+    def clean(self):
+        cleaned_data = super().clean()
+        gravity = cleaned_data.get(self.gravity_field)
+        temperature = cleaned_data.get(self.temperature_field)
+        if gravity is not None and temperature is not None:
+            from .calculations import correct_hydrometer_gravity
+
+            cleaned_data[self.gravity_field] = correct_hydrometer_gravity(gravity, temperature)
+        return cleaned_data
+
+
+class BrewPreboilMeasurementForm(_BrewStageMeasurementForm):
+    temperature_field = "preboil_temperature_c"
+    gravity_field = "actual_preboil_og"
+    initial_temperature = 78
+    stage_fields = (
+        "preboil_volume_mode",
+        "actual_preboil_volume_l",
+        "preboil_headspace_cm",
+        "actual_preboil_og",
+    )
+
+
+class BrewPostboilMeasurementForm(_BrewStageMeasurementForm):
+    temperature_field = "postboil_temperature_c"
+    gravity_field = "actual_og"
+    stage_fields = (
+        "batch_volume_mode",
+        "actual_batch_size_l",
+        "batch_headspace_cm",
+        "actual_og",
+    )
 
 
 class BeerCategoryForm(StyledModelForm):
