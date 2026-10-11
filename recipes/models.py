@@ -207,6 +207,13 @@ class EquipmentSettings(models.Model):
         return "Paramètres de brassage"
 
 
+class DashboardSettings(models.Model):
+    notes = models.TextField("notes du tableau de bord", blank=True)
+
+    def __str__(self):
+        return "Notes du tableau de bord"
+
+
 class ShoppingItem(models.Model):
     name = models.CharField("article", max_length=160)
     is_ordered = models.BooleanField("commandé", default=False)

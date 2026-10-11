@@ -30,6 +30,17 @@
   <div class="col-6 col-lg"><a class="card dashboard-kpi shadow-sm h-100 kpi-link" href="{% url 'recipes:catalog' %}?alerts=1"><div class="card-body"><div class="d-flex justify-content-between align-items-start"><span class="kpi-icon {% if dashboard.stock_alert_count %}bg-danger-subtle text-danger{% else %}bg-success-subtle text-success{% endif %}"><i class="bi bi-box-seam" aria-hidden="true"></i></span><span class="kpi-value {% if dashboard.stock_alert_count %}text-danger{% else %}text-success{% endif %}">{{ dashboard.stock_alert_count }}</span></div><div class="small text-secondary mt-3">Alertes de stock</div></div></a></div>
   <div class="col-6 col-lg"><a class="card dashboard-kpi shadow-sm h-100 kpi-link" href="{% url 'recipes:shopping_list' %}"><div class="card-body"><div class="d-flex justify-content-between align-items-start"><span class="kpi-icon bg-danger-subtle text-danger"><i class="bi bi-wallet2" aria-hidden="true"></i></span><span class="kpi-value text-dark fs-4">{{ dashboard.annual_expenses|floatformat:2 }} €</span></div><div class="small text-secondary mt-3">Dépenses {{ dashboard.annual_expenses_year }}</div></div></a></div>
 </div>
+<section class="card dashboard-panel shadow-sm mb-4">
+  <div class="card-header bg-light"><h2 class="h5 mb-0"><i class="bi bi-sticky me-2" aria-hidden="true"></i>Notes</h2></div>
+  <form method="post" action="{% url 'recipes:dashboard_notes_update' %}">
+    {% csrf_token %}
+    <div class="card-body">
+      {{ dashboard_notes_form.notes }}
+      {% for error in dashboard_notes_form.notes.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+    </div>
+    <div class="card-footer bg-white text-end"><button class="btn btn-primary" type="submit"><i class="bi bi-check-lg me-1" aria-hidden="true"></i>Enregistrer les notes</button></div>
+  </form>
+</section>
 <div class="row g-4">
   <div class="col-lg-7">
     <section class="card dashboard-panel shadow-sm h-100">

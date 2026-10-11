@@ -34,6 +34,10 @@ def brew_stock_requirements(brew):
         item["catalog"] = catalog_by_id.get(item["catalog_id"])
         item["available"] = item["catalog"].quantity_available if item["catalog"] else None
         item["consumed"] = item["key"] in consumed
+        item["stock_total"] = item["available"] if item["available"] is not None else 0
+        item["stock_reserved"] = 0
+        item["stock_free"] = item["stock_total"]
+        item["purchase_needed"] = max(item["required"] - item["stock_free"], 0)
     return list(requirements.values())
 
 
@@ -56,7 +60,7 @@ def planned_stock_needs():
 
 
 def planned_brew_stock_requirements():
-    """Return requirements after reserving stock chronologically for planned brews."""
+    """Return planned requirements with chronological virtual stock reservations."""
     today = timezone.localdate()
     upcoming_brews = Brew.objects.filter(
         planned_date__gte=today,
@@ -69,12 +73,20 @@ def planned_brew_stock_requirements():
         for requirement in requirements:
             catalog_id = requirement["catalog_id"]
             if catalog_id is None or requirement["available"] is None:
-                requirement["available_after_previous"] = None
+                requirement["stock_total"] = 0
+                requirement["stock_reserved"] = 0
+                requirement["stock_free"] = 0
+                requirement["purchase_needed"] = requirement["required"]
                 requirement["sufficient_for_brew"] = False
                 continue
-            available_after_previous = requirement["available"] - reserved.get(catalog_id, 0)
-            requirement["available_after_previous"] = max(0, available_after_previous)
-            requirement["sufficient_for_brew"] = available_after_previous >= requirement["required"]
+            stock_total = requirement["available"]
+            stock_reserved = reserved.get(catalog_id, 0)
+            stock_free = max(stock_total - stock_reserved, 0)
+            requirement["stock_total"] = stock_total
+            requirement["stock_reserved"] = stock_reserved
+            requirement["stock_free"] = stock_free
+            requirement["purchase_needed"] = max(requirement["required"] - stock_free, 0)
+            requirement["sufficient_for_brew"] = requirement["purchase_needed"] == 0
             reserved[catalog_id] = reserved.get(catalog_id, 0) + requirement["required"]
         requirements_by_brew[brew.pk] = requirements
     return requirements_by_brew

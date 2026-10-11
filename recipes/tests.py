@@ -366,6 +366,20 @@ class RecipeWorkflowTests(TestCase):
         response = self.client.get("/")
         self.assertEqual(response.context["dashboard"]["stock_alert_count"], 0)
 
+    def test_dashboard_notes_can_be_saved_and_displayed(self):
+        response = self.client.get("/")
+        self.assertContains(response, "Notes")
+        self.assertContains(response, "Enregistrer les notes")
+
+        response = self.client.post(
+            "/notes-tableau-de-bord/",
+            {"notes": "Commander le malt et vérifier le pH."},
+        )
+
+        self.assertRedirects(response, "/")
+        response = self.client.get("/")
+        self.assertContains(response, "Commander le malt et vérifier le pH.")
+
     def test_about_page_has_bbs_design_and_navigation_link(self):
         response = self.client.get("/a-propos/")
 
@@ -2018,6 +2032,55 @@ class RecipeWorkflowTests(TestCase):
         self.assertContains(response, "Quantité Ale")
         self.assertContains(response, "440 g")
 
+    def test_shopping_list_displays_purchase_need_for_planned_brew(self):
+        catalog = IngredientCatalog.objects.create(
+            name="Malt libre réservé",
+            kind=IngredientCatalog.Kind.MALT,
+            quantity_available=6000,
+        )
+        recipe = Recipe.objects.create(name="Besoin libre Ale")
+        version = recipe.current_version
+        version.snapshot = {
+            "recipe": {"name": recipe.name},
+            "ingredients": [
+                {
+                    "name": catalog.name,
+                    "kind": Ingredient.Kind.MALT,
+                    "amount_g": "4500",
+                    "catalog": catalog.pk,
+                }
+            ],
+        }
+        version.save(update_fields=["snapshot"])
+        Brew.objects.create(
+            recipe=recipe,
+            recipe_version=version,
+            recipe_name=recipe.name,
+            planned_date=timezone.localdate() + timedelta(days=1),
+        )
+        brew = Brew.objects.create(
+            recipe=recipe,
+            recipe_version=version,
+            recipe_name=recipe.name,
+            planned_date=timezone.localdate() + timedelta(days=2),
+        )
+        item = ShoppingItem.objects.create(
+            name=catalog.name,
+            catalog=catalog,
+            planned_quantity=3000,
+            unit="g",
+        )
+        item.source_brews.add(brew)
+
+        response = self.client.get("/courses/")
+
+        source_needs = response.context["todo_items"][0].source_brew_needs
+        self.assertEqual(source_needs[0]["required"], 3000)
+        self.assertContains(response, "3000 g")
+        self.assertContains(response, "· 3000 g")
+        self.assertNotContains(response, "Pour :")
+        self.assertNotContains(response, f"N° {brew.pk} — {recipe.name}</a> · 4500 g")
+
     def test_shopping_list_total_need_includes_all_planned_brews(self):
         catalog = IngredientCatalog.objects.create(
             name="Levure totalisée",
@@ -2113,10 +2176,16 @@ class RecipeWorkflowTests(TestCase):
 
         detail_response = self.client.get(f"/brassins/{second_brew.pk}/")
         self.assertContains(detail_response, "Stock manquant")
-        self.assertEqual(
-            detail_response.context["stock_missing_items"][0]["available_after_previous"],
-            2000,
-        )
+        self.assertContains(detail_response, "Besoin de la recette : 3000 g")
+        self.assertContains(detail_response, "Stock total : 5000 g")
+        self.assertContains(detail_response, "Stock réservé : 3000 g")
+        self.assertContains(detail_response, "Stock libre : 2000 g")
+        self.assertContains(detail_response, "À commander : 1000 g")
+        missing = detail_response.context["stock_missing_items"][0]
+        self.assertEqual(missing["stock_total"], 5000)
+        self.assertEqual(missing["stock_reserved"], 3000)
+        self.assertEqual(missing["stock_free"], 2000)
+        self.assertEqual(missing["purchase_needed"], 1000)
 
     def test_all_planned_brew_needs_are_added_to_shopping_without_duplicates(self):
         catalog = IngredientCatalog.objects.create(
@@ -2440,7 +2509,7 @@ class RecipeWorkflowTests(TestCase):
             {"Houblon déjà prévu", "Levure nouvelle"},
         )
 
-    def test_missing_stock_uses_total_planned_need_minus_stock(self):
+    def test_missing_stock_exposes_free_stock_after_previous_reservations(self):
         catalog = IngredientCatalog.objects.create(
             name="Levure cumulée",
             kind=IngredientCatalog.Kind.YEAST,
@@ -2460,38 +2529,31 @@ class RecipeWorkflowTests(TestCase):
             ],
         }
         version.save(update_fields=["snapshot"])
-        first_brew = Brew.objects.create(
+        Brew.objects.create(
             recipe=recipe,
             recipe_version=version,
             recipe_name=recipe.name,
             planned_date=timezone.localdate() + timedelta(days=1),
         )
-        Brew.objects.create(
+        second_brew = Brew.objects.create(
             recipe=recipe,
             recipe_version=version,
             recipe_name=recipe.name,
             planned_date=timezone.localdate() + timedelta(days=2),
         )
-        third_brew = Brew.objects.create(
-            recipe=recipe,
-            recipe_version=version,
-            recipe_name=recipe.name,
-            planned_date=timezone.localdate() + timedelta(days=3),
-        )
 
         response = self.client.post(
-            f"/brassins/{first_brew.pk}/stock-manquant-courses/",
+            f"/brassins/{second_brew.pk}/stock-manquant-courses/",
             {"names": [catalog.name]},
         )
 
         self.assertRedirects(response, "/brassins/")
         item = ShoppingItem.objects.get(catalog=catalog)
-        self.assertEqual(item.planned_quantity, 2)
+        self.assertEqual(item.planned_quantity, 1)
         self.assertEqual(
             set(item.source_brews.values_list("pk", flat=True)),
-            {first_brew.pk},
+            {second_brew.pk},
         )
-        self.assertNotIn(third_brew.pk, item.source_brews.values_list("pk", flat=True))
 
     def test_beerxml_import_can_replace_existing_recipe(self):
         recipe = Recipe.objects.create(name="Même nom", target_ibu=10)

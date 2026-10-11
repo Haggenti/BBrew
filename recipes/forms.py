@@ -5,7 +5,7 @@ import math
 from django import forms
 from django.utils import timezone
 
-from .models import BeerCategory, Brew, EquipmentSettings, FermentationStep, Ingredient, IngredientCatalog, MashStep, PurchaseOrder, Recipe, RecipeVersion, ShoppingItem
+from .models import BeerCategory, Brew, DashboardSettings, EquipmentSettings, FermentationStep, Ingredient, IngredientCatalog, MashStep, PurchaseOrder, Recipe, RecipeVersion, ShoppingItem
 
 MALT_FORMS = [
     ("Grains", "Grains"),
@@ -146,6 +146,20 @@ class EquipmentSettingsForm(StyledModelForm):
         labels = {
             "evaporation_l_h": "évaporation (L/h)",
             "style_tolerance_percent": "tolérance de compatibilité des styles (%)",
+        }
+
+
+class DashboardNotesForm(StyledModelForm):
+    class Meta:
+        model = DashboardSettings
+        fields = ["notes"]
+        widgets = {
+            "notes": forms.Textarea(
+                attrs={
+                    "rows": 8,
+                    "placeholder": "Ajoutez vos notes, rappels ou idées brassicoles…",
+                }
+            ),
         }
 
 

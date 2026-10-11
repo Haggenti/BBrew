@@ -6,6 +6,7 @@ app_name = "recipes"
 
 urlpatterns = [
     path("", views.dashboard, name="dashboard"),
+    path("notes-tableau-de-bord/", views.dashboard_notes_update, name="dashboard_notes_update"),
     path("a-propos/", views.about, name="about"),
     path("recettes/", views.recipe_list, name="list"),
     path("recettes/<int:pk>/cloner/", views.recipe_clone, name="clone"),

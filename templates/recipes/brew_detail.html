@@ -166,7 +166,12 @@
               <div class="form-check">
                 <input class="form-check-input" type="checkbox" name="names" value="{{ item.name }}" id="missing-detail-{{ forloop.counter }}" data-detail-missing-item>
                 <label class="form-check-label w-100" for="missing-detail-{{ forloop.counter }}">
-                  {{ item.name }}<small class="d-block text-secondary">Besoin : {{ item.required }} {{ item.unit }}{% if item.available is not None %} · Disponible : {{ item.available }} {{ item.unit }}{% endif %}</small>
+                  {{ item.name }}
+                  <small class="d-block text-secondary">Besoin de la recette : {{ item.required }} {{ item.unit }}</small>
+                  <small class="d-block text-secondary">Stock total : {{ item.stock_total }} {{ item.unit }}</small>
+                  <small class="d-block text-secondary">Stock réservé : {{ item.stock_reserved }} {{ item.unit }}</small>
+                  <small class="d-block text-secondary">Stock libre : {{ item.stock_free }} {{ item.unit }}</small>
+                  <small class="d-block text-danger fw-semibold">À commander : {{ item.purchase_needed }} {{ item.unit }}</small>
                 </label>
               </div>
             </li>

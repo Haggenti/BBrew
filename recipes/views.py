@@ -19,8 +19,8 @@ from decimal import Decimal, InvalidOperation
 from decimal import ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP
 from django.utils import timezone
 
-from .forms import BackupUploadForm, BeerCategoryForm, BeerXMLUploadForm, BoilSettingsForm, BrewForm, BrewMeasurementForm, BrewNotesForm, BrewPostboilMeasurementForm, BrewPreboilMeasurementForm, BrewTastingForm, CatalogConsumableForm, CatalogHopForm, CatalogMaltForm, CatalogOtherForm, CatalogYeastForm, CatalogForm, EquipmentSettingsForm, FermentationStepForm, HopForm, IngredientQuantityForm, IngredientTimeForm, MaltForm, MashGraphSettingsForm, MashStepForm, OtherForm, PurchaseOrderForm, RecipeBrewingSettingsForm, RecipeCategoryForm, RecipeEfficiencyForm, RecipeForm, RecipeNameForm, RecipeNotesForm, RecipeTastingForm, ScaleForm, ShoppingItemForm, YeastForm
-from .models import ActivityEvent, BeerCategory, Brew, EquipmentSettings, FermentationStep, Ingredient, IngredientCatalog, MashStep, PurchaseOrder, Recipe, RecipeVersion, ShoppingItem
+from .forms import BackupUploadForm, BeerCategoryForm, BeerXMLUploadForm, BoilSettingsForm, BrewForm, BrewMeasurementForm, BrewNotesForm, BrewPostboilMeasurementForm, BrewPreboilMeasurementForm, BrewTastingForm, CatalogConsumableForm, CatalogHopForm, CatalogMaltForm, CatalogOtherForm, CatalogYeastForm, CatalogForm, DashboardNotesForm, EquipmentSettingsForm, FermentationStepForm, HopForm, IngredientQuantityForm, IngredientTimeForm, MaltForm, MashGraphSettingsForm, MashStepForm, OtherForm, PurchaseOrderForm, RecipeBrewingSettingsForm, RecipeCategoryForm, RecipeEfficiencyForm, RecipeForm, RecipeNameForm, RecipeNotesForm, RecipeTastingForm, ScaleForm, ShoppingItemForm, YeastForm
+from .models import ActivityEvent, BeerCategory, Brew, DashboardSettings, EquipmentSettings, FermentationStep, Ingredient, IngredientCatalog, MashStep, PurchaseOrder, Recipe, RecipeVersion, ShoppingItem
 from .signals import log_activity, save_version, suspend_versioning
 from .versioning import describe_version_change
 from .backup import create_backup, restore_backup
@@ -128,8 +128,25 @@ def dashboard(request):
             total=Sum("amount")
         )["total"] or Decimal("0"),
         "annual_expenses_year": today.year,
+        "notes": DashboardSettings.objects.first() or DashboardSettings(),
     }
-    return render(request, "recipes/dashboard.html", {"dashboard": dashboard})
+    return render(
+        request,
+        "recipes/dashboard.html",
+        {"dashboard": dashboard, "dashboard_notes_form": DashboardNotesForm(instance=dashboard["notes"])},
+    )
+
+
+@require_POST
+def dashboard_notes_update(request):
+    notes = DashboardSettings.objects.first() or DashboardSettings()
+    form = DashboardNotesForm(request.POST, instance=notes)
+    if form.is_valid():
+        form.save()
+        messages.success(request, "Les notes du tableau de bord ont été enregistrées.")
+    else:
+        messages.error(request, "Impossible d’enregistrer les notes du tableau de bord.")
+    return redirect("recipes:dashboard")
 
 
 def about(request):
@@ -333,10 +350,15 @@ def shopping_list(request):
         )
         item.source_brew_needs = []
         for brew in item.source_brews.all():
+            brew_requirements = (
+                planned_requirements.get(brew.pk)
+                if brew.status == Brew.Status.PLANNED
+                else None
+            ) or brew_stock_requirements(brew)
             requirement = next(
                 (
                     requirement
-                    for requirement in brew_stock_requirements(brew)
+                    for requirement in brew_requirements
                     if requirement["name"].strip().casefold() == item.name.strip().casefold()
                 ),
                 None,
@@ -345,7 +367,7 @@ def shopping_list(request):
                 item.source_brew_needs.append(
                     {
                         "brew": brew,
-                        "required": requirement["required"],
+                        "required": requirement.get("purchase_needed", requirement["required"]),
                         "unit": requirement["unit"],
                     }
                 )
@@ -677,10 +699,6 @@ def brew_missing_stock_to_shopping(request, pk):
     brew = get_object_or_404(Brew, pk=pk)
     names = request.POST.getlist("names") or [request.POST.get("name", "")]
     names = list(dict.fromkeys(name.strip() for name in names if name.strip()))
-    aggregate_needs = {
-        need["name"].strip().casefold(): need
-        for need in _planned_shopping_needs()
-    }
     planned_requirements = planned_brew_stock_requirements().get(brew.pk, [])
     planned_needs = {
         requirement["name"].strip().casefold(): requirement
@@ -698,16 +716,9 @@ def brew_missing_stock_to_shopping(request, pk):
     for name in names:
         normalized_name = name.casefold()
         need = planned_needs.get(normalized_name)
-        aggregate_need = aggregate_needs.get(normalized_name)
         requirement = brew_requirements.get(normalized_name)
-        if aggregate_need and any(
-            source_brew.pk == brew.pk for source_brew in aggregate_need["brews"]
-        ):
-            planned_quantity = aggregate_need["deficit"]
-            need = need or aggregate_need
-        elif need:
-            available_after_previous = need.get("available_after_previous")
-            planned_quantity = max(need["required"] - (available_after_previous or 0), 0)
+        if need:
+            planned_quantity = need["purchase_needed"]
         else:
             planned_quantity = None
         catalog = need["catalog"] if need else requirement["catalog"] if requirement else None
@@ -1602,6 +1613,7 @@ def catalog_list(request):
         if item.stock_alert:
             stock_alerts.append(item)
     stock_alert_brews = []
+    planned_requirements = planned_brew_stock_requirements()
     planned_brews = {
         brew.pk: brew
         for need in planned_needs.values()
@@ -1609,14 +1621,13 @@ def catalog_list(request):
     }
     for brew in planned_brews.values():
         missing_items = []
-        for requirement in brew_stock_requirements(brew):
-            catalog = requirement["catalog"]
-            if catalog is None or catalog.quantity_available >= requirement["required"]:
+        for requirement in planned_requirements.get(brew.pk, []):
+            if requirement["purchase_needed"] <= 0:
                 continue
             missing_items.append(
                 {
                     "name": requirement["name"],
-                    "deficit": requirement["required"] - catalog.quantity_available,
+                    "deficit": requirement["purchase_needed"],
                     "unit": requirement["unit"],
                 }
             )
