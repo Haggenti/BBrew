@@ -1332,8 +1332,6 @@ class RecipeWorkflowTests(TestCase):
         self.assertIn('id="carb-sugar"', carbonation_controls)
         self.assertContains(response, "Eau de départ nécessaire")
         self.assertContains(response, "water-result")
-        self.assertContains(response, "mashEvaporationLPerHour")
-        self.assertContains(response, "const mashMinutes = 0")
         self.assertContains(response, "Volume pré-ébullition")
         self.assertContains(response, "preboil-volume-result")
         self.assertContains(response, "Mesure depuis le haut de la cuve")

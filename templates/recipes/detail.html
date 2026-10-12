@@ -1501,37 +1501,6 @@
   updateCarbonation();
 </script>
 <script>
-  const waterResult = document.getElementById("water-result");
-  const waterEquipment = {
-    evaporationLPerHour: {{ water_equipment.evaporation_l_h|unlocalize }},
-    mashEvaporationLPerHour: {{ water_equipment.mash_evaporation_l_h|unlocalize }},
-    absorption: {{ water_equipment.grain_absorption_l_kg|unlocalize }},
-    hopAbsorption: {{ water_equipment.hop_absorption_l_kg|unlocalize }},
-    deadSpace: {{ water_equipment.dead_space_l|unlocalize }}
-  };
-  const grainWeightKg = {{ malt_total_g|unlocalize }} / 1000;
-  const hopWeightKg = {{ hop_total_g|unlocalize }} / 1000;
-  const boilMinutes = {{ recipe.boil_time_min }};
-  const mashMinutes = {{ mash_duration_min|unlocalize }};
-  const finalVolume = {{ recipe.batch_size_l|unlocalize }};
-
-  function updateWater() {
-    if (!finalVolume || finalVolume <= 0) {
-      waterResult.textContent = "— L";
-      return;
-    }
-    const evaporationLoss = waterEquipment.evaporationLPerHour * boilMinutes / 60;
-    const mashEvaporationLoss = waterEquipment.mashEvaporationLPerHour * mashMinutes / 60;
-    const grainAbsorption = waterEquipment.absorption * grainWeightKg;
-    const hopAbsorption = waterEquipment.hopAbsorption * hopWeightKg;
-    const preBoilVolume = finalVolume + evaporationLoss + mashEvaporationLoss + waterEquipment.deadSpace;
-    const totalWater = preBoilVolume + grainAbsorption + hopAbsorption;
-    waterResult.textContent = `${totalWater.toFixed(1).replace(".", ",")} L`;
-  }
-
-  updateWater();
-</script>
-<script>
   (() => {
     const canvas = document.getElementById("tasting-profile-chart");
     const form = document.getElementById("tasting-profile-form");
