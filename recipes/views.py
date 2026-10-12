@@ -883,6 +883,7 @@ def brew_recipe_snapshot(request, pk):
     snapshot = brew.recipe_snapshot
     recipe_data = snapshot.get("recipe", {})
     ingredients = snapshot.get("ingredients", [])
+    mash_steps = snapshot.get("mash_steps", [])
     equipment = EquipmentSettings.objects.first() or EquipmentSettings()
     grain_weight_kg = sum(
         float(item.get("amount_g", 0))
@@ -897,6 +898,9 @@ def brew_recipe_snapshot(request, pk):
     water_l = (
         float(recipe_data.get("batch_size_l", 0))
         + float(equipment.evaporation_l_h) * float(recipe_data.get("boil_time_min", 0)) / 60
+        + float(equipment.mash_evaporation_l_h)
+        * sum(float(step.get("duration_min", 0)) for step in mash_steps)
+        / 60
         + float(equipment.dead_space_l)
         + float(equipment.grain_absorption_l_kg) * grain_weight_kg
         + float(equipment.hop_absorption_l_kg) * hop_weight_kg
@@ -1792,6 +1796,11 @@ def recipe_detail(request, pk, edit_forms=None):
         + float(equipment.evaporation_l_h) * float(recipe.boil_time_min) / 60
         + float(equipment.dead_space_l)
     )
+    planned_preboil_volume += (
+        float(equipment.mash_evaporation_l_h)
+        * sum(float(step.duration_min) for step in mash_steps)
+        / 60
+    )
     grain_weight_kg = sum(float(malt.amount_g) for malt in malts) / 1000
     hop_weight_kg = sum(float(hop.amount_g) for hop in hops) / 1000
     water_start_volume = (
@@ -2125,10 +2134,12 @@ def recipe_detail(request, pk, edit_forms=None):
                 "diameter_cm": float(equipment.diameter_cm),
                 "height_cm": float(equipment.height_cm),
                 "evaporation_l_h": float(equipment.evaporation_l_h),
+                "mash_evaporation_l_h": float(equipment.mash_evaporation_l_h),
                 "grain_absorption_l_kg": float(equipment.grain_absorption_l_kg),
                 "hop_absorption_l_kg": float(equipment.hop_absorption_l_kg),
                 "dead_space_l": float(equipment.dead_space_l),
             },
+            "mash_duration_min": sum(float(step.duration_min) for step in mash_steps),
             "water_start_volume": water_start_volume,
             "water_start_headspace": water_start_headspace,
             "planned_preboil_volume": planned_preboil_volume,

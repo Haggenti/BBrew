@@ -699,6 +699,7 @@ class RecipeWorkflowTests(TestCase):
                 "height_cm": "60",
                 "bag_weight_g": "1250",
                 "evaporation_l_h": "0.30",
+                "mash_evaporation_l_h": "0.15",
                 "grain_absorption_l_kg": "0.80",
                 "hop_absorption_l_kg": "1.00",
                 "dead_space_l": "1.5",
@@ -712,6 +713,7 @@ class RecipeWorkflowTests(TestCase):
         self.assertEqual(settings.grain_absorption_l_kg, Decimal("0.80"))
         self.assertEqual(settings.hop_absorption_l_kg, Decimal("1.00"))
         self.assertEqual(settings.bag_weight_g, Decimal("1250.0"))
+        self.assertEqual(settings.mash_evaporation_l_h, Decimal("0.15"))
         self.assertTrue(settings.cost_management_enabled)
 
     def test_new_equipment_settings_use_brewing_defaults(self):
@@ -723,6 +725,7 @@ class RecipeWorkflowTests(TestCase):
         self.assertEqual(settings.grain_absorption_l_kg, Decimal("0.30"))
         self.assertEqual(settings.hop_absorption_l_kg, Decimal("1.00"))
         self.assertEqual(settings.evaporation_l_h, Decimal("5.00"))
+        self.assertEqual(settings.mash_evaporation_l_h, Decimal("0.00"))
         self.assertEqual(settings.bag_weight_g, Decimal("100.0"))
         self.assertEqual(settings.style_tolerance_percent, Decimal("30.0"))
         self.assertEqual(settings.mash_efficiency, Decimal("72.0"))
@@ -1329,6 +1332,8 @@ class RecipeWorkflowTests(TestCase):
         self.assertIn('id="carb-sugar"', carbonation_controls)
         self.assertContains(response, "Eau de départ nécessaire")
         self.assertContains(response, "water-result")
+        self.assertContains(response, "mashEvaporationLPerHour")
+        self.assertContains(response, "const mashMinutes = 0")
         self.assertContains(response, "Volume pré-ébullition")
         self.assertContains(response, "preboil-volume-result")
         self.assertContains(response, "Mesure depuis le haut de la cuve")
@@ -1344,6 +1349,18 @@ class RecipeWorkflowTests(TestCase):
         self.assertIsNotNone(response.context["estimated_ebc_color"])
         self.assertIsNotNone(response.context["estimated_og"])
         self.assertIsNotNone(response.context["estimated_ibu"])
+
+    def test_recipe_detail_includes_mash_evaporation_in_starting_water(self):
+        EquipmentSettings.objects.create(evaporation_l_h=5, mash_evaporation_l_h=2)
+        recipe = Recipe.objects.create(name="Empâtage évaporant", batch_size_l=20, boil_time_min=60)
+        MashStep.objects.create(recipe=recipe, name="Empâtage", temperature_c=65, duration_min=60)
+
+        response = self.client.get(f"/recettes/{recipe.pk}/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["water_start_volume"], 27)
+        self.assertContains(response, "const mashMinutes = 60")
+
     def test_recipe_detail_marks_ingredients_missing_from_stock(self):
         recipe = Recipe.objects.create(name="Ingrédient non référencé")
         catalog = IngredientCatalog.objects.create(name="Pale malt", kind=IngredientCatalog.Kind.MALT)

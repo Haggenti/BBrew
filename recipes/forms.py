@@ -97,6 +97,7 @@ class EquipmentSettingsForm(StyledModelForm):
             "height_cm",
             "bag_weight_g",
             "evaporation_l_h",
+            "mash_evaporation_l_h",
             "grain_absorption_l_kg",
             "hop_absorption_l_kg",
             "dead_space_l",
@@ -124,6 +125,7 @@ class EquipmentSettingsForm(StyledModelForm):
             "height_cm",
             "bag_weight_g",
             "evaporation_l_h",
+            "mash_evaporation_l_h",
             "grain_absorption_l_kg",
             "hop_absorption_l_kg",
             "dead_space_l",
@@ -136,6 +138,7 @@ class EquipmentSettingsForm(StyledModelForm):
             "height_cm": forms.NumberInput(attrs={"min": "1", "step": "0.1"}),
             "bag_weight_g": forms.NumberInput(attrs={"min": "0", "step": "1"}),
             "evaporation_l_h": forms.NumberInput(attrs={"min": "0", "step": "0.01"}),
+            "mash_evaporation_l_h": forms.NumberInput(attrs={"min": "0", "step": "0.01"}),
             "grain_absorption_l_kg": forms.NumberInput(attrs={"min": "0", "step": "0.01"}),
             "hop_absorption_l_kg": forms.NumberInput(attrs={"min": "0", "step": "0.01"}),
             "dead_space_l": forms.NumberInput(attrs={"min": "0", "step": "0.01"}),
@@ -145,6 +148,7 @@ class EquipmentSettingsForm(StyledModelForm):
         }
         labels = {
             "evaporation_l_h": "évaporation (L/h)",
+            "mash_evaporation_l_h": "évaporation pendant le brassage (L/h)",
             "style_tolerance_percent": "tolérance de compatibilité des styles (%)",
         }
 
