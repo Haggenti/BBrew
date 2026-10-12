@@ -195,7 +195,7 @@ class EquipmentSettings(models.Model):
     diameter_cm = models.DecimalField("diamètre de la cuve (cm)", max_digits=6, decimal_places=1, default=38)
     height_cm = models.DecimalField("hauteur de la cuve (cm)", max_digits=6, decimal_places=1, default=40)
     bag_weight_g = models.DecimalField("poids du sac (g)", max_digits=7, decimal_places=1, default=100)
-    evaporation_l_h = models.DecimalField("évaporation (L/h)", max_digits=5, decimal_places=2, default=5)
+    evaporation_l_h = models.DecimalField("évaporation pendant l'ébullition (L/h)", max_digits=5, decimal_places=2, default=5)
     mash_evaporation_l_h = models.DecimalField(
         "évaporation pendant le brassage (L/h)", max_digits=5, decimal_places=2, default=0
     )

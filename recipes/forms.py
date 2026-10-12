@@ -147,7 +147,7 @@ class EquipmentSettingsForm(StyledModelForm):
             "cost_management_enabled": forms.CheckboxInput(attrs={"class": "form-check-input"}),
         }
         labels = {
-            "evaporation_l_h": "évaporation (L/h)",
+            "evaporation_l_h": "évaporation pendant l'ébullition (L/h)",
             "mash_evaporation_l_h": "évaporation pendant le brassage (L/h)",
             "style_tolerance_percent": "tolérance de compatibilité des styles (%)",
         }
