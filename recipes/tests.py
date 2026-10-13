@@ -1968,6 +1968,28 @@ class RecipeWorkflowTests(TestCase):
         brew.refresh_from_db()
         self.assertIsNone(brew.actual_preboil_og)
 
+    def test_brew_preboil_measurement_is_saved_after_temperature_correction(self):
+        brew = Brew.objects.create(
+            recipe_name="Mesure corrigée",
+            status=Brew.Status.BREWING,
+        )
+
+        response = self.client.post(
+            f"/brassins/{brew.pk}/mesures/",
+            {
+                "measurement_stage": "preboil",
+                "actual_preboil_og": "1.050",
+                "preboil_temperature_c": "78",
+                "actual_preboil_volume_l": "20",
+                "preboil_volume_mode": "liters",
+            },
+        )
+
+        self.assertRedirects(response, f"/brassins/{brew.pk}/")
+        brew.refresh_from_db()
+        self.assertEqual(brew.actual_preboil_og, Decimal("1.077"))
+        self.assertEqual(brew.actual_preboil_volume_l, Decimal("20.00"))
+
     def test_brew_calculates_residual_water_from_spent_grains(self):
         EquipmentSettings.objects.create(bag_weight_g=1200)
         recipe = Recipe.objects.create(name="Drêches")

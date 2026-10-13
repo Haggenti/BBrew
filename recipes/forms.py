@@ -454,7 +454,8 @@ class _BrewStageMeasurementForm(BrewMeasurementForm):
         if gravity is not None and temperature is not None:
             from .calculations import correct_hydrometer_gravity
 
-            cleaned_data[self.gravity_field] = correct_hydrometer_gravity(gravity, temperature)
+            corrected_gravity = correct_hydrometer_gravity(gravity, temperature)
+            cleaned_data[self.gravity_field] = Decimal(str(corrected_gravity)).quantize(Decimal("0.001"))
         return cleaned_data
 
 
