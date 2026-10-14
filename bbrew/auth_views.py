@@ -44,6 +44,6 @@ class BBSLoginView(LoginView):
         if current and latest_parts and latest_parts > current:
             messages.info(
                 self.request,
-                f"Une nouvelle version de BBrew est disponible : {latest}.",
+                f"Une nouvelle version de BBS est disponible : {latest}.",
             )
         return response
