@@ -697,6 +697,9 @@ def shopping_list_clear_received(request):
 @require_POST
 def brew_missing_stock_to_shopping(request, pk):
     brew = get_object_or_404(Brew, pk=pk)
+    if brew.status != Brew.Status.PLANNED:
+        messages.error(request, "Le stock manquant ne peut être ajouté que pour un brassin planifié.")
+        return redirect("recipes:brews")
     names = request.POST.getlist("names") or [request.POST.get("name", "")]
     names = list(dict.fromkeys(name.strip() for name in names if name.strip()))
     planned_requirements = planned_brew_stock_requirements().get(brew.pk, [])
@@ -1831,6 +1834,11 @@ def recipe_detail(request, pk, edit_forms=None):
     ebc = estimated_color_ebc(malts, float(recipe.batch_size_l)) if malts else None
     abv = estimated_abv(og or float(recipe.target_og), yeasts, mash_steps)
     final_gravity = estimated_final_gravity(og or float(recipe.target_og), yeasts, mash_steps)
+    estimated_bottled_abv = (
+        abv + (max(0, float(recipe.target_carbonation) - 0.85) * 3.86 * 0.0647)
+        if abv is not None
+        else None
+    )
     bu_gu = bu_gu_ratio(ibu, og or float(recipe.target_og))
     bu_gu_description = bu_gu_comment(bu_gu)
 
@@ -2209,6 +2217,7 @@ def recipe_detail(request, pk, edit_forms=None):
             "estimated_ebc": ebc,
             "estimated_ebc_color": ebc_color_rgb(ebc) if ebc is not None else None,
             "estimated_abv": abv,
+            "estimated_bottled_abv": estimated_bottled_abv,
             "estimated_final_gravity": final_gravity,
             "estimated_final_plato": plato_from_gravity(final_gravity) if final_gravity else None,
             "mash_temperature": average_mash_temperature(mash_steps),

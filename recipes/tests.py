@@ -569,6 +569,7 @@ class RecipeWorkflowTests(TestCase):
         alcohol_indicator = next(item for item in indicators if item["label"] == "Alcool")
         self.assertEqual(alcohol_indicator["precision"], 1)
         self.assertContains(response, "ABV estimé")
+        self.assertContains(response, "ABV estimé après refermentation en bouteille")
         self.assertContains(response, 'toFixed(1).replace(".", ",")')
         self.assertTrue(0 < indicators[0]["position"] < 100)
         self.assertLess(indicators[0]["scale_minimum"], indicators[0]["minimum"])
@@ -2223,6 +2224,18 @@ class RecipeWorkflowTests(TestCase):
         self.assertEqual(missing["stock_reserved"], 3000)
         self.assertEqual(missing["stock_free"], 2000)
         self.assertEqual(missing["purchase_needed"], 1000)
+
+        second_brew.status = Brew.Status.BREWING
+        second_brew.save(update_fields=["status"])
+        detail_response = self.client.get(f"/brassins/{second_brew.pk}/")
+        self.assertNotContains(detail_response, 'data-bs-target="#missing-stock-modal"')
+
+        response = self.client.post(
+            f"/brassins/{second_brew.pk}/stock-manquant-courses/",
+            {"names": [catalog.name]},
+        )
+        self.assertRedirects(response, "/brassins/")
+        self.assertFalse(ShoppingItem.objects.filter(name=catalog.name).exclude(pk=shopping_item.pk).exists())
 
     def test_all_planned_brew_needs_are_added_to_shopping_without_duplicates(self):
         catalog = IngredientCatalog.objects.create(

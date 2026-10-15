@@ -18,7 +18,7 @@
     <div class="small text-secondary">Brassin n°{{ brew.pk }} · créé le {{ brew.created_at|date:"d/m/Y" }}</div>
   </div>
   <div class="brew-actions d-flex flex-wrap justify-content-end gap-2">
-    {% if stock_missing_items %}
+    {% if stock_missing_items and brew.status == "planned" %}
     <div class="btn-group" role="group" aria-label="Stock manquant">
       <button class="btn btn-outline-danger" type="button" data-bs-toggle="modal" data-bs-target="#missing-stock-modal"><i class="bi bi-exclamation-triangle-fill me-1" aria-hidden="true"></i>Stock manquant</button>
     </div>
@@ -147,7 +147,7 @@
     }
   }
 </style>
-{% if stock_missing_items %}
+{% if stock_missing_items and brew.status == "planned" %}
 <div class="modal fade" id="missing-stock-modal" tabindex="-1" aria-labelledby="missing-stock-modal-title" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
@@ -274,27 +274,6 @@
   </div>
 </div>
 {% endif %}
-<div class="row g-3 mt-0 align-items-stretch">
-<div class="col-lg-6">
-<section class="card h-100">
-  <div class="card-header bg-light"><h2 class="h5 mb-0"><i class="bi bi-bar-chart-line me-2" aria-hidden="true"></i>Analyse du brassin</h2></div>
-  <div class="card-body">
-    <div class="row g-4">
-      <div class="col-lg-6">
-        <h3 class="h6 text-uppercase text-secondary border-bottom pb-2">Volumes et absorption</h3>
-        <dl class="row small mb-0">
-          <dt class="col-7 text-secondary">Évaporation totale</dt><dd class="col-5 text-end">{% if comparison.evaporation_total is not None %}{{ comparison.evaporation_total|floatformat:2 }} L{% else %}—{% endif %}</dd>
-          <dt class="col-7 text-secondary">Évaporation horaire</dt><dd class="col-5 text-end">{% if comparison.evaporation_rate is not None %}{{ comparison.evaporation_rate|floatformat:2 }} L/h{% else %}—{% endif %}</dd>
-          <dt class="col-7 text-secondary">Poids de grain de départ</dt><dd class="col-5 text-end">{% if comparison.grain_weight_kg is not None %}{{ comparison.grain_weight_kg|floatformat:2 }} kg{% else %}—{% endif %}</dd>
-          <dt class="col-7 text-secondary">Drêches avec sac</dt><dd class="col-5 text-end">{% if brew.actual_spent_grains_weight_kg is not None %}{{ brew.actual_spent_grains_weight_kg }} kg{% else %}—{% endif %}</dd>
-          <dt class="col-7 text-secondary">Eau résiduelle absorbée</dt><dd class="col-5 text-end">{% if comparison.residual_water_kg is not None %}{{ comparison.residual_water_kg|floatformat:2 }} L{% else %}—{% endif %}</dd>
-          <dt class="col-7 text-secondary">Taux d’absorption</dt><dd class="col-5 text-end">{% if comparison.absorption_l_per_kg is not None %}{{ comparison.absorption_l_per_kg|floatformat:2 }} L/kg{% else %}—{% endif %}</dd>
-        </dl>
-      </div>
-    </div>
-  </div>
-</section>
-</div>
 <div class="col-lg-6">
 <section class="card h-100">
   <div class="card-header bg-light"><h2 class="h5 mb-0">Prévu / réel</h2></div>
