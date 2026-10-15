@@ -108,6 +108,7 @@
   <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
     <form method="post" action="{% url 'recipes:shopping_item_create' %}">
       {% csrf_token %}
+      {% if shopping_prefill_catalog %}<input type="hidden" name="catalog" value="{{ shopping_prefill_catalog.pk }}">{% endif %}
       <div class="modal-header">
         <h2 class="modal-title h5" id="add-shopping-item-title">Ajouter un article</h2>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
@@ -196,4 +197,15 @@
     updateQuantityOptions();
   });
 </script>
+{% if shopping_open_add %}
+<script>
+  document.addEventListener("DOMContentLoaded", () => {
+    const modalElement = document.getElementById("add-shopping-item-modal");
+    const quantity = document.getElementById("{{ form.planned_quantity.id_for_label }}");
+    if (!modalElement) return;
+    modalElement.addEventListener("shown.bs.modal", () => quantity?.focus(), {once: true});
+    bootstrap.Modal.getOrCreateInstance(modalElement).show();
+  });
+</script>
+{% endif %}
 {% endblock %}

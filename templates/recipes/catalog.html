@@ -26,6 +26,26 @@
   </div>
   <script>
     (() => {
+      const shoppingListUrl = "{% url 'recipes:shopping_list' %}";
+      const addShoppingButtons = () => {
+        document.querySelectorAll('a[href*="/catalogue/"][href*="/modifier/"]').forEach((editLink) => {
+          const match = editLink.href.match(/\/catalogue\/(\d+)\/modifier\//);
+          if (!match || editLink.nextElementSibling?.dataset.stockShoppingButton) return;
+          const shoppingLink = document.createElement("a");
+          shoppingLink.className = "btn btn-sm btn-outline-primary";
+          shoppingLink.href = `${shoppingListUrl}?catalog=${match[1]}&open_add=1`;
+          shoppingLink.dataset.stockShoppingButton = "true";
+          shoppingLink.setAttribute("aria-label", `Ajouter ${editLink.getAttribute("aria-label")?.replace(/^Modifier /, "")} à la liste de courses`);
+          shoppingLink.title = "Ajouter à la liste de courses";
+          shoppingLink.innerHTML = '<i class="bi bi-cart-plus" aria-hidden="true"></i>';
+          editLink.insertAdjacentElement("afterend", shoppingLink);
+        });
+      };
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", addShoppingButtons, {once: true});
+      } else {
+        addShoppingButtons();
+      }
       const modalElement = document.getElementById("catalog-edit-modal");
       if (!modalElement) return;
       const modal = bootstrap.Modal.getOrCreateInstance(modalElement);

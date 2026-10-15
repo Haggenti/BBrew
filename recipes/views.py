@@ -393,6 +393,16 @@ def shopping_list(request):
     purchase_orders = list(PurchaseOrder.objects.all())
     for purchase_order in purchase_orders:
         purchase_order.edit_form = PurchaseOrderForm(instance=purchase_order)
+    prefill_catalog = None
+    prefill_catalog_id = request.GET.get("catalog")
+    if prefill_catalog_id:
+        prefill_catalog = IngredientCatalog.objects.filter(pk=prefill_catalog_id).first()
+    shopping_form = ShoppingItemForm(
+        initial={
+            "name": prefill_catalog.name if prefill_catalog else "",
+            "unit": "paquet(s)" if prefill_catalog and prefill_catalog.kind == IngredientCatalog.Kind.YEAST else "g" if prefill_catalog and prefill_catalog.kind in {IngredientCatalog.Kind.MALT, IngredientCatalog.Kind.HOP} else "unité" if prefill_catalog else "",
+        }
+    )
     return render(
         request,
         "recipes/shopping_list.html",
@@ -407,7 +417,9 @@ def shopping_list(request):
                 item for item in items
                 if item.is_ordered and (item.is_received or item.received_quantity)
             ],
-            "form": ShoppingItemForm(),
+            "form": shopping_form,
+            "shopping_prefill_catalog": prefill_catalog,
+            "shopping_open_add": request.GET.get("open_add") == "1" and prefill_catalog is not None,
             "purchase_orders": purchase_orders,
             "purchase_order_form": PurchaseOrderForm(),
             "catalog_items": catalog_items,
@@ -424,7 +436,11 @@ def shopping_list(request):
 def shopping_item_create(request):
     form = ShoppingItemForm(request.POST)
     if form.is_valid():
-        form.save()
+        item = form.save(commit=False)
+        catalog_id = request.POST.get("catalog")
+        if catalog_id:
+            item.catalog = IngredientCatalog.objects.filter(pk=catalog_id).first()
+        item.save()
         messages.success(request, "Article ajouté à la liste de courses.")
     return redirect("recipes:shopping_list")
 

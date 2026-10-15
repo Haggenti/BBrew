@@ -2020,10 +2020,16 @@ class RecipeWorkflowTests(TestCase):
         self.assertContains(response, 'id="add-shopping-item-modal"')
         self.assertContains(response, 'data-bs-target="#add-shopping-item-modal"')
         self.assertContains(response, 'action="/courses/ajouter/"')
-        response = self.client.post("/courses/ajouter/", {"name": "Capsules rouges"})
+        response = self.client.post(
+            "/courses/ajouter/",
+            {"name": "Capsules rouges", "planned_quantity": 24, "unit": "unités"},
+        )
         self.assertRedirects(response, "/courses/")
         item = ShoppingItem.objects.get()
         self.assertFalse(item.is_ordered)
+        response = self.client.get("/courses/")
+        self.assertContains(response, "Capsules rouges")
+        self.assertContains(response, "24 unités")
 
         response = self.client.post(f"/courses/{item.pk}/cocher/")
         self.assertRedirects(response, "/courses/")
@@ -2038,6 +2044,28 @@ class RecipeWorkflowTests(TestCase):
         response = self.client.post(f"/courses/{item.pk}/supprimer/")
         self.assertRedirects(response, "/courses/")
         self.assertFalse(ShoppingItem.objects.filter(pk=item.pk).exists())
+
+    def test_stock_catalog_can_prefill_a_shopping_item(self):
+        catalog = IngredientCatalog.objects.create(
+            name="Pilsen",
+            kind=IngredientCatalog.Kind.MALT,
+            quantity_available=0,
+        )
+        response = self.client.get(f"/courses/?catalog={catalog.pk}&open_add=1")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'name="catalog"')
+        self.assertContains(response, 'value="Pilsen"')
+        self.assertContains(response, 'id="id_planned_quantity"')
+        self.assertContains(response, "bootstrap.Modal.getOrCreateInstance")
+
+        response = self.client.post(
+            "/courses/ajouter/",
+            {"catalog": catalog.pk, "name": "Pilsen", "planned_quantity": 2500, "unit": "g"},
+        )
+        self.assertRedirects(response, "/courses/")
+        item = ShoppingItem.objects.get()
+        self.assertEqual(item.catalog, catalog)
+        self.assertEqual(item.planned_quantity, 2500)
 
     def test_shopping_list_displays_required_quantity_per_source_brew(self):
         recipe = Recipe.objects.create(name="Quantité Ale")
