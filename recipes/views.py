@@ -10,6 +10,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from xml.etree import ElementTree
 import json
 import calendar
+import uuid
 from itertools import groupby
 from datetime import date, timedelta
 
@@ -827,6 +828,17 @@ def brew_detail(request, pk):
     comparison = _brew_comparison(brew)
     tasting_form = BrewTastingForm(instance=brew)
     notes_form = BrewNotesForm(instance=brew)
+    inventory_by_kind = []
+    for kind, label in IngredientCatalog.Kind.choices:
+        if kind == IngredientCatalog.Kind.CONSUMABLE:
+            continue
+        inventory_by_kind.append(
+            {
+                "kind": kind,
+                "label": label,
+                "items": IngredientCatalog.objects.filter(kind=kind).order_by("name"),
+            }
+        )
     preboil_measurement_form = BrewPreboilMeasurementForm(
         instance=brew,
         equipment_settings=EquipmentSettings.objects.first(),
@@ -871,6 +883,7 @@ def brew_detail(request, pk):
             "comparison": comparison,
             "stock_requirements": requirements,
             "stock_missing_items": stock_missing_items,
+            "inventory_by_kind": inventory_by_kind,
             "capsule_catalogs": IngredientCatalog.objects.filter(
                 kind=IngredientCatalog.Kind.CONSUMABLE
             ),
@@ -1211,6 +1224,113 @@ def brew_consume_stock(request, pk):
             brew.stock_consumed_at = timezone.now()
         brew.save(update_fields=["stock_consumed_items", "stock_consumed_at"])
     messages.success(request, "Les lignes sélectionnées ont été consommées.")
+    return redirect("recipes:brew_detail", pk=brew.pk)
+
+
+@require_POST
+def brew_stock_usage_update(request, pk):
+    brew = get_object_or_404(Brew, pk=pk)
+    if brew.status != Brew.Status.BREWING:
+        messages.error(request, "L’utilisation du stock ne peut être modifiée que lorsque le brassage est en cours.")
+        return redirect("recipes:brew_detail", pk=brew.pk)
+    selected = set(request.POST.getlist("stock_item"))
+    requirements = brew_stock_requirements(brew)
+    catalog_requirements = {item["key"]: item for item in requirements if item["catalog"]}
+    manual_requirements = {item["key"]: item for item in requirements if not item["catalog"]}
+    consumed_items = set(brew.stock_consumed_items or [])
+    to_consume = (selected & catalog_requirements.keys()) - consumed_items
+    to_restore = (consumed_items - selected) & catalog_requirements.keys()
+    with transaction.atomic():
+        locked_items = {}
+        for key in to_consume | to_restore:
+            requirement = catalog_requirements[key]
+            item = IngredientCatalog.objects.select_for_update().get(pk=requirement["catalog_id"])
+            if key in to_consume and item.quantity_available < requirement["required"]:
+                messages.error(
+                    request,
+                    f"Stock insuffisant pour « {item.name} » : {item.quantity_available} disponible(s), "
+                    f"{requirement['required']} nécessaire(s).",
+                )
+                return redirect("recipes:brew_detail", pk=brew.pk)
+            locked_items[key] = item
+        for key in to_consume:
+            item = locked_items[key]
+            item.quantity_available -= catalog_requirements[key]["required"]
+            item.save(update_fields=["quantity_available"])
+            consumed_items.add(key)
+        for key in to_restore:
+            item = locked_items[key]
+            item.quantity_available += catalog_requirements[key]["required"]
+            item.save(update_fields=["quantity_available"])
+            consumed_items.discard(key)
+        consumed_items = (consumed_items - manual_requirements.keys()) | (selected & manual_requirements.keys())
+        brew.stock_consumed_items = sorted(consumed_items)
+        consumed_catalog_keys = {item["key"] for item in requirements if item["catalog"]}
+        brew.stock_consumed_at = timezone.now() if consumed_catalog_keys and consumed_catalog_keys <= consumed_items else None
+        brew.save(update_fields=["stock_consumed_items", "stock_consumed_at"])
+    messages.success(request, "L’utilisation du stock a été mise à jour.")
+    return redirect("recipes:brew_detail", pk=brew.pk)
+
+
+@require_POST
+def brew_stock_addition(request, pk):
+    brew = get_object_or_404(Brew, pk=pk)
+    if brew.status != Brew.Status.BREWING:
+        messages.error(request, "Une substitution ne peut être ajoutée que lorsque le brassage est en cours.")
+        return redirect("recipes:brew_detail", pk=brew.pk)
+    catalog_id = request.POST.get("catalog", "").strip()
+    catalog = IngredientCatalog.objects.filter(pk=catalog_id).first() if catalog_id else None
+    name = request.POST.get("name", "").strip() or (catalog.name if catalog else "")
+    unit = request.POST.get("unit", "").strip() or ("paquet(s)" if catalog and catalog.kind == IngredientCatalog.Kind.YEAST else "g")
+    try:
+        required = int(request.POST.get("required", ""))
+    except (TypeError, ValueError):
+        required = 0
+    if not name or required <= 0:
+        messages.error(request, "Indiquez un nom et une quantité positive pour la substitution.")
+        return redirect("recipes:brew_detail", pk=brew.pk)
+    key = f"manual:{uuid.uuid4().hex}"
+    additions = list(brew.stock_additions or [])
+    additions.append({"key": key, "catalog_id": catalog.pk if catalog else None, "name": name, "required": required, "unit": unit, "kind": catalog.kind if catalog else Ingredient.Kind.OTHER})
+    brew.stock_additions = additions
+    brew.save(update_fields=["stock_additions"])
+    messages.success(request, f"« {name} » a été ajouté à l’utilisation du stock.")
+    return redirect("recipes:brew_detail", pk=brew.pk)
+
+
+@require_POST
+def brew_stock_addition_delete(request, pk):
+    brew = get_object_or_404(Brew, pk=pk)
+    if brew.status != Brew.Status.BREWING:
+        messages.error(request, "Un ingrédient ne peut être supprimé que lorsque le brassage est en cours.")
+        return redirect("recipes:brew_detail", pk=brew.pk)
+    key = request.POST.get("key", "").strip()
+    additions = list(brew.stock_additions or [])
+    addition = next((item for item in additions if item.get("key") == key), None)
+    if not addition:
+        messages.error(request, "Cet ingrédient ajouté est introuvable.")
+        return redirect("recipes:brew_detail", pk=brew.pk)
+
+    consumed_items = set(brew.stock_consumed_items or [])
+    catalog_id = addition.get("catalog_id")
+    with transaction.atomic():
+        if key in consumed_items and catalog_id:
+            catalog = IngredientCatalog.objects.select_for_update().get(pk=catalog_id)
+            catalog.quantity_available += addition.get("required", 0)
+            catalog.save(update_fields=["quantity_available"])
+        additions.remove(addition)
+        consumed_items.discard(key)
+        brew.stock_additions = additions
+        brew.stock_consumed_items = sorted(consumed_items)
+        brew.save(update_fields=["stock_additions", "stock_consumed_items"])
+        remaining_catalog_keys = {
+            item["key"]
+            for item in brew_stock_requirements(brew)
+            if item["catalog"]
+        }
+        brew.stock_consumed_at = timezone.now() if remaining_catalog_keys and remaining_catalog_keys <= consumed_items else None
+        brew.save(update_fields=["stock_consumed_at"])
+    messages.success(request, f"« {addition.get('name', 'Ingrédient')} » a été supprimé du brassin.")
     return redirect("recipes:brew_detail", pk=brew.pk)
 
 

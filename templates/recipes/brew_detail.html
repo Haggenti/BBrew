@@ -23,18 +23,13 @@
       <button class="btn btn-outline-danger" type="button" data-bs-toggle="modal" data-bs-target="#missing-stock-modal"><i class="bi bi-exclamation-triangle-fill me-1" aria-hidden="true"></i>Stock manquant</button>
     </div>
     {% endif %}
-    {% if brew.stock_consumed_at %}
+    {% if brew.status == "brewing" %}
     <div class="btn-group" role="group" aria-label="Gestion du stock">
-      <span class="btn btn-outline-success disabled"><i class="bi bi-check-lg me-1" aria-hidden="true"></i>Stock consommé</span>
-      <button class="btn btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#rollback-stock-modal"><i class="bi bi-arrow-counterclockwise me-1" aria-hidden="true"></i>Annuler la consommation</button>
-    </div>
-    {% elif brew.status == "brewing" %}
-    <div class="btn-group" role="group" aria-label="Gestion du stock">
-      <button class="btn btn-outline-warning" type="button" data-bs-toggle="modal" data-bs-target="#consume-stock-modal"><i class="bi bi-box-arrow-down me-1" aria-hidden="true"></i>Consommer le stock</button>
+      <button class="btn btn-outline-warning" type="button" data-bs-toggle="modal" data-bs-target="#stock-usage-modal"><i class="bi bi-box-arrow-down me-1" aria-hidden="true"></i>Utilisation du stock</button>
     </div>
     {% else %}
     <div class="btn-group" role="group" aria-label="Gestion du stock">
-      <span class="btn btn-outline-secondary disabled" title="Disponible uniquement lorsque le brassage est en cours"><i class="bi bi-box-arrow-down me-1" aria-hidden="true"></i>Consommer le stock</span>
+      <span class="btn btn-outline-secondary disabled" title="Disponible uniquement lorsque le brassage est en cours"><i class="bi bi-box-arrow-down me-1" aria-hidden="true"></i>Utilisation du stock</span>
     </div>
     {% endif %}
     <div class="btn-group" role="group" aria-label="Mesures du brassin">
@@ -294,31 +289,47 @@
 </section>
 </div>
 </div>
-{% if not brew.stock_consumed_at and brew.status == "brewing" %}
-<div class="modal fade" id="consume-stock-modal" tabindex="-1" aria-labelledby="consume-stock-title" aria-hidden="true">
+{% if brew.status == "brewing" %}
+<div class="modal fade" id="stock-usage-modal" tabindex="-1" aria-labelledby="stock-usage-title" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <div class="modal-content">
-      <div class="modal-header"><h2 class="modal-title h5" id="consume-stock-title">Consommer le stock</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button></div>
-      <form method="post" action="{% url 'recipes:brew_consume_stock' brew.pk %}">
+      <div class="modal-header"><h2 class="modal-title h5" id="stock-usage-title">Utilisation du stock</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button></div>
+      <form method="post" action="{% url 'recipes:brew_stock_usage_update' brew.pk %}">
         {% csrf_token %}
         <div class="modal-body">
-          <p class="text-secondary small">Cochez les lignes réellement utilisées. Un stock négatif est autorisé.</p>
+          <div class="d-flex justify-content-between align-items-start gap-3 mb-3"><p class="text-secondary small mb-0">Cochez les ingrédients réellement utilisés. Décochez une ligne déjà utilisée pour la remettre en stock.</p><button class="btn btn-sm btn-outline-warning flex-shrink-0" type="button" data-bs-toggle="collapse" data-bs-target="#brew-stock-addition-panel" aria-expanded="false" aria-controls="brew-stock-addition-panel"><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>Ajouter</button></div>
           <div class="table-responsive"><table class="table table-sm align-middle">
-            <thead><tr><th><div class="form-check mb-0"><input class="form-check-input" type="checkbox" id="consume-stock-toggle" checked aria-label="Tout sélectionner"><label class="form-check-label visually-hidden" for="consume-stock-toggle">Tout sélectionner</label></div></th><th>Ingrédient</th><th>Besoin</th><th>Stock actuel</th></tr></thead>
+            <thead><tr><th><div class="form-check mb-0"><input class="form-check-input" type="checkbox" id="consume-stock-toggle" checked aria-label="Tout sélectionner"><label class="form-check-label visually-hidden" for="consume-stock-toggle">Tout sélectionner</label></div></th><th>Ingrédient</th><th>Besoin</th><th>Stock actuel</th><th></th></tr></thead>
             <tbody>
               {% for item in stock_requirements %}
               <tr>
-                <td>{% if item.catalog and not item.consumed %}<input class="form-check-input consume-stock-item" type="checkbox" name="stock_item" value="{{ item.key }}" checked>{% elif item.consumed %}<i class="bi bi-check-circle text-success" aria-label="Déjà consommé"></i>{% endif %}</td>
-                <td>{{ item.name }}{% if not item.catalog %}<div class="small text-danger">Pas de fiche stock associée</div>{% endif %}</td>
+                <td>{% if item.catalog or item.key|slice:":7" == "manual:" %}<input class="form-check-input consume-stock-item" type="checkbox" name="stock_item" value="{{ item.key }}"{% if item.consumed %} checked{% endif %}>{% endif %}</td>
+                <td>{{ item.name }}{% if not item.catalog and item.key|slice:":7" != "manual:" %}<div class="small text-danger">Pas de fiche stock associée</div>{% elif not item.catalog %}<div class="small text-info">Substitution hors stock</div>{% endif %}</td>
                 <td>{{ item.required }} {{ item.unit }}</td>
                 <td>{% if item.available is not None %}{{ item.available }} {{ item.unit }}{% else %}—{% endif %}</td>
+                <td>{% if item.key|slice:":7" == "manual:" %}<button class="btn btn-sm btn-outline-danger" type="submit" formaction="{% url 'recipes:brew_stock_addition_delete' brew.pk %}" name="key" value="{{ item.key }}" title="Supprimer cet ingrédient" aria-label="Supprimer {{ item.name }}"><i class="bi bi-trash" aria-hidden="true"></i></button>{% endif %}</td>
               </tr>
-              {% empty %}<tr><td colspan="4" class="text-secondary">Aucun ingrédient associé au stock.</td></tr>{% endfor %}
+              {% empty %}<tr><td colspan="5" class="text-secondary">Aucun ingrédient associé au stock.</td></tr>{% endfor %}
             </tbody>
           </table></div>
         </div>
-        <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button><button class="btn btn-warning" type="submit">Valider les lignes cochées</button></div>
+        <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button><button class="btn btn-warning" type="submit">Enregistrer l’utilisation</button></div>
       </form>
+      <div class="collapse border-top" id="brew-stock-addition-panel">
+        <div class="p-3 bg-body-tertiary">
+          <h3 class="h6 mb-1">Ajouter un ingrédient au brassin</h3>
+          <p class="small text-secondary mb-3">L’ingrédient sera ajouté à ce brassin sans modifier la recette.</p>
+          <form method="post" action="{% url 'recipes:brew_stock_addition' brew.pk %}" id="brew-stock-addition-form">
+            {% csrf_token %}
+            <div class="row g-2 align-items-end">
+              <div class="col-md-7"><label class="form-label" for="brew-stock-addition-catalog">Fiche de stock</label><select class="form-select" id="brew-stock-addition-catalog" name="catalog" required><option value="">Choisir un ingrédient</option>{% for group in inventory_by_kind %}<optgroup label="{{ group.label }}">{% for item in group.items %}<option value="{{ item.pk }}" data-unit="{% if item.kind == 'yeast' %}paquet(s){% else %}g{% endif %}">{{ item.name }} ({{ item.quantity_available }}{% if item.kind == "yeast" %} paquet(s){% else %} g{% endif %})</option>{% endfor %}</optgroup>{% endfor %}</select></div>
+              <div class="col-md-3"><label class="form-label" for="brew-stock-addition-quantity">Quantité</label><input class="form-control" id="brew-stock-addition-quantity" name="required" type="number" min="1" step="1" required></div>
+              <div class="col-md-2"><label class="form-label" for="brew-stock-addition-unit">Unité</label><input class="form-control" id="brew-stock-addition-unit" name="unit" readonly required></div>
+            </div>
+            <button class="btn btn-primary mt-3" type="submit"><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>Ajouter au brassin</button>
+          </form>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -340,35 +351,17 @@
   })();
 </script>
 {% endif %}
-{% if brew.stock_consumed_items %}
-<div class="modal fade" id="rollback-stock-modal" tabindex="-1" aria-labelledby="rollback-stock-title" aria-hidden="true">
-  <div class="modal-dialog modal-lg modal-dialog-scrollable">
-    <div class="modal-content">
-      <div class="modal-header"><h2 class="modal-title h5" id="rollback-stock-title">Annuler une consommation</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button></div>
-      <form method="post" action="{% url 'recipes:brew_rollback_stock' brew.pk %}">
-        {% csrf_token %}
-        <div class="modal-body">
-          <p class="text-secondary small">Sélectionnez les lignes à recréditer dans le stock.</p>
-          <div class="table-responsive"><table class="table table-sm align-middle">
-            <thead><tr><th></th><th>Ingrédient</th><th>Quantité à restaurer</th><th>Stock actuel</th></tr></thead>
-            <tbody>
-              {% for item in stock_requirements %}{% if item.consumed %}
-              <tr>
-                <td><input class="form-check-input" type="checkbox" name="stock_item" value="{{ item.key }}" checked></td>
-                <td>{{ item.name }}</td>
-                <td>{{ item.required }} {{ item.unit }}</td>
-                <td>{% if item.available is not None %}{{ item.available }} {{ item.unit }}{% else %}—{% endif %}</td>
-              </tr>
-              {% endif %}{% endfor %}
-            </tbody>
-          </table></div>
-        </div>
-        <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button><button class="btn btn-secondary" type="submit">Restaurer les lignes cochées</button></div>
-      </form>
-    </div>
-  </div>
-</div>
-{% endif %}
+<script>
+  (() => {
+    const catalog = document.getElementById("brew-stock-addition-catalog");
+    const unit = document.getElementById("brew-stock-addition-unit");
+    if (!catalog || !unit) return;
+    catalog.addEventListener("change", () => {
+      unit.value = catalog.selectedOptions[0]?.dataset.unit || "";
+      document.getElementById("brew-stock-addition-quantity")?.focus();
+    });
+  })();
+</script>
 <script>
   (() => {
     const editButton = document.getElementById("edit-brew-date");

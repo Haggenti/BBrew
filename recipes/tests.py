@@ -2735,6 +2735,61 @@ class RecipeWorkflowTests(TestCase):
         self.assertIsNone(brew.stock_consumed_at)
         self.assertContains(response, "Stock insuffisant")
 
+    def test_brew_stock_usage_can_add_substitution_and_restore_selected_stock(self):
+        catalog = IngredientCatalog.objects.create(
+            name="Pale malt",
+            kind=IngredientCatalog.Kind.MALT,
+            quantity_available=5000,
+        )
+        recipe = Recipe.objects.create(name="Brassin substitution")
+        ingredient = Ingredient.objects.create(
+            recipe=recipe,
+            catalog=catalog,
+            name="Pale malt",
+            kind=Ingredient.Kind.MALT,
+            amount_g=2500,
+        )
+        self.client.post(f"/recettes/{recipe.pk}/versions/ajouter/", {"reason": "Version de brassage"})
+        brew = Brew.objects.create(
+            recipe=recipe,
+            recipe_version=recipe.current_version,
+            recipe_name=recipe.name,
+            status=Brew.Status.BREWING,
+            stock_additions=[{"key": "manual:test", "name": "Malt biscuit", "required": 500, "unit": "g", "kind": Ingredient.Kind.OTHER}],
+        )
+
+        response = self.client.post(
+            f"/brassins/{brew.pk}/utilisation-stock/",
+            {"stock_item": [f"{catalog.pk}:{Ingredient.Kind.MALT}", "manual:test"]},
+        )
+
+        self.assertRedirects(response, f"/brassins/{brew.pk}/")
+        catalog.refresh_from_db()
+        brew.refresh_from_db()
+        self.assertEqual(catalog.quantity_available, 2500)
+        self.assertEqual(set(brew.stock_consumed_items), {f"{catalog.pk}:{Ingredient.Kind.MALT}", "manual:test"})
+
+        response = self.client.post(
+            f"/brassins/{brew.pk}/utilisation-stock/",
+            {"stock_item": ["manual:test"]},
+        )
+
+        self.assertRedirects(response, f"/brassins/{brew.pk}/")
+        catalog.refresh_from_db()
+        brew.refresh_from_db()
+        self.assertEqual(catalog.quantity_available, 5000)
+        self.assertEqual(brew.stock_consumed_items, ["manual:test"])
+
+        response = self.client.post(
+            f"/brassins/{brew.pk}/supprimer-stock-manuel/",
+            {"key": "manual:test"},
+        )
+
+        self.assertRedirects(response, f"/brassins/{brew.pk}/")
+        brew.refresh_from_db()
+        self.assertEqual(brew.stock_additions, [])
+        self.assertEqual(brew.stock_consumed_items, [])
+
     def test_global_boil_time_can_be_updated(self):
         recipe = Recipe.objects.create(name="Boil test", boil_time_min=60)
         response = self.client.post(

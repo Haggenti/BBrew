@@ -95,6 +95,7 @@ class Brew(models.Model):
     recipe_version_label = models.CharField("version de recette", max_length=200, blank=True)
     stock_consumed_at = models.DateTimeField("stock consommé le", null=True, blank=True)
     stock_consumed_items = models.JSONField("lignes de stock consommées", default=list, blank=True)
+    stock_additions = models.JSONField("ajouts manuels au stock du brassin", default=list, blank=True)
     planned_batch_size_l = models.DecimalField("volume prévu (L)", max_digits=6, decimal_places=2, null=True, blank=True)
     planned_og = models.DecimalField("DI prévue", max_digits=5, decimal_places=3, null=True, blank=True)
     planned_fg = models.DecimalField("DF prévue", max_digits=5, decimal_places=3, null=True, blank=True)

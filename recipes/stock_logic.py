@@ -27,6 +27,17 @@ def brew_stock_requirements(brew):
             if kind == Ingredient.Kind.YEAST
             else int(Decimal(str(ingredient.get("amount_g", 0))).to_integral_value(rounding=ROUND_CEILING))
         )
+    for addition in brew.stock_additions or []:
+        key = addition.get("key")
+        if key:
+            requirements[key] = {
+                "key": key,
+                "catalog_id": addition.get("catalog_id"),
+                "kind": addition.get("kind", Ingredient.Kind.OTHER),
+                "name": addition.get("name", "Ingrédient ajouté"),
+                "required": addition.get("required", 0),
+                "unit": addition.get("unit", "g"),
+            }
     catalog_ids = [item["catalog_id"] for item in requirements.values() if item["catalog_id"] is not None]
     catalog_by_id = IngredientCatalog.objects.in_bulk(catalog_ids)
     consumed = set(brew.stock_consumed_items or [])
