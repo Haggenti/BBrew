@@ -304,7 +304,7 @@
               {% for item in stock_requirements %}
               <tr>
                 <td>{% if item.catalog or item.key|slice:":7" == "manual:" %}<input class="form-check-input consume-stock-item" type="checkbox" name="stock_item" value="{{ item.key }}"{% if item.consumed %} checked{% endif %}>{% endif %}</td>
-                <td>{{ item.name }}{% if not item.catalog and item.key|slice:":7" != "manual:" %}<div class="small text-danger">Pas de fiche stock associée</div>{% elif not item.catalog %}<div class="small text-info">Substitution hors stock</div>{% endif %}</td>
+                <td><span{% if item.available is not None and item.available < item.required and not item.consumed %} class="text-danger fw-semibold"{% endif %}>{{ item.name }}</span>{% if not item.catalog and item.key|slice:":7" != "manual:" %}<div class="small text-danger">Pas de fiche stock associée</div>{% elif not item.catalog %}<div class="small text-info">Substitution hors stock</div>{% endif %}</td>
                 <td>{{ item.required }} {{ item.unit }}</td>
                 <td>{% if item.available is not None %}{{ item.available }} {{ item.unit }}{% else %}—{% endif %}</td>
                 <td>{% if item.key|slice:":7" == "manual:" %}<button class="btn btn-sm btn-outline-danger" type="submit" formaction="{% url 'recipes:brew_stock_addition_delete' brew.pk %}" name="key" value="{{ item.key }}" title="Supprimer cet ingrédient" aria-label="Supprimer {{ item.name }}"><i class="bi bi-trash" aria-hidden="true"></i></button>{% endif %}</td>
