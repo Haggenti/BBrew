@@ -842,6 +842,12 @@ def brew_detail(request, pk):
         and not _requirement_is_in_shopping(item, shopping_keys)
     ]
     comparison = _brew_comparison(brew)
+    equipment = EquipmentSettings.objects.first() or EquipmentSettings()
+    filled_bottle_volume_l = (
+        brew.filled_bottle_count * equipment.bottle_volume_l
+        if brew.filled_bottle_count
+        else None
+    )
     tasting_form = BrewTastingForm(instance=brew)
     notes_form = BrewNotesForm(instance=brew)
     inventory_by_kind = []
@@ -897,6 +903,8 @@ def brew_detail(request, pk):
                 )
             ],
             "comparison": comparison,
+            "bottle_volume_l": equipment.bottle_volume_l,
+            "filled_bottle_volume_l": filled_bottle_volume_l,
             "stock_requirements": requirements,
             "stock_missing_items": stock_missing_items,
             "inventory_by_kind": inventory_by_kind,
@@ -1385,15 +1393,18 @@ def brew_consume_capsules(request, pk):
         messages.error(request, "Les capsules de ce brassin ont déjà été consommées.")
         return redirect("recipes:brew_detail", pk=brew.pk)
     consumptions = list(brew.capsule_consumptions or [])
-    if not consumptions and brew.bottled_bottle_count and brew.capsule_catalog_id:
-        consumptions = [{"catalog_id": brew.capsule_catalog_id, "quantity": brew.bottled_bottle_count}]
+    if not consumptions and (brew.filled_bottle_count or brew.bottled_bottle_count) and brew.capsule_catalog_id:
+        consumptions = [{
+            "catalog_id": brew.capsule_catalog_id,
+            "quantity": brew.filled_bottle_count or brew.bottled_bottle_count,
+        }]
     if not consumptions:
         messages.error(request, "Indiquez le nombre de bouteilles et les capsules utilisées avant de consommer le stock.")
         return redirect("recipes:brew_detail", pk=brew.pk)
     total_quantity = sum(item.get("quantity", 0) for item in consumptions)
     expected_quantity = brew.filled_bottle_count or brew.bottled_bottle_count
     if expected_quantity and total_quantity != expected_quantity:
-        messages.error(request, "La somme des capsules doit correspondre au nombre de bouteilles remplies.")
+        messages.error(request, "La somme des capsules doit correspondre au nombre de bouteilles à capsuler.")
         return redirect("recipes:brew_detail", pk=brew.pk)
 
     with transaction.atomic():
@@ -1428,19 +1439,6 @@ def brew_bottling_update(request, pk):
     if brew.status != Brew.Status.FERMENTING:
         messages.error(request, "La mise en bouteille n’est possible que pendant la fermentation.")
         return redirect("recipes:brew_detail", pk=brew.pk)
-    raw_bottle_count = request.POST.get("bottled_bottle_count", "").strip()
-    if raw_bottle_count:
-        try:
-            bottle_count = int(raw_bottle_count)
-        except (TypeError, ValueError):
-            messages.error(request, "Le nombre de bouteilles à capsuler est invalide.")
-            return redirect("recipes:brew_detail", pk=brew.pk)
-        if bottle_count <= 0:
-            messages.error(request, "Le nombre de bouteilles à capsuler doit être positif.")
-            return redirect("recipes:brew_detail", pk=brew.pk)
-    else:
-        bottle_count = None
-
     raw_filled_count = request.POST.get("filled_bottle_count", "").strip()
     if raw_filled_count:
         try:
@@ -1475,8 +1473,9 @@ def brew_bottling_update(request, pk):
                 messages.error(request, "Une ligne de capsules est invalide.")
                 return redirect("recipes:brew_detail", pk=brew.pk)
             capsule_consumptions.append({"catalog_id": catalog.pk, "quantity": quantity})
-        if filled_count and sum(item["quantity"] for item in capsule_consumptions) != filled_count:
-            messages.error(request, "La somme des capsules doit correspondre au nombre de bouteilles remplies.")
+        expected_capsule_quantity = filled_count
+        if expected_capsule_quantity and sum(item["quantity"] for item in capsule_consumptions) != expected_capsule_quantity:
+            messages.error(request, "La somme des capsules doit correspondre au nombre de bouteilles à capsuler.")
             return redirect("recipes:brew_detail", pk=brew.pk)
 
     raw_capsule_catalog = request.POST.get("capsule_catalog", "").strip()
@@ -1493,7 +1492,7 @@ def brew_bottling_update(request, pk):
     if brew.capsules_consumed_at:
         messages.error(request, "La consommation des capsules a déjà été enregistrée.")
         return redirect("recipes:brew_detail", pk=brew.pk)
-    update_fields = ["filled_bottle_count", "bottled_bottle_count", "capsule_catalog", "capsule_consumptions"]
+    update_fields = ["filled_bottle_count", "capsule_catalog", "capsule_consumptions"]
     raw_fg = request.POST.get("actual_fg", "").strip()
     if raw_fg:
         try:
@@ -1524,7 +1523,6 @@ def brew_bottling_update(request, pk):
             completed_date = None
         brew.completed_date = completed_date
         update_fields.append("completed_date")
-    brew.bottled_bottle_count = bottle_count
     brew.filled_bottle_count = filled_count
     brew.capsule_catalog = capsule_catalog
     brew.capsule_consumptions = capsule_consumptions

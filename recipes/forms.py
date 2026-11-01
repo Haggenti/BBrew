@@ -93,6 +93,7 @@ class EquipmentSettingsForm(StyledModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         for field_name in (
+            "bottle_volume_l",
             "diameter_cm",
             "height_cm",
             "bag_weight_g",
@@ -121,6 +122,7 @@ class EquipmentSettingsForm(StyledModelForm):
     class Meta:
         model = EquipmentSettings
         fields = [
+            "bottle_volume_l",
             "diameter_cm",
             "height_cm",
             "bag_weight_g",
@@ -134,6 +136,7 @@ class EquipmentSettingsForm(StyledModelForm):
             "cost_management_enabled",
         ]
         widgets = {
+            "bottle_volume_l": forms.NumberInput(attrs={"min": "0.01", "step": "0.01"}),
             "diameter_cm": forms.NumberInput(attrs={"min": "1", "step": "0.1"}),
             "height_cm": forms.NumberInput(attrs={"min": "1", "step": "0.1"}),
             "bag_weight_g": forms.NumberInput(attrs={"min": "0", "step": "1"}),
@@ -347,7 +350,7 @@ class BrewForm(StyledModelForm):
         model = Brew
         fields = [
             "recipe", "recipe_version", "status", "planned_date", "completed_date",
-            "filled_bottle_count", "bottled_bottle_count", "capsule_catalog",
+            "filled_bottle_count", "capsule_catalog",
             "actual_preboil_volume_l", "actual_preboil_og", "actual_batch_size_l", "actual_og",
             "actual_spent_grains_weight_kg",
             "actual_fg", "notes",
@@ -359,7 +362,6 @@ class BrewForm(StyledModelForm):
             "actual_preboil_volume_l": forms.NumberInput(attrs={"min": "0", "step": "0.1"}),
             "actual_preboil_og": forms.NumberInput(attrs={"min": "0.9", "step": "0.001"}),
             "actual_spent_grains_weight_kg": forms.NumberInput(attrs={"min": "0", "step": "0.001"}),
-            "bottled_bottle_count": forms.NumberInput(attrs={"min": "1", "step": "1"}),
             "filled_bottle_count": forms.NumberInput(attrs={"min": "1", "step": "1"}),
             "actual_og": forms.NumberInput(attrs={"min": "0.9", "step": "0.001"}),
             "actual_fg": forms.NumberInput(attrs={"min": "0.9", "step": "0.001"}),

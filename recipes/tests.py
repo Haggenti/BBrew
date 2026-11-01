@@ -1856,7 +1856,7 @@ class RecipeWorkflowTests(TestCase):
         response = self.client.post(
             f"/brassins/{brew.pk}/mise-en-bouteille/",
             {
-                "bottled_bottle_count": "10",
+                "filled_bottle_count": "10",
                 "capsule_catalog": capsules.pk,
                 "completed_date": "2026-10-20",
             },

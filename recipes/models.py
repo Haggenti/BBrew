@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.core.exceptions import ValidationError
 from django.core.validators import FileExtensionValidator
 from django.db import models
@@ -195,6 +197,7 @@ class RecipeVersion(models.Model):
 
 
 class EquipmentSettings(models.Model):
+    bottle_volume_l = models.DecimalField("volume d’une bouteille (L)", max_digits=4, decimal_places=2, default=Decimal("0.75"))
     diameter_cm = models.DecimalField("diamètre de la cuve (cm)", max_digits=6, decimal_places=1, default=38)
     height_cm = models.DecimalField("hauteur de la cuve (cm)", max_digits=6, decimal_places=1, default=40)
     bag_weight_g = models.DecimalField("poids du sac (g)", max_digits=7, decimal_places=1, default=100)
