@@ -247,27 +247,46 @@
       <div class="modal-body">
         {% if brew.capsules_consumed_at %}
         <div class="alert alert-success mb-0">
-          <strong>{{ brew.capsules_consumed }} capsule(s)</strong> consommée(s) le {{ brew.capsules_consumed_at|date:"d/m/Y à H:i" }} avec « {{ brew.capsule_catalog.name }} ».
+          <strong>{{ brew.capsules_consumed }} capsule(s)</strong> consommée(s) le {{ brew.capsules_consumed_at|date:"d/m/Y à H:i" }}{% if brew.capsule_consumptions %} : {% for consumption in brew.capsule_consumptions %}{% for capsule in capsule_catalogs %}{% if capsule.pk == consumption.catalog_id %}{{ consumption.quantity }} × {{ capsule.name }}{% endif %}{% endfor %}{% if not forloop.last %}, {% endif %}{% endfor %}{% elif brew.capsule_catalog %} avec « {{ brew.capsule_catalog.name }} »{% endif %}.
           <form method="post" action="{% url 'recipes:brew_rollback_capsules' brew.pk %}" class="mt-2" onsubmit="return confirm('Remettre les capsules dans le stock ?');">
             {% csrf_token %}<button class="btn btn-sm btn-outline-secondary" type="submit">Annuler la consommation</button>
           </form>
         </div>
         {% else %}
-        <p class="text-secondary small">Le nombre de bouteilles et le type de capsules sont facultatifs. Renseignez-les pour pouvoir consommer les capsules dans le stock.</p>
+        <p class="text-secondary small">Indiquez les bouteilles remplies et répartissez les capsules utilisées entre les fiches de stock.</p>
         <form method="post" action="{% url 'recipes:brew_bottling_update' brew.pk %}" class="row g-3 align-items-end mb-3">
           {% csrf_token %}
           <div class="col-12"><label class="form-label" for="bottling-date">Date de mise en bouteille</label><input id="bottling-date" class="form-control" type="date" name="completed_date" value="{{ brew.completed_date|date:'Y-m-d' }}"></div>
           <div class="col-12"><label class="form-label" for="bottling-fg">DF post-fermentation</label><input id="bottling-fg" class="form-control" type="number" name="actual_fg" min="0.900" max="1.200" step="0.001" value="{{ brew.actual_fg|default:'' }}"></div>
+          <div class="col-12"><label class="form-label" for="filled-bottle-count">Bouteilles remplies <span class="text-secondary">(facultatif)</span></label><input id="filled-bottle-count" class="form-control" type="number" name="filled_bottle_count" min="1" step="1" value="{{ brew.filled_bottle_count|default:'' }}"></div>
           <div class="col-12"><label class="form-label" for="bottled-bottle-count">Bouteilles à capsuler <span class="text-secondary">(facultatif)</span></label><input id="bottled-bottle-count" class="form-control" type="number" name="bottled_bottle_count" min="1" step="1" value="{{ brew.bottled_bottle_count|default:'' }}"></div>
-          <div class="col-12"><label class="form-label" for="capsule-catalog">Type de capsules <span class="text-secondary">(facultatif)</span></label><select id="capsule-catalog" class="form-select" name="capsule_catalog"><option value="">Sélectionner</option>{% for capsule in capsule_catalogs %}<option value="{{ capsule.pk }}" {% if brew.capsule_catalog_id == capsule.pk %}selected{% endif %}>{{ capsule.name }} ({{ capsule.quantity_available }} disponible(s))</option>{% endfor %}</select></div>
+          <div class="col-12"><div class="d-flex justify-content-between align-items-center mb-2"><label class="form-label mb-0">Capsules utilisées <span class="text-secondary">(facultatif)</span></label><button class="btn btn-sm btn-outline-primary" type="button" id="add-capsule-row"><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>Ajouter un type</button></div><div id="capsule-rows">{% if brew.capsule_consumptions %}{% for consumption in brew.capsule_consumptions %}<div class="row g-2 align-items-end capsule-row mb-2"><div class="col-8"><select class="form-select" name="capsule_catalog_id"><option value="">Sélectionner</option>{% for capsule in capsule_catalogs %}<option value="{{ capsule.pk }}" {% if capsule.pk == consumption.catalog_id %}selected{% endif %}>{{ capsule.name }} ({{ capsule.quantity_available }})</option>{% endfor %}</select></div><div class="col-3"><input class="form-control" type="number" name="capsule_quantity" min="1" step="1" value="{{ consumption.quantity }}" placeholder="Qté"></div><div class="col-1"><button class="btn btn-outline-danger remove-capsule-row" type="button" aria-label="Supprimer cette ligne"><i class="bi bi-trash" aria-hidden="true"></i></button></div></div>{% endfor %}{% else %}<div class="row g-2 align-items-end capsule-row mb-2"><div class="col-8"><select class="form-select" name="capsule_catalog_id"><option value="">Sélectionner</option>{% for capsule in capsule_catalogs %}<option value="{{ capsule.pk }}" {% if brew.capsule_catalog_id == capsule.pk %}selected{% endif %}>{{ capsule.name }} ({{ capsule.quantity_available }})</option>{% endfor %}</select></div><div class="col-3"><input class="form-control" type="number" name="capsule_quantity" min="1" step="1" value="{{ brew.bottled_bottle_count|default:'' }}" placeholder="Qté"></div><div class="col-1"><button class="btn btn-outline-danger remove-capsule-row" type="button" aria-label="Supprimer cette ligne"><i class="bi bi-trash" aria-hidden="true"></i></button></div></div>{% endif %}</div></div>
           <div class="col-12"><button class="btn btn-outline-primary w-100" type="submit">Enregistrer</button></div>
         </form>
-        {% if brew.bottled_bottle_count and brew.capsule_catalog %}<form method="post" action="{% url 'recipes:brew_consume_capsules' brew.pk %}" onsubmit="return confirm('Consommer {{ brew.bottled_bottle_count }} capsule(s) dans le stock ?');">{% csrf_token %}<button class="btn btn-warning" type="submit"><i class="bi bi-box-arrow-down me-1" aria-hidden="true"></i>Consommer {{ brew.bottled_bottle_count }} capsule(s)</button></form>{% endif %}
+        {% if brew.bottled_bottle_count and brew.capsule_catalog or brew.capsule_consumptions %}<form method="post" action="{% url 'recipes:brew_consume_capsules' brew.pk %}" onsubmit="return confirm('Consommer les capsules sélectionnées dans le stock ?');">{% csrf_token %}<button class="btn btn-warning" type="submit"><i class="bi bi-box-arrow-down me-1" aria-hidden="true"></i>Consommer les capsules</button></form>{% endif %}
         {% endif %}
       </div>
     </div>
   </div>
 </div>
+<script>
+  (() => {
+    const rows = document.getElementById("capsule-rows");
+    const addButton = document.getElementById("add-capsule-row");
+    if (!rows || !addButton) return;
+    const options = `{% for capsule in capsule_catalogs %}<option value="{{ capsule.pk }}">{{ capsule.name }} ({{ capsule.quantity_available }})</option>{% endfor %}`;
+    addButton.addEventListener("click", () => {
+      const row = document.createElement("div");
+      row.className = "row g-2 align-items-end capsule-row mb-2";
+      row.innerHTML = `<div class="col-8"><select class="form-select" name="capsule_catalog_id"><option value="">Sélectionner</option>${options}</select></div><div class="col-3"><input class="form-control" type="number" name="capsule_quantity" min="1" step="1" placeholder="Qté"></div><div class="col-1"><button class="btn btn-outline-danger remove-capsule-row" type="button" aria-label="Supprimer cette ligne"><i class="bi bi-trash" aria-hidden="true"></i></button></div>`;
+      rows.append(row);
+    });
+    rows.addEventListener("click", (event) => {
+      const button = event.target.closest(".remove-capsule-row");
+      if (button && rows.querySelectorAll(".capsule-row").length > 1) button.closest(".capsule-row").remove();
+    });
+  })();
+</script>
 {% endif %}
 <div class="col-lg-6">
 <section class="card h-100">

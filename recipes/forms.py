@@ -347,7 +347,7 @@ class BrewForm(StyledModelForm):
         model = Brew
         fields = [
             "recipe", "recipe_version", "status", "planned_date", "completed_date",
-            "bottled_bottle_count", "capsule_catalog",
+            "filled_bottle_count", "bottled_bottle_count", "capsule_catalog",
             "actual_preboil_volume_l", "actual_preboil_og", "actual_batch_size_l", "actual_og",
             "actual_spent_grains_weight_kg",
             "actual_fg", "notes",
@@ -360,6 +360,7 @@ class BrewForm(StyledModelForm):
             "actual_preboil_og": forms.NumberInput(attrs={"min": "0.9", "step": "0.001"}),
             "actual_spent_grains_weight_kg": forms.NumberInput(attrs={"min": "0", "step": "0.001"}),
             "bottled_bottle_count": forms.NumberInput(attrs={"min": "1", "step": "1"}),
+            "filled_bottle_count": forms.NumberInput(attrs={"min": "1", "step": "1"}),
             "actual_og": forms.NumberInput(attrs={"min": "0.9", "step": "0.001"}),
             "actual_fg": forms.NumberInput(attrs={"min": "0.9", "step": "0.001"}),
             "notes": forms.Textarea(attrs={"rows": 4}),

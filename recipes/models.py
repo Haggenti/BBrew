@@ -104,6 +104,7 @@ class Brew(models.Model):
     status = models.CharField("statut", max_length=20, choices=Status.choices, default=Status.PLANNED)
     planned_date = models.DateField("date du brassage", null=True, blank=True)
     completed_date = models.DateField("date de mise en bouteille", null=True, blank=True)
+    filled_bottle_count = models.PositiveIntegerField("nombre de bouteilles remplies", null=True, blank=True)
     bottled_bottle_count = models.PositiveIntegerField("nombre de bouteilles à capsuler", null=True, blank=True)
     capsule_catalog = models.ForeignKey(
         "IngredientCatalog",
@@ -115,6 +116,7 @@ class Brew(models.Model):
     )
     capsules_consumed = models.PositiveIntegerField("capsules consommées", default=0)
     capsules_consumed_at = models.DateTimeField("capsules consommées le", null=True, blank=True)
+    capsule_consumptions = models.JSONField("répartition des capsules consommées", default=list, blank=True)
     actual_preboil_volume_l = models.DecimalField(
         "volume pré-ébullition réel (L)", max_digits=6, decimal_places=2, null=True, blank=True
     )

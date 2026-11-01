@@ -1904,6 +1904,47 @@ class RecipeWorkflowTests(TestCase):
         self.assertIsNone(brew.bottled_bottle_count)
         self.assertIsNone(brew.capsule_catalog)
 
+    def test_brew_bottling_consumes_multiple_capsule_types_for_filled_bottles(self):
+        black_capsules = IngredientCatalog.objects.create(
+            name="Capsules noires",
+            kind=IngredientCatalog.Kind.CONSUMABLE,
+            quantity_available=30,
+        )
+        white_capsules = IngredientCatalog.objects.create(
+            name="Capsules blanches",
+            kind=IngredientCatalog.Kind.CONSUMABLE,
+            quantity_available=20,
+        )
+        brew = Brew.objects.create(recipe_name="Multi capsules Ale", status=Brew.Status.FERMENTING)
+
+        response = self.client.post(
+            f"/brassins/{brew.pk}/mise-en-bouteille/",
+            {
+                "filled_bottle_count": "30",
+                "capsule_catalog_id": [black_capsules.pk, white_capsules.pk],
+                "capsule_quantity": ["18", "12"],
+            },
+        )
+        self.assertRedirects(response, f"/brassins/{brew.pk}/")
+        brew.refresh_from_db()
+        self.assertEqual(brew.filled_bottle_count, 30)
+        self.assertEqual(brew.capsule_consumptions, [
+            {"catalog_id": black_capsules.pk, "quantity": 18},
+            {"catalog_id": white_capsules.pk, "quantity": 12},
+        ])
+
+        self.client.post(f"/brassins/{brew.pk}/consommer-capsules/")
+        black_capsules.refresh_from_db()
+        white_capsules.refresh_from_db()
+        self.assertEqual(black_capsules.quantity_available, 12)
+        self.assertEqual(white_capsules.quantity_available, 8)
+
+        self.client.post(f"/brassins/{brew.pk}/annuler-consommation-capsules/")
+        black_capsules.refresh_from_db()
+        white_capsules.refresh_from_db()
+        self.assertEqual(black_capsules.quantity_available, 30)
+        self.assertEqual(white_capsules.quantity_available, 20)
+
     def test_brew_capsules_cannot_make_stock_negative(self):
         capsules = IngredientCatalog.objects.create(
             name="Capsules rouges",
